@@ -143,7 +143,8 @@ const PurePreviewMessage = ({
           {message.role === "assistant" && (
             <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border bg-background">
               <div className="">
-                <SparklesIcon size={14} />
+                {/*<SparklesIcon size={14} />*/}
+                <img src="/assets/images/Logo-No-Bg.png" alt="Logo" className="h-6"/>
               </div>
             </div>
           )}

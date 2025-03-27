@@ -309,7 +309,7 @@ export const Header = () => {
 
           {/* User profile section - simplified */}
           {userData && (
-              <div className="flex items-center">
+              <div className="flex items-center font">
                 {/* User avatar/dropdown menu - without arrow */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -320,7 +320,7 @@ export const Header = () => {
                       </div>
                     </div>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="font-montserrat">
                     <DropdownMenuLabel>My Account</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => openSettingsWithTab("profile")}>
