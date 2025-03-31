@@ -26,8 +26,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
 
+// Define types for components
+interface SecurityKeyRegistrationProps {
+  userData: any;
+  onRegisterSuccess: () => void;
+}
+
 // This component will be used to register a security key within the settings modal
-const SecurityKeyRegistration = ({ userData, onRegisterSuccess }) => {
+const SecurityKeyRegistration = ({ userData, onRegisterSuccess }: SecurityKeyRegistrationProps) => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleRegisterSecurityKey = async () => {
@@ -88,8 +94,12 @@ const SecurityKeyRegistration = ({ userData, onRegisterSuccess }) => {
   );
 };
 
+interface SecurityInformationProps {
+  userData: any;
+}
+
 // This component shows security information when the user already has a security key
-const SecurityInformation = ({ userData }) => {
+const SecurityInformation = ({ userData }: SecurityInformationProps) => {
   return (
       <div className="space-y-4">
         <div className="p-4 bg-green-50 rounded-md border border-green-200">
@@ -130,8 +140,17 @@ const SecurityInformation = ({ userData }) => {
   );
 };
 
+interface SettingsModalProps {
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
+  userData: any;
+  onRegisterSuccess: () => void;
+  hasSecurityKey: boolean;
+  activeTab?: string;
+}
+
 // Settings Modal Component with Tabs
-const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecurityKey, activeTab }) => {
+const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecurityKey, activeTab }: SettingsModalProps) => {
   return (
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-md font-montserrat">
@@ -220,7 +239,12 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
   );
 };
 
-export const Header = () => {
+// Add the interface for Header props
+interface HeaderProps {
+  onShowSecurityModal?: () => void;  // Make it optional with the ? mark
+}
+
+export const Header = ({ onShowSecurityModal }: HeaderProps) => {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
   const [hasSecurityKey, setHasSecurityKey] = useState(false);
@@ -267,6 +291,17 @@ export const Header = () => {
   const openSettingsWithTab = (tab) => {
     setActiveSettingsTab(tab);
     setShowSettingsModal(true);
+  };
+
+  // If onShowSecurityModal is provided, use it to show the security tab
+  const handleShowSecurity = () => {
+    if (onShowSecurityModal) {
+      // Use the prop if provided
+      onShowSecurityModal();
+    } else {
+      // Otherwise use the default behavior
+      openSettingsWithTab("security");
+    }
   };
 
   return (
@@ -330,6 +365,10 @@ export const Header = () => {
                     <DropdownMenuItem onClick={() => openSettingsWithTab("general")}>
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShowSecurity}>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      <span>Security</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout}>
