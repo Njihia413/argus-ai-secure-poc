@@ -38,6 +38,8 @@ interface SecurityKeyModalProps {
   onRegisterSuccess: () => void;
 }
 
+type ModelType = "llama-3.3-70b-versatile" | "llama-3.1-8b-instant" | "deepseek-r1-distill-llama-70b";
+
 const SecurityKeyModal = ({
                             isOpen,
                             setIsOpen,
@@ -123,7 +125,7 @@ const SecurityKeyModal = ({
 
 export default function Page() {
   const router = useRouter();
-  const [selectedModel, setSelectedModel] = useState("deepseek-r1-distill-llama-70b");
+  const [selectedModel, setSelectedModel] = useState<ModelType>("deepseek-r1-distill-llama-70b");
   const [userData, setUserData] = useState<UserData | null>(null);
   const [hasSecurityKey, setHasSecurityKey] = useState(false);
   const [showSecurityKeyModal, setShowSecurityKeyModal] = useState(false);
