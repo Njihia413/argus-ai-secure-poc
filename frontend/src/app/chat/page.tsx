@@ -19,21 +19,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {registerSecurityKey} from "@/app/utils/webauthn";
+import { registerSecurityKey } from "@/app/utils/webauthn";
 
+// Define a type for your user data
+interface UserData {
+  username: string;
+  firstName: string;
+  lastName: string;
+  hasSecurityKey: boolean;
+  // Add any other properties your user data might have
+}
 
 // Security key registration modal component
+interface SecurityKeyModalProps {
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
+  userData: UserData | null;
+  onRegisterSuccess: () => void;
+}
+
 const SecurityKeyModal = ({
                             isOpen,
                             setIsOpen,
                             userData,
                             onRegisterSuccess,
-                          }: {
-  isOpen: boolean;
-  setIsOpen: (isOpen: boolean) => void;
-  userData: any;
-  onRegisterSuccess: () => void;
-})  => {
+                          }: SecurityKeyModalProps) => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleRegisterSecurityKey = async () => {
@@ -114,7 +124,7 @@ const SecurityKeyModal = ({
 export default function Page() {
   const router = useRouter();
   const [selectedModel, setSelectedModel] = useState("deepseek-r1-distill-llama-70b");
-  const [userData, setUserData] = useState(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [hasSecurityKey, setHasSecurityKey] = useState(false);
   const [showSecurityKeyModal, setShowSecurityKeyModal] = useState(false);
   const [hasShownModal, setHasShownModal] = useState(false);
@@ -146,7 +156,7 @@ export default function Page() {
 
         if (!userData || !userData.username) {
           // For demo purposes, create a mock user if none exists
-          const mockUser = {
+          const mockUser: UserData = {
             username: 'demo@example.com',
             firstName: 'Demo',
             lastName: 'User',
@@ -164,7 +174,7 @@ export default function Page() {
             }, 1500);
           }
         } else {
-          setUserData(userData);
+          setUserData(userData as UserData);
           setHasSecurityKey(userData.hasSecurityKey || false);
 
           // Show security key modal if user doesn't have one and it hasn't been shown yet
@@ -179,7 +189,7 @@ export default function Page() {
       } catch (err) {
         console.error('Error checking authentication:', err);
         // Create mock user instead of redirecting for demo purposes
-        const mockUser = {
+        const mockUser: UserData = {
           username: 'demo@example.com',
           firstName: 'Demo',
           lastName: 'User',
@@ -199,7 +209,7 @@ export default function Page() {
 
     // Update user data in session storage
     if (userData) {
-      const updatedUser = { ...userData, hasSecurityKey: true };
+      const updatedUser: UserData = { ...userData, hasSecurityKey: true };
       sessionStorage.setItem('user', JSON.stringify(updatedUser));
       setUserData(updatedUser);
     }
