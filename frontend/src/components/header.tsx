@@ -26,9 +26,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
 
+// Define the UserData interface
+interface UserData {
+  username: string;
+  firstName?: string;
+  lastName?: string;
+  hasSecurityKey: boolean;
+  // Add any other properties your user data might have
+}
+
 // Define types for components
 interface SecurityKeyRegistrationProps {
-  userData: any;
+  userData: UserData | null;
   onRegisterSuccess: () => void;
 }
 
@@ -95,7 +104,7 @@ const SecurityKeyRegistration = ({ userData, onRegisterSuccess }: SecurityKeyReg
 };
 
 interface SecurityInformationProps {
-  userData: any;
+  userData: UserData | null;
 }
 
 // This component shows security information when the user already has a security key
@@ -143,7 +152,7 @@ const SecurityInformation = ({ userData }: SecurityInformationProps) => {
 interface SettingsModalProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  userData: any;
+  userData: UserData | null;
   onRegisterSuccess: () => void;
   hasSecurityKey: boolean;
   activeTab?: string;
@@ -246,7 +255,7 @@ interface HeaderProps {
 
 export const Header = ({ onShowSecurityModal }: HeaderProps) => {
   const router = useRouter();
-  const [userData, setUserData] = useState(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [hasSecurityKey, setHasSecurityKey] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
@@ -257,7 +266,7 @@ export const Header = ({ onShowSecurityModal }: HeaderProps) => {
       const storedUser = sessionStorage.getItem('user');
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
-        setUserData(parsedUser);
+        setUserData(parsedUser as UserData);
         setHasSecurityKey(parsedUser.hasSecurityKey || false);
       }
     };
@@ -281,14 +290,14 @@ export const Header = ({ onShowSecurityModal }: HeaderProps) => {
 
     // Update user data in session storage
     if (userData) {
-      const updatedUser = { ...userData, hasSecurityKey: true };
+      const updatedUser: UserData = { ...userData, hasSecurityKey: true };
       sessionStorage.setItem('user', JSON.stringify(updatedUser));
       setUserData(updatedUser);
     }
   };
 
   // Open settings modal with specific tab
-  const openSettingsWithTab = (tab) => {
+  const openSettingsWithTab = (tab: string) => {
     setActiveSettingsTab(tab);
     setShowSettingsModal(true);
   };
