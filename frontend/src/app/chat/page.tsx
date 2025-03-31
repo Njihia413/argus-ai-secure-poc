@@ -28,7 +28,11 @@ const SecurityKeyModal = ({
                             setIsOpen,
                             userData,
                             onRegisterSuccess,
-                          }) => {
+                          }: {
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
+  userData,
+})  => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleRegisterSecurityKey = async () => {
