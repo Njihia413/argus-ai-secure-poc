@@ -67,18 +67,6 @@ export default function SignupPage() {
         }
     }
 
-    const handleResetDb = async () => {
-        if (window.confirm('Are you sure you want to reset the database? All user data will be lost.')) {
-            try {
-                const response = await axios.post(`${API_URL}/reset-db`);
-                toast.success(response.data.message || 'Database reset successfully');
-            } catch (err) {
-                toast.error('Failed to reset database');
-                console.error('Reset database error:', err);
-            }
-        }
-    };
-
     return (
         <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
             <div className="hidden bg-muted lg:block">
@@ -204,16 +192,6 @@ export default function SignupPage() {
                         </div>
                     </form>
 
-                    {/*<div className="mt-8 pt-4 border-t border-gray-300">*/}
-                    {/*    /!*<p className="text-xs text-gray-500 mb-2">Admin Functions (Development Only)</p>*!/*/}
-                    {/*    <Button*/}
-                    {/*        onClick={handleResetDb}*/}
-                    {/*        className="w-full bg-red-500 text-white font-bold py-2 px-4 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-300 transition-colors"*/}
-                    {/*    >*/}
-                    {/*        Reset Database*/}
-                    {/*    </Button>*/}
-                    {/*    /!*<p className="text-xs text-gray-500 mt-1">Warning: This will delete all user data</p>*!/*/}
-                    {/*</div>*/}
                 </div>
             </div>
         </div>

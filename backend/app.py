@@ -1,7 +1,7 @@
 import json
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from flask import Flask, request, jsonify, session
@@ -21,6 +21,8 @@ from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserE
 from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
 
+from sqlalchemy import func, case
+
 app = Flask(__name__)
 CORS(app)
 
@@ -39,13 +41,14 @@ Session(app)
 db = SQLAlchemy(app)
 
 
-# User model renamed to Users and with additional fields
+# User model renamed to Users and with additional fields including role
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    first_name = db.Column(db.String(100), nullable=False)  # Added first name
-    last_name = db.Column(db.String(100), nullable=False)  # Added last name
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
     username = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=True)  # Optional for passwordless auth
+    role = db.Column(db.String(20), nullable=False, default='user')  # New role column with default value 'user'
 
     # User timezone for risk-based authentication
     timezone = db.Column(db.String(50), default='UTC')
@@ -73,17 +76,14 @@ class Users(db.Model):
     # Increment failed login attempts
     def increment_failed_attempts(self):
         self.failed_login_attempts += 1
-        # Lock account after 5 failed attempts
         if self.failed_login_attempts >= 5:
-            self.account_locked_until = datetime.utcnow() + timedelta(minutes=15)
+            self.account_locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
         db.session.commit()
 
     # Check if account is locked
-    # Update these methods in the Users class
-
     def is_account_locked(self):
         """Check if account is locked and return boolean"""
-        if self.account_locked_until and self.account_locked_until > datetime.utcnow():
+        if self.account_locked_until and self.account_locked_until > datetime.now(timezone.utc):
             return True
         return False
 
@@ -94,7 +94,7 @@ class Users(db.Model):
                 "locked": False
             }
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         remaining_seconds = (self.account_locked_until - now).total_seconds()
 
         return {
@@ -109,60 +109,36 @@ class WebAuthnChallenge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     challenge = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     expired = db.Column(db.Boolean, default=False)
-    # Add a new field to track if this challenge is for a second factor authentication
     is_second_factor = db.Column(db.Boolean, default=False)
 
-    user = db.relationship('Users', backref=db.backref('challenges', lazy=True))
-
-
-# Add a new model to track authentication stages
 class AuthenticationSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     password_verified = db.Column(db.Boolean, default=False)
     security_key_verified = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    expires_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + timedelta(minutes=15))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
     session_token = db.Column(db.String(100), unique=True, default=lambda: str(uuid.uuid4()))
-    # Token binding fields
     client_binding = db.Column(db.String(255))
     binding_nonce = db.Column(db.String(100))
-    # Risk assessment fields
     risk_score = db.Column(db.Integer, default=0)
     requires_additional_verification = db.Column(db.Boolean, default=False)
-    last_used = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    user = db.relationship('Users', backref=db.backref('auth_sessions', lazy=True))
-
-    def validate_binding(self, request_binding):
-        # Simple time-based expiration check
-        if datetime.utcnow() > self.expires_at:
-            return False
-
-        # Validate the binding data matches
-        return secrets.compare_digest(self.client_binding, request_binding)
-
-    def update_last_used(self):
-        self.last_used = datetime.utcnow()
-        db.session.commit()
-
-
-# Model to track authentication attempts for risk-based authentication
 class AuthenticationAttempt(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     ip_address = db.Column(db.String(45))  # IPv6 compatible
     user_agent = db.Column(db.String(255))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     success = db.Column(db.Boolean, default=False)
-    auth_type = db.Column(db.String(50))  # 'password', 'webauthn', etc.
+    auth_type = db.Column(db.String(50))  # Add this column for tracking authentication type
     risk_score = db.Column(db.Integer, default=0)
     location = db.Column(db.String(255))  # For storing geolocation data
 
     user = db.relationship('Users', backref=db.backref('auth_attempts', lazy=True))
-
 
 # Configure WebAuthn
 rp = PublicKeyCredentialRpEntity(name="Athens AI", id="localhost")
@@ -202,7 +178,7 @@ def validate_token_binding(session_token, binding_nonce, request):
     print(f"Found session for user_id: {auth_session.user_id}")
 
     # Check if session is expired
-    if datetime.utcnow() > auth_session.expires_at:
+    if datetime.now(timezone.utc) > auth_session.expires_at:
         print(f"Session expired at {auth_session.expires_at}")
         return False
 
@@ -260,17 +236,18 @@ def assess_risk(user_id, request):
         user_id=user_id,
         success=False
     ).filter(
-        AuthenticationAttempt.timestamp > datetime.utcnow() - timedelta(hours=24)
+        AuthenticationAttempt.timestamp > datetime.now(timezone.utc) - timedelta(hours=24)
     ).count()
 
-    failed_risk = min(recent_failed_attempts * 10, 40)  # Cap at 40
+    # Each failed attempt adds 15 to risk score (no cap)
+    failed_risk = recent_failed_attempts * 15
     risk_score += failed_risk
     if failed_risk > 0:
         print(f"Risk: +{failed_risk} for {recent_failed_attempts} recent failed attempts")
 
     # 3. Check for unusual timing
     user_timezone = user.timezone or 'UTC'  # Assuming you store user's timezone
-    current_hour = datetime.utcnow().hour
+    current_hour = datetime.now(timezone.utc).hour
     if current_hour < 6 or current_hour > 22:  # Outside normal hours
         risk_score += 10
         print(f"Risk: +10 for unusual hour ({current_hour})")
@@ -293,9 +270,13 @@ def assess_risk(user_id, request):
         risk_score += 15
         print(f"Risk: +15 for location change")
 
-    # 6. Check for rapid authentication from different locations
+    # Check for rapid authentication from different locations
     if user.last_login_time:
-        time_since_last_login = datetime.utcnow() - user.last_login_time
+        # Ensure both times are timezone-aware
+        current_time = datetime.now(timezone.utc)
+        last_login = user.last_login_time if user.last_login_time.tzinfo else user.last_login_time.replace(tzinfo=timezone.utc)
+        time_since_last_login = current_time - last_login
+        
         if time_since_last_login < timedelta(hours=1) and user.last_login_ip != current_ip:
             risk_score += 25
             print(f"Risk: +25 for rapid location change")
@@ -311,7 +292,7 @@ def health_check():
     return jsonify({'status': 'ok', 'message': 'Athens AI Auth Server Running'})
 
 
-# Updated route for user registration with first and last name
+# Updated route for user registration with first and last name and role (only accessible to admins)
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -321,13 +302,37 @@ def register():
             not data.get('firstName') or not data.get('lastName'):
         return jsonify({'error': 'Missing required fields (firstName, lastName, username, or password)'}), 400
 
+    # Get the admin's auth token for authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
     if Users.query.filter_by(username=data['username']).first():
         return jsonify({'error': 'Username already exists'}), 409
+
+    # Set role (default to 'user' unless specifically set to another valid role)
+    valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
+    role = data.get('role', 'user')
+    if role not in valid_roles:
+        role = 'user'  # Ensure only valid roles
 
     user = Users(
         first_name=data['firstName'],
         last_name=data['lastName'],
-        username=data['username']
+        username=data['username'],
+        role=role
     )
     user.set_password(data['password'])
 
@@ -345,7 +350,51 @@ def register():
     db.session.add(auth_attempt)
     db.session.commit()
 
-    return jsonify({'message': 'User registered successfully'}), 201
+    return jsonify({
+        'message': 'User registered successfully',
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'role': user.role
+        }
+    }), 201
+
+
+# Add a new route to get all users (admin only)
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    # Get the admin's auth token for authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Return all users
+    users = Users.query.all()
+    user_list = [{
+        'id': user.id,
+        'username': user.username,
+        'firstName': user.first_name,
+        'lastName': user.last_name,
+        'role': user.role,
+        'hasSecurityKey': bool(user.credential_id),
+        'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None
+    } for user in users]
+
+    return jsonify({'users': user_list})
 
 
 @app.route('/api/login', methods=['POST'])
@@ -409,7 +458,7 @@ def login():
     user.reset_failed_attempts()
 
     # Update login history
-    user.last_login_time = datetime.utcnow()
+    user.last_login_time = datetime.now(timezone.utc)
     user.last_login_ip = request.remote_addr
 
     # Clean up any existing authentication sessions for this user
@@ -435,32 +484,30 @@ def login():
     # Check if user has a security key registered
     has_security_key = bool(user.credential_id)
 
+    # Add user role to the response
+    response_data = {
+        'message': 'Password verified',
+        'user_id': user.id,
+        'firstName': user.first_name,
+        'lastName': user.last_name,
+        'role': user.role,  # Include user role
+        'has_security_key': has_security_key,
+        'auth_token': auth_session.session_token,
+        'binding_nonce': binding_nonce,
+        'risk_score': risk_score,
+        'requires_additional_verification': risk_score > 50
+    }
+
     if not has_security_key:
         # User needs to register a security key first
-        return jsonify({
-            'message': 'Password verified, but you need to register a security key to fully access your account',
-            'user_id': user.id,
-            'firstName': user.first_name,
-            'lastName': user.last_name,
-            'has_security_key': False,
-            'auth_token': auth_session.session_token,
-            'binding_nonce': binding_nonce,
-            'risk_score': risk_score,
-            'requires_additional_verification': risk_score > 50
-        }), 200
+        response_data[
+            'message'] = 'Password verified, but you need to register a security key to fully access your account'
+        return jsonify(response_data), 200
     else:
         # User has a security key, so they need to use it as a second factor
-        return jsonify({
-            'message': 'Password verified. Please complete authentication with your security key',
-            'user_id': user.id,
-            'firstName': user.first_name,
-            'lastName': user.last_name,
-            'has_security_key': True,
-            'auth_token': auth_session.session_token,
-            'binding_nonce': binding_nonce,
-            'risk_score': risk_score,
-            'requires_additional_verification': risk_score > 50
-        }), 200
+        response_data['message'] = 'Password verified. Please complete authentication with your security key'
+        return jsonify(response_data), 200
+
 
 # WebAuthn registration endpoints
 # Helper functions for base64url encoding/decoding
@@ -1125,6 +1172,7 @@ def webauthn_login_complete():
                     'user_id': user.id,
                     'firstName': user.first_name,
                     'lastName': user.last_name,
+                    'role': user.role,  # Include user role in the response
                     'has_security_key': True,
                     'fully_authenticated': True,
                     'auth_token': auth_session.session_token,
@@ -1202,7 +1250,8 @@ def auth_status():
         'has_security_key': bool(user.credential_id),
         'requires_mfa': bool(user.credential_id),  # If they have a security key, they need to use it
         'is_authenticated': False,
-        'auth_stage': 'none'
+        'auth_stage': 'none',
+        'role': user.role  # Include user role in status response
     }
 
     # If auth token provided, check session status
@@ -1276,22 +1325,15 @@ def security_recommendations():
         user_id=user.id,
         success=False
     ).filter(
-        AuthenticationAttempt.timestamp > datetime.utcnow() - timedelta(days=7)
+        AuthenticationAttempt.timestamp > datetime.now(timezone.utc) - timedelta(days=7)
     ).count()
-
-    if recent_failed > 3:
-        recommendations.append({
-            'type': 'warning',
-            'message': f'There have been {recent_failed} failed login attempts on your account in the last 7 days.',
-            'action': 'Review activity and consider updating your password.'
-        })
 
     # Check for logins from unusual locations
     distinct_ips = db.session.query(AuthenticationAttempt.ip_address).filter_by(
         user_id=user.id,
         success=True
     ).filter(
-        AuthenticationAttempt.timestamp > datetime.utcnow() - timedelta(days=30)
+        AuthenticationAttempt.timestamp > datetime.now(timezone.utc) - timedelta(days=30)
     ).distinct().count()
 
     if distinct_ips > 3:
@@ -1312,22 +1354,283 @@ def security_recommendations():
         'recommendations': recommendations
     })
 
+
+@app.route('/api/dashboard-stats', methods=['GET'])
+def get_dashboard_stats():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Get current time and time ranges
+        now = datetime.now(timezone.utc)
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
+
+        # Get current month's attempts
+        current_month_attempts = AuthenticationAttempt.query.filter(
+            AuthenticationAttempt.timestamp >= current_month_start
+        ).all()
+
+        # Get last month's attempts
+        last_month_attempts = AuthenticationAttempt.query.filter(
+            AuthenticationAttempt.timestamp >= last_month_start,
+            AuthenticationAttempt.timestamp < current_month_start
+        ).all()
+
+        # Calculate totals and changes
+        current_total_logins = len(current_month_attempts)
+        last_total_logins = len(last_month_attempts)
+
+        login_change = 0
+        if last_total_logins > 0:
+            login_change = round(((current_total_logins - last_total_logins) / last_total_logins) * 100, 1)
+
+        # Calculate security score
+        total_users = Users.query.count()
+        users_with_keys = Users.query.filter(Users.credential_id.isnot(None)).count()
+        security_score = round((users_with_keys / total_users * 100) if total_users > 0 else 0, 1)
+
+        # Calculate success rate
+        successful_logins = sum(1 for attempt in current_month_attempts if attempt.success)
+        success_rate = round((successful_logins / current_total_logins * 100) if current_total_logins > 0 else 0, 1)
+
+        # Calculate failed attempts
+        current_failed = sum(1 for attempt in current_month_attempts if not attempt.success)
+        last_failed = sum(1 for attempt in last_month_attempts if not attempt.success)
+
+        failed_change = 0
+        if last_failed > 0:
+            failed_change = round(((current_failed - last_failed) / last_failed) * 100, 1)
+
+        return jsonify({
+            'totalLogins': current_total_logins,
+            'loginChange': login_change,
+            'securityScore': security_score,
+            'successRate': success_rate,
+            'failedAttempts': current_failed,
+            'failedChange': failed_change
+        })
+
+    except Exception as e:
+        print(f"Error getting dashboard stats: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/login-attempts', methods=['GET'])
+def get_login_attempts():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Get the start of the current month
+        now = datetime.now(timezone.utc)
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Query all authentication attempts for the current month
+        attempts = AuthenticationAttempt.query.filter(
+            AuthenticationAttempt.timestamp >= current_month_start
+        ).order_by(
+            AuthenticationAttempt.timestamp
+        ).all()
+
+        # Group attempts by day
+        attempts_by_day = {}
+        for attempt in attempts:
+            day = attempt.timestamp.strftime('%b %d')
+            if day not in attempts_by_day:
+                attempts_by_day[day] = {
+                    'name': day,
+                    'successful': 0,
+                    'failed': 0,
+                    'riskScore': 0,
+                    'count': 0
+                }
+
+            if attempt.success:
+                attempts_by_day[day]['successful'] += 1
+            else:
+                attempts_by_day[day]['failed'] += 1
+
+            # Simply use the stored risk score from the attempt
+            attempts_by_day[day]['riskScore'] = max(attempts_by_day[day]['riskScore'], attempt.risk_score or 0)
+
+        # Convert to list and round risk scores
+        formatted_attempts = []
+        for day_data in attempts_by_day.values():
+            formatted_attempts.append({
+                'name': day_data['name'],
+                'successful': day_data['successful'],
+                'failed': day_data['failed'],
+                'riskScore': round(day_data['riskScore'], 1)
+            })
+
+        # Sort by date
+        formatted_attempts.sort(key=lambda x: datetime.strptime(x['name'], '%b %d'))
+
+        return jsonify({'attempts': formatted_attempts})
+
+    except Exception as e:
+        print(f"Error getting login attempts: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/security-metrics', methods=['GET'])
+def get_security_metrics():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Query user counts
+        total_users = Users.query.count()
+        users_with_keys = Users.query.filter(Users.credential_id.isnot(None)).count()
+        users_without_keys = total_users - users_with_keys
+
+        # Format data for the pie chart
+        metrics_data = [
+            {'name': 'With Security Key', 'value': users_with_keys},
+            {'name': 'Without Security Key', 'value': users_without_keys}
+        ]
+
+        return jsonify({'metrics': metrics_data})
+
+    except Exception as e:
+        print(f"Error getting security metrics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Function to create default admin user
+def create_admin_user():
+    # Check if admin user already exists
+    admin = Users.query.filter_by(username='admin').first()
+    if admin:
+        print("Admin user already exists.")
+        return admin
+
+    # Create admin user
+    admin = Users(
+        first_name='System',
+        last_name='Administrator',
+        username='admin',
+        role='admin'
+    )
+    admin.set_password('admin123')  # Default password - should be changed after first login
+
+    db.session.add(admin)
+    db.session.commit()
+    print("Default admin user created successfully.")
+    return admin
+
+
 @app.route('/api/reset-db', methods=['POST'])
 def reset_db():
     try:
         # This is dangerous and should be protected/removed in production!
         db.drop_all()
         db.create_all()
-        return jsonify({'message': 'Database reset successfully'}), 200
+
+        # Create default admin user after reset
+        admin = create_admin_user()
+
+        return jsonify({
+            'message': 'Database reset successfully',
+            'admin_created': {
+                'username': admin.username,
+                'id': admin.id,
+                'role': admin.role
+            }
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# Add a route for updating user roles (admin only)
+@app.route('/api/users/<int:user_id>/role', methods=['PUT'])
+def update_user_role(user_id):
+    # Get admin auth token
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get target user
+    user = Users.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Get new role from request
+    data = request.get_json()
+    if not data or 'role' not in data:
+        return jsonify({'error': 'New role is required'}), 400
+
+    # Validate role
+    valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
+    new_role = data['role']
+    if new_role not in valid_roles:
+        return jsonify({'error': f'Invalid role. Valid roles are: {", ".join(valid_roles)}'}), 400
+
+    # Update role
+    user.role = new_role
+    db.session.commit()
+
+    return jsonify({
+        'message': f'User role updated successfully to {new_role}',
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'role': user.role
+        }
+    })
 
 
 # At the bottom of your app.py file, before `if __name__ == '__main__':`
 with app.app_context():
     db.create_all()
+    # Create admin user if it doesn't exist
+    create_admin_user()
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # Create admin user if it doesn't exist
+        create_admin_user()
     app.run(debug=True)

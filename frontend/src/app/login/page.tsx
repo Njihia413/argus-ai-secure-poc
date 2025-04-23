@@ -149,6 +149,19 @@ const SecurityKeyPrompt = ({
 
 export default function LoginPage() {
     const router = useRouter()
+    
+    // Handle database reset
+    const handleResetDb = async () => {
+        if (window.confirm('Are you sure you want to reset the database? All user data will be lost.')) {
+            try {
+                const response = await axios.post(`${API_URL}/reset-db`);
+                toast.success(response.data.message || 'Database reset successfully');
+            } catch (err) {
+                toast.error('Failed to reset database');
+                console.error('Reset database error:', err);
+            }
+        }
+    };
     const [showPassword, setShowPassword] = useState(false)
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
@@ -198,6 +211,15 @@ export default function LoginPage() {
     React.useEffect(() => {
         clearBindingData()
     }, [])
+
+    // Function to redirect based on user role
+    const redirectBasedOnRole = (role: string) => {
+        if (role === 'admin') {
+            router.push("/dashboard");
+        } else {
+            router.push("/chat");
+        }
+    }
 
     // Handle standard password login
     const handlePasswordLogin = async (e: React.FormEvent) => {
@@ -255,6 +277,7 @@ export default function LoginPage() {
                     username,
                     firstName: response.data.firstName,
                     lastName: response.data.lastName,
+                    role: response.data.role, // Store role information
                     hasSecurityKey: false,
                     authToken: response.data.auth_token
                 }
@@ -262,8 +285,8 @@ export default function LoginPage() {
                 // Save to session storage
                 sessionStorage.setItem('user', JSON.stringify(userInfo))
 
-                // Navigate to chat
-                router.push("/chat")
+                // Redirect based on role
+                redirectBasedOnRole(response.data.role)
             }
         } catch (err: any) {
             setIsLoading(false)
@@ -309,6 +332,7 @@ export default function LoginPage() {
             username,
             firstName: userData.firstName,
             lastName: userData.lastName,
+            role: userData.role,
             hasSecurityKey: true,
             authToken: userData.auth_token
         }
@@ -316,8 +340,7 @@ export default function LoginPage() {
         // Save to session storage
         sessionStorage.setItem('user', JSON.stringify(userInfo))
 
-        // Navigate to chat
-        router.push("/chat")
+        redirectBasedOnRole(userData.role)
     }
 
     // Cancel second factor authentication
@@ -417,14 +440,20 @@ export default function LoginPage() {
                                 </p>
                             </div>
                         )}
-
-                        <div className="text-center text-sm">
-                            Don't have an account?{" "}
-                            <Link href="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
-                                Create one
-                            </Link>
-                        </div>
                     </form>
+
+                    {/* Admin Functions */}
+                    {/* <div className="mt-8 pt-4 border-t border-gray-300">
+                        <p className="text-xs text-gray-500 mb-2">Admin Functions (Development Only)</p>
+                        <Button
+                            onClick={handleResetDb}
+                            variant="destructive"
+                            className="w-full"
+                        >
+                            Reset Database
+                        </Button>
+                        <p className="text-xs text-gray-500 mt-1">Warning: This will delete all user data</p>
+                    </div> */}
                 </div>
             </div>
 
