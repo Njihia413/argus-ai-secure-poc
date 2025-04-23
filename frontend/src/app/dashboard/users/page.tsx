@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
 import { UserPlus, MoreHorizontal } from "lucide-react"
 import axios from "axios"
@@ -45,40 +46,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 
-// Sample data for the users table
-const recentUsersData = [
-  {
-    id: 1,
-    name: "Alex Johnson",
-    username: "alex_j",
-    email: "alex@example.com",
-    role: "Developer",
-    hasSecurityKey: true,
-    lastLogin: "2 minutes ago",
-    status: "Online",
-  },
-  {
-    id: 2,
-    name: "Sarah Wilson",
-    username: "sarah_w",
-    email: "sarah@example.com",
-    role: "Security Officer",
-    hasSecurityKey: true,
-    lastLogin: "42 minutes ago",
-    status: "Online",
-  },
-  {
-    id: 3,
-    name: "Michael Lee",
-    username: "mike_l",
-    email: "mike@example.com",
-    role: "Analyst",
-    hasSecurityKey: false,
-    lastLogin: "3 hours ago",
-    status: "Offline",
-  },
-]
-
 // User type definition for real API integration
 interface User {
   id: number
@@ -88,10 +55,12 @@ interface User {
   role: string
   hasSecurityKey: boolean
   lastLogin: string | null
+  loginAttempts: number
+  failedAttempts: number
 }
 
 // New user form interface for real API integration
-interface NewUserFormData {
+interface UserFormData {
   firstName: string
   lastName: string
   username: string
@@ -100,6 +69,9 @@ interface NewUserFormData {
 }
 
 export default function UsersPage() {
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const router = useRouter()
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -128,7 +100,7 @@ export default function UsersPage() {
   const fetchUsers = async (authToken: string) => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL || ""}/users`, {
+      const response = await axios.get(`${API_URL}/users`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -137,17 +109,20 @@ export default function UsersPage() {
       // Update state with users from API
       if (response.data && response.data.users) {
         setUsers(response.data.users)
+      } else {
+        console.error("Invalid response format:", response.data)
+        toast.error("Invalid data format received from server")
       }
-    } catch (error) {
-      console.error("Error fetching users:", error)
-      toast.error("Failed to load users data")
+    } catch (error: any) {
+      console.error("Error fetching users:", error.response?.data || error.message)
+      toast.error(error.response?.data?.error || "Failed to load users data")
     } finally {
       setIsLoading(false)
     }
   }
 
   // New user form state and handlers
-  const [newUserForm, setNewUserForm] = useState<NewUserFormData>({
+  const [newUserForm, setNewUserForm] = useState<UserFormData>({
     firstName: "",
     lastName: "",
     username: "",
@@ -184,7 +159,7 @@ export default function UsersPage() {
       }
 
       // Create the user via API
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL || ""}/register`, newUserForm, {
+      await axios.post(`${API_URL}/register`, newUserForm, {
         headers: {
           Authorization: `Bearer ${userInfo.authToken}`,
         },
@@ -213,10 +188,10 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="grid gap-6">
-      <div className="flex justify-between items-center">
+    <div className="grid gap-6 w-full">
+      <div className="flex justify-between items-center bg-white p-4">
         <h2 className="text-2xl font-bold tracking-tight">Users</h2>
-        <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-teal-600 hover:bg-teal-700">
+        <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-black hover:bg-black/90 text-white">
           <UserPlus className="h-4 w-4 mr-2" />
           Add User
         </Button>
@@ -227,25 +202,43 @@ export default function UsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Security Key</TableHead>
+                <TableHead>First Name</TableHead>
+                <TableHead>Last Name</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Security Key</TableHead>
                 <TableHead>Last Login</TableHead>
+                <TableHead>Successful Logins</TableHead>
+                <TableHead>Failed Attempts</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
-                    Loading...
+                  <TableCell colSpan={8} className="text-center py-8">
+                    <div className="flex flex-col items-center space-y-2 text-slate-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                      <span>Loading users...</span>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : users.length > 0 ? (
-                users.map((user) => (
+                [...users]
+                  .sort((a, b) => {
+                    // Handle null values
+                    if (!a.lastLogin) return 1  // null values go to the end
+                    if (!b.lastLogin) return -1
+                    // Sort by last login time in descending order
+                    return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
+                  })
+                  .map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      {user.firstName} {user.lastName}
+                    <TableCell className="font-medium">{user.firstName}</TableCell>
+                    <TableCell>{user.lastName}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="bg-slate-100">
+                        {user.role}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       {user.hasSecurityKey ? (
@@ -259,11 +252,43 @@ export default function UsersPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="bg-slate-100">
-                        {user.role}
+                      {user.lastLogin ? (
+                        <div className="text-sm text-muted-foreground">
+                          <div>
+                            {new Date(user.lastLogin).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </div>
+                          <div>
+                            {new Date(user.lastLogin).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Not available</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`${user.loginAttempts > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
+                      >
+                        {user.loginAttempts}
                       </Badge>
                     </TableCell>
-                    <TableCell>{user.lastLogin || "Never"}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`${user.failedAttempts > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
+                      >
+                        {user.failedAttempts}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -271,11 +296,26 @@ export default function UsersPage() {
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                          <DropdownMenuItem>Edit User</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="font-montserrat">
+                          <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedUser(user)
+                            setIsEditUserDialogOpen(true)
+                          }}>
+                            Edit User
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600">Delete User</DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => {
+                              setSelectedUser(user)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                          >
+                            Delete User
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -283,8 +323,8 @@ export default function UsersPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
-                    No users found
+                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                    No users found. Create one by clicking the "Add User" button above.
                   </TableCell>
                 </TableRow>
               )}
@@ -294,7 +334,7 @@ export default function UsersPage() {
       </Card>
 
       <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] font-montserrat">
           <DialogHeader>
             <DialogTitle>Add New User</DialogTitle>
             <DialogDescription>Create a new user account with defined permissions.</DialogDescription>
@@ -367,11 +407,215 @@ export default function UsersPage() {
               <Button variant="outline" type="button" onClick={() => setIsAddUserDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={isLoading}>
+              <Button type="submit" className="bg-black hover:bg-black/90 text-white" disabled={isLoading}>
                 {isLoading ? "Creating..." : "Create User"}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update user account details.</DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <form onSubmit={async (e) => {
+              e.preventDefault()
+              setIsLoading(true)
+
+              try {
+                const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+                if (!userInfo.authToken) {
+                  toast.error("Authentication required")
+                  setIsLoading(false)
+                  return
+                }
+
+                // Update user via API
+                const response = await axios.put(
+                  `${API_URL}/users/${selectedUser.id}`,
+                  {
+                    firstName: selectedUser.firstName,
+                    lastName: selectedUser.lastName,
+                    username: selectedUser.username,
+                    role: selectedUser.role,
+                  },
+                  {
+                    headers: {
+                      Authorization: `Bearer ${userInfo.authToken}`,
+                    },
+                  }
+                )
+
+                toast.success("User details updated successfully")
+                setIsEditUserDialogOpen(false)
+                fetchUsers(userInfo.authToken)
+              } catch (error: any) {
+                console.error("Error updating user:", error)
+                toast.error(error.response?.data?.error || "Failed to update user")
+              } finally {
+                setIsLoading(false)
+              }
+            }}>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-firstName">First Name</Label>
+                  <Input
+                    id="edit-firstName"
+                    name="firstName"
+                    value={selectedUser.firstName}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      firstName: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-lastName">Last Name</Label>
+                  <Input
+                    id="edit-lastName"
+                    name="lastName"
+                    value={selectedUser.lastName}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      lastName: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-username">Username</Label>
+                  <Input
+                    id="edit-username"
+                    name="username"
+                    value={selectedUser.username}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      username: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-role">Role</Label>
+                  <Select
+                    value={selectedUser.role}
+                    onValueChange={(value) => setSelectedUser({
+                      ...selectedUser,
+                      role: value
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>System Roles</SelectLabel>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="security_officer">Security Officer</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>General Roles</SelectLabel>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="guest">Guest</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setIsEditUserDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-black hover:bg-black/90 text-white"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Updating..." : "Update User"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this user? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <div>
+              <div className="py-4">
+                <p className="text-sm text-gray-500">
+                  You are about to delete the following user:
+                </p>
+                <p className="mt-2 font-medium">
+                  {selectedUser.firstName} {selectedUser.lastName}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Username: {selectedUser.username}
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  onClick={async () => {
+                    setIsLoading(true)
+                    try {
+                      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+                      if (!userInfo.authToken) {
+                        toast.error("Authentication required")
+                        setIsLoading(false)
+                        return
+                      }
+
+                      // Delete user via API
+                      await axios.delete(
+                        `${API_URL}/users/${selectedUser.id}`,
+                        {
+                          headers: {
+                            Authorization: `Bearer ${userInfo.authToken}`,
+                          },
+                        }
+                      )
+
+                      toast.success("User deleted successfully")
+                      setIsDeleteDialogOpen(false)
+                      fetchUsers(userInfo.authToken)
+                    } catch (error: any) {
+                      console.error("Error deleting user:", error)
+                      toast.error(error.response?.data?.error || "Failed to delete user")
+                    } finally {
+                      setIsLoading(false)
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Deleting..." : "Delete User"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -39,6 +39,15 @@ const items = [
 export function AppSidebar() {
   const pathname = usePathname()
 
+  const isItemActive = (itemUrl: string) => {
+    // For nested routes, make sure it's an exact match for overview
+    if (itemUrl === '/dashboard' && pathname !== '/dashboard') {
+      return false
+    }
+    // For other routes, check if the pathname starts with the item URL and is followed by '/' or end of string
+    return pathname.startsWith(itemUrl) && (pathname === itemUrl || pathname.charAt(itemUrl.length) === '/')
+  }
+
   return (
     <Sidebar>
       <SidebarContent>
@@ -51,7 +60,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === item.url}
+                    isActive={isItemActive(item.url)}
                   >
                     <a href={item.url} className="flex items-center gap-2">
                       <item.icon className="h-4 w-4" />

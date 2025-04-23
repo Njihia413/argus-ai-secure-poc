@@ -1,12 +1,14 @@
 import json
 import hashlib
 import secrets
+import requests
 from datetime import datetime, timedelta, timezone
 import uuid
 
 from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_migrate import Migrate
 import os
 
 from flask_sqlalchemy.session import Session
@@ -37,8 +39,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.urandom(32)
 app.config['SESSION_TYPE'] = 'redis'  # Or 'filesystem', 'sqlalchemy', etc.
 Session(app)
-
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
 
 
 # User model renamed to Users and with additional fields including role
@@ -55,6 +58,10 @@ class Users(db.Model):
     last_login_time = db.Column(db.DateTime)
     last_login_ip = db.Column(db.String(45))
     failed_login_attempts = db.Column(db.Integer, default=0)
+    
+    # Security key related fields
+    has_security_key = db.Column(db.Boolean, nullable=False, default=False)
+    total_login_attempts = db.Column(db.Integer, default=0)  # Track total successful logins
     account_locked_until = db.Column(db.DateTime)
 
     # WebAuthn related fields
@@ -132,6 +139,7 @@ class AuthenticationAttempt(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     ip_address = db.Column(db.String(45))  # IPv6 compatible
     user_agent = db.Column(db.String(255))
+    device_type = db.Column(db.String(50))  # New column for device type
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     success = db.Column(db.Boolean, default=False)
     auth_type = db.Column(db.String(50))  # Add this column for tracking authentication type
@@ -146,6 +154,76 @@ server = Fido2Server(rp)
 
 
 # Helper Functions for Security Enhancements
+
+# Function to detect device type from user agent
+def detect_device_type(user_agent):
+    """Detect device type from user agent string"""
+    user_agent = user_agent.lower()
+
+    # Mobile devices
+    if any(device in user_agent for device in ['iphone', 'ipad', 'android', 'mobile', 'phone', 'tablet']):
+        if 'tablet' in user_agent or 'ipad' in user_agent:
+            return 'Tablet'
+        return 'Mobile'
+    
+    # Desktop OS detection
+    if 'windows' in user_agent:
+        return 'Windows PC'
+    if 'macintosh' in user_agent or 'mac os' in user_agent:
+        return 'Mac'
+    if 'linux' in user_agent:
+        return 'Linux'
+
+    # Default to Desktop if no specific device detected
+    return 'Desktop'
+
+def get_public_ip():
+    """Get the actual public IP address"""
+    try:
+        # Use ipify API to get public IP
+        response = requests.get('https://api.ipify.org?format=json')
+        if response.status_code == 200:
+            return response.json().get('ip')
+    except Exception as e:
+        print(f"Error getting public IP: {str(e)}")
+    return None
+
+def get_location_from_ip(ip_address):
+    """Get location information from IP address"""
+    try:
+        # If it's localhost, try to get the public IP
+        if ip_address in ('127.0.0.1', 'localhost', '::1'):
+            public_ip = get_public_ip()
+            if public_ip:
+                ip_address = public_ip
+
+        # Try ip-api.com first
+        response = requests.get(f'http://ip-api.com/json/{ip_address}')
+        if response.status_code == 200:
+            data = response.json()
+            if data['status'] == 'success':
+                city = data.get('city', '')
+                country = data.get('country', '')
+                if city and country:
+                    return f"{city}, {country}"
+                elif country:
+                    return country
+
+        # Fallback to ipapi.co if ip-api.com fails
+        response = requests.get(f'https://ipapi.co/{ip_address}/json/')
+        if response.status_code == 200:
+            data = response.json()
+            city = data.get('city', '')
+            country = data.get('country_name', '')
+            if city and country:
+                return f"{city}, {country}"
+            elif country:
+                return country
+
+        return "Unknown Location"
+    except Exception as e:
+        print(f"Error getting location from IP: {str(e)}")
+        return "Unknown Location"
 
 # Function to generate binding data
 def generate_binding_data(request):
@@ -339,17 +417,6 @@ def register():
     db.session.add(user)
     db.session.commit()
 
-    # Record this event
-    auth_attempt = AuthenticationAttempt(
-        user_id=user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get('User-Agent', ''),
-        auth_type='registration',
-        success=True
-    )
-    db.session.add(auth_attempt)
-    db.session.commit()
-
     return jsonify({
         'message': 'User registered successfully',
         'user': {
@@ -382,19 +449,101 @@ def get_users():
     if not admin_user or admin_user.role != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
 
-    # Return all users
+    # Return all users with their login attempt counts
+    # Delete any registration entries
+    AuthenticationAttempt.query.filter_by(auth_type='registration').delete()
+    db.session.commit()
+
+    # Update login attempts
+    for user in Users.query.all():
+        # Update failed attempts
+        failed_attempts = AuthenticationAttempt.query.filter_by(
+            user_id=user.id,
+            success=False,
+            auth_type='password'
+        ).count()
+        user.failed_login_attempts = failed_attempts
+
+        # Update total successful logins
+        successful_attempts = AuthenticationAttempt.query.filter_by(
+            user_id=user.id,
+            success=True,
+            auth_type='password'
+        ).count()
+        user.total_login_attempts = successful_attempts
+
+    db.session.commit()
+
+    # Now get users with updated counts
     users = Users.query.all()
-    user_list = [{
-        'id': user.id,
-        'username': user.username,
-        'firstName': user.first_name,
-        'lastName': user.last_name,
-        'role': user.role,
-        'hasSecurityKey': bool(user.credential_id),
-        'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None
-    } for user in users]
+    user_list = []
+    
+    for user in users:
+        user_list.append({
+            'id': user.id,
+            'username': user.username,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'role': user.role,
+            'hasSecurityKey': user.has_security_key,
+            'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
+            'loginAttempts': user.total_login_attempts,
+            'failedAttempts': user.failed_login_attempts
+        })
 
     return jsonify({'users': user_list})
+
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    # Get the admin's auth token for authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the user
+    user = Users.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Get login attempts
+    failed_attempts = AuthenticationAttempt.query.filter_by(
+        user_id=user.id,
+        success=False,
+        auth_type='password'
+    ).count()
+
+    successful_attempts = AuthenticationAttempt.query.filter_by(
+        user_id=user.id,
+        success=True,
+        auth_type='password'
+    ).count()
+
+    return jsonify({
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'role': user.role,
+            'hasSecurityKey': user.has_security_key,
+            'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
+            'loginAttempts': successful_attempts,
+            'failedAttempts': failed_attempts
+        }
+    })
 
 
 @app.route('/api/login', methods=['POST'])
@@ -410,12 +559,19 @@ def login():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
+    # Get location from IP
+    ip_address = request.remote_addr
+    location = get_location_from_ip(ip_address)
+    
     # Create a new authentication attempt record after confirming user exists
+    user_agent = request.headers.get('User-Agent', '')
     auth_attempt = AuthenticationAttempt(
         user_id=user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get('User-Agent', ''),
+        ip_address=ip_address,
+        user_agent=user_agent,
+        device_type=detect_device_type(user_agent),
         auth_type='password',
+        location=location,  # Add location data
         success=False  # Will update to True if successful
     )
 
@@ -454,8 +610,8 @@ def login():
     auth_attempt.success = True
     db.session.add(auth_attempt)
 
-    # Reset failed login attempts
-    user.reset_failed_attempts()
+    # Increment total successful logins
+    user.total_login_attempts += 1
 
     # Update login history
     user.last_login_time = datetime.now(timezone.utc)
@@ -481,8 +637,13 @@ def login():
     db.session.add(auth_session)
     db.session.commit()
 
-    # Check if user has a security key registered
-    has_security_key = bool(user.credential_id)
+    # Update has_security_key status
+    if user.credential_id and not user.has_security_key:
+        user.has_security_key = True
+        db.session.commit()
+
+    # Get current security key status
+    has_security_key = user.has_security_key or False
 
     # Add user role to the response
     response_data = {
@@ -676,6 +837,10 @@ def webauthn_register_begin():
 @app.route('/api/webauthn/register/complete', methods=['POST'])
 def webauthn_register_complete():
     print("\n=================== REGISTER COMPLETE REQUEST ===================")
+    
+    def update_security_key_status(user):
+        user.has_security_key = True
+        db.session.commit()
     data = request.get_json()
     print("Request data:", data)
 
@@ -798,15 +963,19 @@ def webauthn_register_complete():
                     'detail': 'This security key is already registered to another account.'
                 }), 400
 
-            # Store credential information
-            public_key = cbor.encode(auth_data.credential_data.public_key)
-            sign_count = auth_data.counter
+            # Update user's security key information
+            with db.session.begin_nested():  # Create savepoint
+                public_key = cbor.encode(auth_data.credential_data.public_key)
+                sign_count = auth_data.counter
 
-            user.credential_id = credential_id
-            user.public_key = base64.b64encode(public_key).decode('utf-8')
-            user.sign_count = sign_count
+                user.credential_id = credential_id
+                user.public_key = base64.b64encode(public_key).decode('utf-8')
+                user.sign_count = sign_count
+                user.has_security_key = True
+                
+                db.session.flush()  # Ensure changes are visible within transaction
 
-            db.session.commit()
+            db.session.commit()  # Commit the entire transaction
 
             # Record successful security key registration
             auth_attempt = AuthenticationAttempt(
@@ -1525,6 +1694,44 @@ def get_security_metrics():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+# Add route for device distribution statistics
+@app.route('/api/device-stats', methods=['GET'])
+def get_device_stats():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Query successful login attempts grouped by device type
+        device_stats = db.session.query(
+            AuthenticationAttempt.device_type,
+            func.count(AuthenticationAttempt.id)
+        ).filter(
+            AuthenticationAttempt.success == True
+        ).group_by(
+            AuthenticationAttempt.device_type
+        ).all()
+
+        # Format data for the pie chart
+        stats_data = [
+            {'name': device_type or 'Unknown', 'value': count}
+            for device_type, count in device_stats
+        ]
+
+        return jsonify({'deviceStats': stats_data})
+
+    except Exception as e:
+        print(f"Error getting device stats: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 # Function to create default admin user
 def create_admin_user():
     # Check if admin user already exists
@@ -1547,6 +1754,111 @@ def create_admin_user():
     print("Default admin user created successfully.")
     return admin
 
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
+    # Get the admin's auth token for authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the user to update
+    user = Users.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json()
+
+    # Update user fields
+    if 'firstName' in data:
+        user.first_name = data['firstName']
+    if 'lastName' in data:
+        user.last_name = data['lastName']
+    if 'role' in data:
+        # Validate role
+        valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
+        if data['role'] not in valid_roles:
+            return jsonify({'error': 'Invalid role specified'}), 400
+        user.role = data['role']
+    if 'username' in data:
+        # Check if username is already taken by another user
+        existing_user = Users.query.filter_by(username=data['username']).first()
+        if existing_user and existing_user.id != user_id:
+            return jsonify({'error': 'Username already exists'}), 409
+        user.username = data['username']
+    if 'password' in data and data['password']:
+        user.set_password(data['password'])
+
+    try:
+        db.session.commit()
+        return jsonify({
+            'message': 'User updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'firstName': user.first_name,
+                'lastName': user.last_name,
+                'role': user.role
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    # Get the admin's auth token for authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the user to delete
+    user = Users.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Prevent admin from deleting themselves
+    if user.id == admin_user.id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+
+    try:
+        # Delete associated records first
+        AuthenticationAttempt.query.filter_by(user_id=user_id).delete()
+        AuthenticationSession.query.filter_by(user_id=user_id).delete()
+        WebAuthnChallenge.query.filter_by(user_id=user_id).delete()
+        
+        # Delete the user
+        db.session.delete(user)
+        db.session.commit()
+        
+        return jsonify({'message': 'User deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reset-db', methods=['POST'])
 def reset_db():
@@ -1620,6 +1932,108 @@ def update_user_role(user_id):
             'role': user.role
         }
     })
+
+
+@app.route('/api/delete-user/<int:user_id>', methods=['DELETE'])
+def delete_user_data(user_id):
+    try:
+        # Delete related records first
+        AuthenticationAttempt.query.filter_by(user_id=user_id).delete()
+        WebAuthnChallenge.query.filter_by(user_id=user_id).delete()
+        AuthenticationSession.query.filter_by(user_id=user_id).delete()
+        
+        # Then delete the user
+        user = Users.query.get(user_id)
+        if user:
+            db.session.delete(user)
+        
+        db.session.commit()
+        return jsonify({'message': f'All data for user {user_id} deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/update-user-id/<int:old_id>/<int:new_id>', methods=['POST'])
+def update_user_id(old_id, new_id):
+    try:
+        # Start a transaction
+        with db.session.begin():
+            # First update all related records to use a temporary ID (to avoid conflicts)
+            temp_id = 999999
+            
+            # Update foreign keys in related tables
+            AuthenticationAttempt.query.filter_by(user_id=old_id).update({"user_id": temp_id})
+            WebAuthnChallenge.query.filter_by(user_id=old_id).update({"user_id": temp_id})
+            AuthenticationSession.query.filter_by(user_id=old_id).update({"user_id": temp_id})
+            
+            # Update the user ID
+            Users.query.filter_by(id=old_id).update({"id": temp_id})
+            
+            # Now update to the new ID
+            AuthenticationAttempt.query.filter_by(user_id=temp_id).update({"user_id": new_id})
+            WebAuthnChallenge.query.filter_by(user_id=temp_id).update({"user_id": new_id})
+            AuthenticationSession.query.filter_by(user_id=temp_id).update({"user_id": new_id})
+            Users.query.filter_by(id=temp_id).update({"id": new_id})
+            
+            # Reset the sequence to use the next highest ID
+            from sqlalchemy import text
+            db.session.execute(text("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))"))
+            
+        return jsonify({'message': f'User ID changed from {old_id} to {new_id}'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/location-stats', methods=['GET'])
+def get_location_stats():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Get the start of the current month
+        now = datetime.now(timezone.utc)
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Query authentication attempts grouped by location
+        location_stats = db.session.query(
+            AuthenticationAttempt.location,
+            func.count(AuthenticationAttempt.id).label('attempt_count')
+        ).filter(
+            AuthenticationAttempt.timestamp >= current_month_start,
+            AuthenticationAttempt.location.isnot(None)  # Filter out null locations
+        ).group_by(
+            AuthenticationAttempt.location
+        ).all()
+
+        # Format data with severity levels
+        stats_data = []
+        for location, count in location_stats:
+            # Determine severity based on attempt count
+            severity = 'low' if count <= 5 else 'medium' if count <= 15 else 'high'
+            
+            stats_data.append({
+                'name': location or 'Unknown',
+                'value': count,
+                'severity': severity
+            })
+
+        # Sort by attempt count descending
+        stats_data.sort(key=lambda x: x['value'], reverse=True)
+
+        return jsonify({'locationStats': stats_data})
+
+    except Exception as e:
+        print(f"Error getting location stats: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # At the bottom of your app.py file, before `if __name__ == '__main__':`

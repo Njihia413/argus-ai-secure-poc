@@ -61,7 +61,7 @@ export default function DashboardLayout({
       <div className="relative flex min-h-screen font-montserrat w-full">
         <AppSidebar />
         <SidebarInset>
-          <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm ">
+          <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm w-full">
             <SidebarTrigger />
             <div className="flex-1" />
             <div className="flex items-center gap-4">
@@ -90,7 +90,7 @@ export default function DashboardLayout({
                       </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer justify-center text-teal-600">
+                    <DropdownMenuItem className="cursor-pointer justify-center text-black">
                       View all notifications
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -100,7 +100,7 @@ export default function DashboardLayout({
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar>
-                      <AvatarFallback className="bg-teal-600 text-white">SA</AvatarFallback>
+                      <AvatarFallback className="bg-black text-white">SA</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>

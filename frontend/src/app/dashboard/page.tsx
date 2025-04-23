@@ -75,6 +75,17 @@ interface SecurityMetric {
   value: number
 }
 
+interface DeviceStat {
+  name: string
+  value: number
+}
+
+interface LocationStat {
+  name: string
+  value: number
+  severity: 'low' | 'medium' | 'high'
+}
+
 interface DashboardStats {
   totalLogins: number
   loginChange: number
@@ -84,24 +95,12 @@ interface DashboardStats {
   failedChange: number
 }
 
-const deviceBreakdownData = [
-  { name: "Desktop", value: 65 },
-  { name: "Mobile", value: 25 },
-  { name: "Tablet", value: 10 },
-]
-
-const locationData = [
-  { id: 1, location: "San Francisco, CA", count: 243, change: "+12%", risk: "Low" },
-  { id: 2, location: "New York, NY", count: 157, change: "+5%", risk: "Low" },
-  { id: 3, location: "Austin, TX", count: 89, change: "+18%", risk: "Low" },
-  { id: 4, location: "London, UK", count: 68, change: "-3%", risk: "Medium" },
-  { id: 5, location: "Beijing, China", count: 23, change: "+230%", risk: "High" },
-]
-
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([])
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([])
+  const [locationStats, setLocationStats] = useState<LocationStat[]>([])
+  const [deviceStats, setDeviceStats] = useState<DeviceStat[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -159,6 +158,22 @@ export default function DashboardPage() {
         }
         const metricsData = await metricsResponse.json()
         setSecurityMetrics(metricsData.metrics)
+
+        // Fetch device distribution stats
+        const deviceResponse = await fetch(`${API_URL}/device-stats`, { headers })
+        if (!deviceResponse.ok) {
+          throw new Error('Failed to fetch device stats')
+        }
+        const deviceData = await deviceResponse.json()
+        setDeviceStats(deviceData.deviceStats)
+
+        // Fetch location statistics
+        const locationResponse = await fetch(`${API_URL}/location-stats`, { headers })
+        if (!locationResponse.ok) {
+          throw new Error('Failed to fetch location stats')
+        }
+        const locationData = await locationResponse.json()
+        setLocationStats(locationData.locationStats)
       } catch (error) {
         console.error('Error fetching dashboard data:', error)
         // setError(error instanceof Error ? error.message : 'An error occurred') // Allow rendering other charts even if one fetch fails
@@ -488,81 +503,144 @@ export default function DashboardPage() {
 
         {/* Device Breakdown */}
         <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle>Device Distribution</CardTitle>
-            <CardDescription>Login attempts by device type</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[220px]">
-            <PieChart width={250} height={220}>
-              <Pie
-                data={deviceBreakdownData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                fill="#0D9488"
-                label
-                labelLine={false}
-              />
-            </PieChart>
-          </CardContent>
-          <div className="px-6 py-4 border-t">
-            <div className="flex justify-between text-sm">
-              <div className="flex items-center">
-                <Laptop className="h-4 w-4 mr-2 text-teal-600" />
-                Desktop ({deviceBreakdownData[0].value}%)
-              </div>
-              <div className="flex items-center">
-                <Smartphone className="h-4 w-4 mr-2 text-teal-600" />
-                Mobile ({deviceBreakdownData[1].value}%)
-              </div>
-              <div className="flex items-center">
-                <Tablet className="h-4 w-4 mr-2 text-teal-600" />
-                Tablet ({deviceBreakdownData[2].value}%)
-              </div>
-            </div>
-          </div>
+         <CardHeader>
+           <CardTitle>Device Distribution</CardTitle>
+           <CardDescription>Login attempts by device type</CardDescription>
+         </CardHeader>
+         <CardContent>
+           <div className="h-[300px]">
+             <ChartErrorBoundary>
+             {isLoading ? (
+               <div className="h-full flex items-center justify-center text-muted-foreground">
+                 Loading device stats...
+               </div>
+             ) : error ? (
+               <div className="h-full flex items-center justify-center text-red-500">
+                 {error}
+               </div>
+             ) : deviceStats.length === 0 ? (
+               <div className="h-full flex items-center justify-center text-muted-foreground">
+                 No device data available
+               </div>
+             ) : (
+               <ResponsiveContainer width="100%" height="100%">
+                 <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                   <Pie
+                     data={deviceStats}
+                     dataKey="value"
+                     nameKey="name"
+                     cx="50%"
+                     cy="50%"
+                     outerRadius={80}
+                   >
+                     {deviceStats.map((entry, index) => (
+                       <Cell
+                         key={`cell-${index}`}
+                         fill={[
+                           "#16A34A", // Windows/Desktop - Green
+                           "#F59E0B", // Mobile - Amber
+                           "#3B82F6", // Tablet - Blue
+                           "#8B5CF6", // Mac - Purple
+                           "#EC4899", // Linux - Pink
+                           "#6B7280"  // Others - Gray
+                         ][index % 6]}
+                       />
+                     ))}
+                   </Pie>
+                   <Tooltip
+                     formatter={(value: number) => [`${value} attempts`, "Logins"]}
+                   />
+                   <Legend
+                     verticalAlign="bottom"
+                     height={36}
+                   />
+                 </PieChart>
+               </ResponsiveContainer>
+             )}
+             </ChartErrorBoundary>
+           </div>
+         </CardContent>
         </Card>
 
-        {/* Location Data */}
-        <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle>Top Locations</CardTitle>
-            <CardDescription>Login attempts by location</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              {locationData.map((location) => (
-                <div key={location.id} className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-none">{location.location}</p>
-                    <p className="text-sm text-muted-foreground">{location.count} attempts</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={location.risk === "High" ? "destructive" : "outline"}
-                      className={
-                        location.risk === "Medium"
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : location.risk === "Low"
-                            ? "bg-green-50 text-green-700 border-green-200"
-                            : ""
-                      }
-                    >
-                      {location.risk}
-                    </Badge>
-                    <span
-                      className={`text-sm ${location.change.startsWith("+") ? "text-green-600" : "text-red-600"}`}
-                    >
-                      {location.change}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+       {/* Location Statistics */}
+       <Card className="shadow-sm hover:shadow-md transition-shadow">
+         <CardHeader>
+           <CardTitle>Top Locations</CardTitle>
+           <CardDescription>Login attempts by location</CardDescription>
+         </CardHeader>
+         <CardContent>
+           <div className="h-[300px]">
+             <ChartErrorBoundary>
+               {isLoading ? (
+                 <div className="h-full flex items-center justify-center text-muted-foreground">
+                   Loading location data...
+                 </div>
+               ) : error ? (
+                 <div className="h-full flex items-center justify-center text-red-500">
+                   {error}
+                 </div>
+               ) : locationStats.length === 0 ? (
+                 <div className="h-full flex items-center justify-center text-muted-foreground">
+                   No location data available
+                 </div>
+               ) : (
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart
+                     data={locationStats}
+                     margin={{ top: 5, right: 30, left: 30, bottom: 20 }}
+                   >
+                     <XAxis
+                       dataKey="name"
+                       tick={{ fontSize: 12 }}
+                       interval={0}
+                       angle={-45}
+                       textAnchor="end"
+                     />
+                     <YAxis
+                       type="number"
+                       allowDecimals={false}
+                       domain={[0, 'auto']}
+                       tickFormatter={(value: number) => Math.round(value).toString()}
+                     />
+                     <CartesianGrid strokeDasharray="3 3" />
+                     <Bar dataKey="value" name="Attempts">
+                       {locationStats.map((entry, index) => (
+                         <Cell
+                           key={`cell-${index}`}
+                           fill={entry.severity === 'high'
+                             ? '#DC2626'
+                             : entry.severity === 'medium'
+                             ? '#F59E0B'
+                             : '#16A34A'
+                           }
+                         />
+                       ))}
+                     </Bar>
+                     <Tooltip
+                       formatter={(value: number) => [`${value} attempts`, 'Count']}
+                     />
+                   </BarChart>
+                 </ResponsiveContainer>
+               )}
+             </ChartErrorBoundary>
+           </div>
+           {/* Custom Legend for Severity Colors */}
+           <div className="mt-4 flex justify-center space-x-4 text-xs text-muted-foreground">
+             <div className="flex items-center">
+               <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#16A34A' }}></span>
+               Low (&lt;=5)
+             </div>
+             <div className="flex items-center">
+               <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#F59E0B' }}></span>
+               Medium (6-15)
+             </div>
+             <div className="flex items-center">
+               <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#DC2626' }}></span>
+               High (&gt;15)
+             </div>
+           </div>
+         </CardContent>
+       </Card>
       </div>
     </div>
   )
