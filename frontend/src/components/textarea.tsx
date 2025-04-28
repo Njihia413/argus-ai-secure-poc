@@ -3,6 +3,9 @@ import { Textarea as ShadcnTextarea } from "@/components/ui/textarea";
 import { ArrowUp } from "lucide-react";
 import { ModelPicker } from "./model-picker";
 
+// Type for model dictionaries
+type ModelDict = Partial<Record<modelID, string>>;
+
 interface InputProps {
   input: string;
   handleInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -11,6 +14,7 @@ interface InputProps {
   stop: () => void;
   selectedModel: modelID;
   setSelectedModel: (model: modelID) => void;
+  models: ModelDict;
 }
 
 export const Textarea = ({
@@ -21,6 +25,7 @@ export const Textarea = ({
   stop,
   selectedModel,
   setSelectedModel,
+  models, // Destructure models
 }: InputProps) => {
   return (
     <div className="relative w-full pt-4">
@@ -45,6 +50,7 @@ export const Textarea = ({
       <ModelPicker
         setSelectedModel={setSelectedModel}
         selectedModel={selectedModel}
+        models={models} // Pass models down
       />
 
       {status === "streaming" || status === "submitted" ? (

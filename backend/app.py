@@ -1817,49 +1817,6 @@ def update_user(user_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/users/<int:user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    # Get the admin's auth token for authorization
-    admin_token = request.headers.get('Authorization')
-    if not admin_token:
-        return jsonify({'error': 'Admin authorization required'}), 401
-
-    # Verify the admin token
-    admin_token = admin_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
-
-    if not auth_session:
-        return jsonify({'error': 'Invalid admin token'}), 401
-
-    # Get the admin user
-    admin_user = Users.query.get(auth_session.user_id)
-    if not admin_user or admin_user.role != 'admin':
-        return jsonify({'error': 'Admin privileges required'}), 403
-
-    # Get the user to delete
-    user = Users.query.get(user_id)
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    # Prevent admin from deleting themselves
-    if user.id == admin_user.id:
-        return jsonify({'error': 'Cannot delete your own account'}), 400
-
-    try:
-        # Delete associated records first
-        AuthenticationAttempt.query.filter_by(user_id=user_id).delete()
-        AuthenticationSession.query.filter_by(user_id=user_id).delete()
-        WebAuthnChallenge.query.filter_by(user_id=user_id).delete()
-        
-        # Delete the user
-        db.session.delete(user)
-        db.session.commit()
-        
-        return jsonify({'message': 'User deleted successfully'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/reset-db', methods=['POST'])
 def reset_db():
     try:
@@ -1937,6 +1894,25 @@ def update_user_role(user_id):
 @app.route('/api/delete-user/<int:user_id>', methods=['DELETE'])
 def delete_user_data(user_id):
     try:
+        # Check authentication
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        # Verify admin role
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        # Don't allow deleting your own account
+        if user_id == admin_user.id:
+            return jsonify({'error': 'Cannot delete your own account'}), 400
+
         # Delete related records first
         AuthenticationAttempt.query.filter_by(user_id=user_id).delete()
         WebAuthnChallenge.query.filter_by(user_id=user_id).delete()
@@ -1944,9 +1920,10 @@ def delete_user_data(user_id):
         
         # Then delete the user
         user = Users.query.get(user_id)
-        if user:
-            db.session.delete(user)
-        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+            
+        db.session.delete(user)
         db.session.commit()
         return jsonify({'message': f'All data for user {user_id} deleted successfully'}), 200
     except Exception as e:
@@ -1989,7 +1966,7 @@ def get_location_stats():
     try:
         # Get auth token
         auth_token = request.headers.get('Authorization')
-        if not auth_token:
+        if not auth_token or not auth_token.startswith('Bearer '):
             return jsonify({'error': 'Authorization required'}), 401
 
         auth_token = auth_token.replace('Bearer ', '')
@@ -2033,7 +2010,146 @@ def get_location_stats():
 
     except Exception as e:
         print(f"Error getting location stats: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': 'Failed to fetch location stats'}), 500
+
+@app.route('/api/security/alerts', methods=['GET'])
+def get_security_alerts():
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+
+        # Query alerts from authentication attempts
+        alerts = []
+        attempts = AuthenticationAttempt.query.order_by(
+            AuthenticationAttempt.timestamp.desc()
+        ).paginate(page=page, per_page=per_page)
+
+        for attempt in attempts.items:
+            severity = "High" if attempt.risk_score > 75 else "Medium" if attempt.risk_score > 40 else "Low"
+            
+            # Determine alert type based on conditions
+            if not attempt.success:
+                alert_type = "Failed Login"
+            elif attempt.risk_score > 75:
+                alert_type = "Suspicious IP"
+            elif attempt.device_type and not AuthenticationAttempt.query.filter(
+                AuthenticationAttempt.device_type == attempt.device_type,
+                AuthenticationAttempt.timestamp < attempt.timestamp
+            ).first():
+                alert_type = "New Device"
+            elif attempt.location != "Unknown Location":
+                alert_type = "Location Change"
+            else:
+                alert_type = "Multiple Attempts"
+            
+            alerts.append({
+                'id': attempt.id,
+                'type': alert_type,
+                'user': attempt.user.username,
+                'details': f"{'Failed' if not attempt.success else 'Successful'} login attempt from {attempt.location} using {attempt.device_type}",
+                'time': attempt.timestamp.isoformat(),
+                'severity': severity,
+                'resolved': attempt.success
+            })
+
+        return jsonify({
+            'alerts': alerts,
+            'total': attempts.total,
+            'pages': attempts.pages,
+            'current_page': attempts.page
+        })
+
+    except Exception as e:
+        print(f"Error fetching security alerts: {str(e)}")
+        return jsonify({'error': 'Failed to fetch security alerts'}), 500
+
+@app.route('/api/security/stats', methods=['GET'])
+def get_security_stats():
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        # Get total alerts and breakdown by severity
+        attempts = AuthenticationAttempt.query.all()
+        total_alerts = len(attempts)
+
+        high_count = sum(1 for a in attempts if a.risk_score > 75)
+        medium_count = sum(1 for a in attempts if 40 < a.risk_score <= 75)
+        low_count = total_alerts - (high_count + medium_count)
+
+        # Calculate security score based on security keys and successful logins
+        total_users = Users.query.count()
+        users_with_security_key = Users.query.filter_by(has_security_key=True).count()
+        security_score = (users_with_security_key / total_users * 100) if total_users > 0 else 0
+
+        # Get active sessions grouped by device type directly from the database
+        now = datetime.now(timezone.utc)
+        active_sessions_query = (
+            db.session.query(
+                AuthenticationAttempt.device_type,
+                func.count(AuthenticationSession.id).label('count')
+            )
+            .join(
+                AuthenticationSession,
+                AuthenticationSession.user_id == AuthenticationAttempt.user_id
+            )
+            .filter(
+                AuthenticationSession.expires_at > now,
+                AuthenticationAttempt.device_type.isnot(None)
+            )
+            .group_by(AuthenticationAttempt.device_type)
+        )
+
+        # Build device stats dictionary and count total sessions
+        device_stats = {}
+        total_active_sessions = 0
+        for device_type, count in active_sessions_query:
+            device_type = device_type or 'Unknown'
+            device_stats[device_type] = count
+            total_active_sessions += count
+
+        # Get unique devices count
+        unique_devices = len(device_stats)
+
+        return jsonify({
+            'alertStats': {
+                'total': total_alerts,
+                'bySeverity': {
+                    'High': high_count,
+                    'Medium': medium_count,
+                    'Low': low_count
+                }
+            },
+            'securityScore': {
+                'current': security_score,
+                'change': 0  # You can implement change calculation logic if needed
+            },
+            'activeSessions': {
+                'total': total_active_sessions,
+                'byDevice': device_stats,
+                'uniqueDevices': unique_devices
+            }
+        })
+
+    except Exception as e:
+        print(f"Error fetching security stats: {str(e)}")
+        return jsonify({'error': 'Failed to fetch security stats'}), 500
 
 
 # At the bottom of your app.py file, before `if __name__ == '__main__':`
@@ -2048,3 +2164,4 @@ if __name__ == '__main__':
         # Create admin user if it doesn't exist
         create_admin_user()
     app.run(debug=True)
+

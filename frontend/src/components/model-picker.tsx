@@ -9,20 +9,19 @@ import {
   SelectValue,
 } from "./ui/select";
 
+// Type for model dictionaries - make it a partial record to allow subsets of models
+type ModelDict = Partial<Record<modelID, string>>;
+
 interface ModelPickerProps {
   selectedModel: modelID;
   setSelectedModel: (model: modelID) => void;
+  models: ModelDict;
 }
-
-const MODELS: Record<modelID, string> = {
-  "llama-3.1-8b-instant": "A fast cheap model",
-  "deepseek-r1-distill-llama-70b": "A reasoning model",
-  "llama-3.3-70b-versatile": "A large model",
-};
 
 export const ModelPicker = ({
   selectedModel,
   setSelectedModel,
+  models, // Destructure models prop
 }: ModelPickerProps) => {
   return (
     <div className="absolute bottom-2 left-2 flex flex-col gap-2">
@@ -32,7 +31,8 @@ export const ModelPicker = ({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            {Object.entries(MODELS).map(([modelId]) => (
+            {/* Use the models prop here */}
+            {Object.entries(models).map(([modelId]) => (
               <SelectItem key={modelId} value={modelId}>
                 {modelId}
               </SelectItem>

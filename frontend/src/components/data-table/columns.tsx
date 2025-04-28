@@ -28,6 +28,12 @@ export type User = {
 
 export const columns: ColumnDef<User>[] = [
   {
+    accessorFn: row => `${row.firstName} ${row.lastName}`, // This enables global search on full name
+    id: "fullName",
+    header: "",
+    enableHiding: true,
+  },
+  {
     accessorKey: "firstName",
     header: "First Name",
   },
@@ -49,6 +55,12 @@ export const columns: ColumnDef<User>[] = [
   {
     accessorKey: "hasSecurityKey",
     header: "Security Key",
+    filterFn: (row, id, value) => {
+      if (value === "all") return true
+      if (value === "registered") return row.getValue(id) === true
+      if (value === "not_registered") return row.getValue(id) === false
+      return true
+    },
     cell: ({ row }) => {
       const hasKey = row.getValue("hasSecurityKey")
       return hasKey ? (
@@ -97,9 +109,9 @@ export const columns: ColumnDef<User>[] = [
       return (
         <Badge
           variant="outline"
-          className={`${Number(attempts) > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
+          className={`${(attempts as number) > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
         >
-          {attempts}
+          {attempts as number}
         </Badge>
       )
     },
@@ -112,18 +124,19 @@ export const columns: ColumnDef<User>[] = [
       return (
         <Badge
           variant="outline"
-          className={`${Number(attempts) > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
+          className={`${(attempts as number) > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
         >
-          {attempts}
+          {attempts as number}
         </Badge>
       )
     },
   },
   {
     id: "actions",
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       const router = useRouter()
       const user = row.original
+      const { setSelectedUser, setIsDeleteDialogOpen } = table.options.meta as any
 
       return (
         <DropdownMenu>
@@ -136,8 +149,20 @@ export const columns: ColumnDef<User>[] = [
             <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
               View Details
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              (table.options.meta as any).setSelectedUser(user);
+              (table.options.meta as any).setIsEditUserDialogOpen(true);
+            }}>
+              Edit User
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600">
+            <DropdownMenuItem
+              onClick={() => {
+                (table.options.meta as any).setSelectedUser(user);
+                (table.options.meta as any).setIsDeleteDialogOpen(true);
+              }}
+              className="text-red-600"
+            >
               Delete User
             </DropdownMenuItem>
           </DropdownMenuContent>

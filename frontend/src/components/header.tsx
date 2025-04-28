@@ -32,7 +32,7 @@ interface UserData {
   firstName?: string;
   lastName?: string;
   hasSecurityKey: boolean;
-  // Add any other properties your user data might have
+  role: string;
 }
 
 // Define types for components
@@ -248,12 +248,7 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
   );
 };
 
-// Add the interface for Header props
-interface HeaderProps {
-  onShowSecurityModal?: () => void;  // Make it optional with the ? mark
-}
-
-export const Header = ({ onShowSecurityModal }: HeaderProps) => {
+export const Header = () => {
   const router = useRouter();
   const [userData, setUserData] = useState<UserData | null>(null);
   const [hasSecurityKey, setHasSecurityKey] = useState(false);
@@ -302,15 +297,9 @@ export const Header = ({ onShowSecurityModal }: HeaderProps) => {
     setShowSettingsModal(true);
   };
 
-  // If onShowSecurityModal is provided, use it to show the security tab
+  // Show security tab in settings
   const handleShowSecurity = () => {
-    if (onShowSecurityModal) {
-      // Use the prop if provided
-      onShowSecurityModal();
-    } else {
-      // Otherwise use the default behavior
-      openSettingsWithTab("security");
-    }
+    openSettingsWithTab("security");
   };
 
   return (
@@ -375,10 +364,12 @@ export const Header = ({ onShowSecurityModal }: HeaderProps) => {
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShowSecurity}>
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      <span>Security</span>
-                    </DropdownMenuItem>
+                    {userData.role === "admin" && (
+                      <DropdownMenuItem onClick={handleShowSecurity}>
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        <span>Security</span>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout}>
                       <LogOut className="mr-2 h-4 w-4" />

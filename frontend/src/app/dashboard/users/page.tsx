@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
-import { UserPlus, MoreHorizontal } from "lucide-react"
+import { UserPlus, Eye, EyeOff } from "lucide-react"
 import axios from "axios"
 import { toast } from "sonner"
+import { DataTable } from "@/components/data-table/data-table"
+import { columns } from "@/components/data-table/columns"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -108,7 +110,13 @@ export default function UsersPage() {
 
       // Update state with users from API
       if (response.data && response.data.users) {
-        setUsers(response.data.users)
+        // Sort users by lastLogin date in descending order
+        const sortedUsers = response.data.users.sort((a: User, b: User) => {
+          const dateA = a.lastLogin ? new Date(a.lastLogin).getTime() : 0; // Treat null/undefined as oldest
+          const dateB = b.lastLogin ? new Date(b.lastLogin).getTime() : 0;
+          return dateB - dateA; // Descending order
+        });
+        setUsers(sortedUsers)
       } else {
         console.error("Invalid response format:", response.data)
         toast.error("Invalid data format received from server")
@@ -129,6 +137,7 @@ export default function UsersPage() {
     password: "",
     role: "user",
   })
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleNewUserInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -188,8 +197,8 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="grid gap-6 w-full">
-      <div className="flex justify-between items-center bg-white p-4">
+    <>
+      <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
         <h2 className="text-2xl font-bold tracking-tight">Users</h2>
         <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-black hover:bg-black/90 text-white">
           <UserPlus className="h-4 w-4 mr-2" />
@@ -197,141 +206,28 @@ export default function UsersPage() {
         </Button>
       </div>
 
-      <Card className="shadow-sm hover:shadow-md transition-shadow">
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>First Name</TableHead>
-                <TableHead>Last Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Security Key</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead>Successful Logins</TableHead>
-                <TableHead>Failed Attempts</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2 text-slate-500">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                      <span>Loading users...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : users.length > 0 ? (
-                [...users]
-                  .sort((a, b) => {
-                    // Handle null values
-                    if (!a.lastLogin) return 1  // null values go to the end
-                    if (!b.lastLogin) return -1
-                    // Sort by last login time in descending order
-                    return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
-                  })
-                  .map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.firstName}</TableCell>
-                    <TableCell>{user.lastName}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-slate-100">
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {user.hasSecurityKey ? (
-                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                          Registered
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                          Not Registered
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {user.lastLogin ? (
-                        <div className="text-sm text-muted-foreground">
-                          <div>
-                            {new Date(user.lastLogin).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </div>
-                          <div>
-                            {new Date(user.lastLogin).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Not available</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`${user.loginAttempts > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
-                      >
-                        {user.loginAttempts}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`${user.failedAttempts > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
-                      >
-                        {user.failedAttempts}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="font-montserrat">
-                          <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUser(user)
-                            setIsEditUserDialogOpen(true)
-                          }}>
-                            Edit User
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => {
-                              setSelectedUser(user)
-                              setIsDeleteDialogOpen(true)
-                            }}
-                          >
-                            Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                    No users found. Create one by clicking the "Add User" button above.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="px-4 py-4">
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardContent>
+            {isLoading ? (
+              <div className="flex flex-col items-center space-y-2 text-slate-500 py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                <span>Loading users...</span>
+              </div>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={users}
+                meta={{
+                  setSelectedUser,
+                  setIsDeleteDialogOpen,
+                  setIsEditUserDialogOpen
+                }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
         <DialogContent className="sm:max-w-[500px] font-montserrat">
@@ -373,31 +269,39 @@ export default function UsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={newUserForm.password}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={newUserForm.password}
+                    onChange={handleNewUserInputChange}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-500" />
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 w-full">
                 <Label htmlFor="role">Role</Label>
                 <Select value={newUserForm.role} onValueChange={handleRoleChange}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full border border-input">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectLabel>System Roles</SelectLabel>
+                      <SelectLabel>Available Roles</SelectLabel>
                       <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="security_officer">Security Officer</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>General Roles</SelectLabel>
                       <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="guest">Guest</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -509,19 +413,14 @@ export default function UsersPage() {
                       role: value
                     })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full border border-input">
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectLabel>System Roles</SelectLabel>
+                        <SelectLabel>Available Roles</SelectLabel>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="security_officer">Security Officer</SelectItem>
-                      </SelectGroup>
-                      <SelectGroup>
-                        <SelectLabel>General Roles</SelectLabel>
                         <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="guest">Guest</SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -591,7 +490,7 @@ export default function UsersPage() {
 
                       // Delete user via API
                       await axios.delete(
-                        `${API_URL}/users/${selectedUser.id}`,
+                        `${API_URL}/delete-user/${selectedUser.id}`,
                         {
                           headers: {
                             Authorization: `Bearer ${userInfo.authToken}`,
@@ -618,6 +517,6 @@ export default function UsersPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

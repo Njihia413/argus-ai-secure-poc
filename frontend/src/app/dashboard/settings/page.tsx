@@ -13,10 +13,17 @@ import { Button } from "@/components/ui/button"
 
 export default function SettingsPage() {
   return (
-    <div className="grid gap-6">
-      <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+    <>
+      <div className="flex justify-between items-center border-b bg-background px-4 py-4 sticky top-0 z-40">
+        <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+        <div className="flex space-x-4">
+          <Button variant="outline" className="border-black">Reset to Defaults</Button>
+          <Button className="bg-black hover:bg-black/90 text-white">Save Changes</Button>
+        </div>
+      </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="px-4 py-4">
+        <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-sm hover:shadow-md transition-shadow">
           <CardHeader>
             <CardTitle>Security Settings</CardTitle>
@@ -196,11 +203,7 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end space-x-4">
-        <Button variant="outline">Reset to Defaults</Button>
-        <Button className="bg-teal-600 hover:bg-teal-700">Save Changes</Button>
       </div>
-    </div>
+    </>
   )
 }

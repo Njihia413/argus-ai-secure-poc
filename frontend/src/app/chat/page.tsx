@@ -4,132 +4,44 @@ import { modelID } from "@/ai/providers";
 import { useChat } from "@ai-sdk/react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from 'sonner';
 import { Textarea } from "@/components/textarea";
 import { ProjectOverview } from "@/components/project-overview";
 import { Messages } from "@/components/messages";
 import { Header } from "@/components/header";
-import { toast } from "sonner";
-import { KeyRound, X } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { registerSecurityKey } from "@/app/utils/webauthn";
+// Removed AvailableModels import from here, it's not needed for state typing
+// Removed duplicate modelID import
 
-// Define a type for your user data
+// Type definitions
 interface UserData {
   username: string;
   firstName: string;
   lastName: string;
   hasSecurityKey: boolean;
-  // Add any other properties your user data might have
+  role?: string; // Assuming role might be available
 }
 
-// Security key registration modal component
-interface SecurityKeyModalProps {
-  isOpen: boolean;
-  setIsOpen: (isOpen: boolean) => void;
-  userData: UserData | null;
-  onRegisterSuccess: () => void;
-}
+// Type for model dictionaries - make it a partial record to allow subsets of models
+type ModelDict = Partial<Record<modelID, string>>;
 
-type ModelType = "llama-3.3-70b-versatile" | "llama-3.1-8b-instant" | "deepseek-r1-distill-llama-70b";
-
-const SecurityKeyModal = ({
-                            isOpen,
-                            setIsOpen,
-                            userData,
-                            onRegisterSuccess,
-                          }: SecurityKeyModalProps) => {
-  const [isRegistering, setIsRegistering] = useState(false);
-
-  const handleRegisterSecurityKey = async () => {
-    if (!userData || !userData.username) {
-      toast.error("User information not available");
-      return;
-    }
-
-    setIsRegistering(true);
-
-    await registerSecurityKey(
-        userData.username,
-        (message) => {
-          toast.success(message);
-          setIsRegistering(false);
-          onRegisterSuccess();
-          setIsOpen(false);
-        },
-        (errorMessage) => {
-          toast.error(errorMessage);
-          setIsRegistering(false);
-        }
-    );
-  };
-
-  return (
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-md font-montserrat">
-          <DialogHeader>
-            <DialogTitle>Enhance Your Account Security</DialogTitle>
-            <DialogDescription>
-              Add a security key to protect your account against unauthorized access
-              and phishing attacks.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="p-3 bg-amber-50 rounded-md border border-amber-200">
-              <h3 className="text-amber-800 font-medium">Why Use a Security Key?</h3>
-              <p className="text-amber-700 text-sm mt-1">
-                Security keys provide significantly stronger protection than
-                passwords alone. Even if your password is compromised, attackers
-                cannot access your account without your physical security key.
-              </p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="p-3 bg-blue-50 rounded-md">
-                <h4 className="font-medium text-blue-800">Compatible Devices</h4>
-                <p className="text-blue-700 mt-1">
-                  YubiKeys, Google Titan Security Keys, and most FIDO2-compatible
-                  security keys
-                </p>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsOpen(false)}
-            >
-              Remind Me Later
-            </Button>
-            <Button
-                type="button"
-                onClick={handleRegisterSecurityKey}
-                className="gap-2"
-                disabled={isRegistering}
-            >
-              <KeyRound className="h-4 w-4" />
-              {isRegistering ? "Registering..." : "Register Security Key"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-  );
+// Define Model Lists
+const ALL_MODELS = {
+  "llama-3.1-8b-instant": "A fast cheap model",
+  "deepseek-r1-distill-llama-70b": "A reasoning model",
+  "llama-3.3-70b-versatile": "A large model",
 };
+
+const RESTRICTED_MODELS: ModelDict = {
+  "llama-3.1-8b-instant": "Default Model",
+};
+
+const DEFAULT_MODEL_ID: modelID = "llama-3.1-8b-instant";
 
 export default function Page() {
   const router = useRouter();
-  const [selectedModel, setSelectedModel] = useState<ModelType>("deepseek-r1-distill-llama-70b");
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [hasSecurityKey, setHasSecurityKey] = useState(false);
-  const [showSecurityKeyModal, setShowSecurityKeyModal] = useState(false);
-  const [hasShownModal, setHasShownModal] = useState(false);
+  const [availableModels, setAvailableModels] = useState<ModelDict>(RESTRICTED_MODELS);
+  const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
 
   const {
     messages,
@@ -166,27 +78,8 @@ export default function Page() {
           };
           sessionStorage.setItem('user', JSON.stringify(mockUser));
           setUserData(mockUser);
-          setHasSecurityKey(false);
-
-          // Show security key modal for the mock user only if it hasn't been shown yet
-          if (!hasShownModal) {
-            setTimeout(() => {
-              setShowSecurityKeyModal(true);
-              setHasShownModal(true);  // Track that we've shown the modal
-            }, 1500);
-          }
         } else {
           setUserData(userData as UserData);
-          setHasSecurityKey(userData.hasSecurityKey || false);
-
-          // Show security key modal if user doesn't have one and it hasn't been shown yet
-          if (!userData.hasSecurityKey && !hasShownModal) {
-            // Delay showing modal for better UX
-            setTimeout(() => {
-              setShowSecurityKeyModal(true);
-              setHasShownModal(true);  // Track that we've shown the modal
-            }, 1500);
-          }
         }
       } catch (err) {
         console.error('Error checking authentication:', err);
@@ -203,27 +96,82 @@ export default function Page() {
     };
 
     checkAuth();
-  }, [hasShownModal]);
+  }, []); // End of initial auth check useEffect
+// Set initial models based on user's security key status
+useEffect(() => {
+  if (!userData?.hasSecurityKey) {
+    setAvailableModels(RESTRICTED_MODELS);
+    setSelectedModel(DEFAULT_MODEL_ID);
+    return;
+  }
 
-  // Handle key registration success
-  const handleKeyRegistrationSuccess = () => {
-    setHasSecurityKey(true);
+  // Get initial state from localStorage or default to connected
+  const storedKeyState = localStorage.getItem('securityKeyConnected');
+  const initialKeyState = storedKeyState === null ? true : storedKeyState === 'true';
+  
+  // Set initial models based on stored state
+  if (initialKeyState) {
+    setAvailableModels(ALL_MODELS);
+  } else {
+    setAvailableModels(RESTRICTED_MODELS);
+    setSelectedModel(DEFAULT_MODEL_ID);
+  }
 
-    // Update user data in session storage
-    if (userData) {
-      const updatedUser: UserData = { ...userData, hasSecurityKey: true };
-      sessionStorage.setItem('user', JSON.stringify(updatedUser));
-      setUserData(updatedUser);
+  // Function to update state based on key status
+  const updateKeyState = (isConnected: boolean) => {
+    localStorage.setItem('securityKeyConnected', String(isConnected));
+    
+    if (isConnected) {
+      setAvailableModels(ALL_MODELS);
+      toast.success("Security key connected. Full model access restored.");
+    } else {
+      setAvailableModels(RESTRICTED_MODELS);
+      setSelectedModel(DEFAULT_MODEL_ID);
+      toast.error("Security key disconnected. Access restricted to default model.");
     }
   };
 
-  // Handler to show security modal
-  const handleShowSecurityModal = () => {
-    setShowSecurityKeyModal(true);
+  // Handle keypress to simulate key removal/insertion (Alt + K)
+  const handleKeyPress = (event: KeyboardEvent) => {
+    if (event.altKey && event.key === 'k') {
+      const newKeyState = !JSON.parse(localStorage.getItem('securityKeyConnected') || 'true');
+      updateKeyState(newKeyState);
+    }
   };
+
+  // Handle storage changes from other tabs
+  const handleStorageChange = (e: StorageEvent) => {
+    if (e.key === 'securityKeyConnected') {
+      const newState = e.newValue === 'true';
+      setAvailableModels(newState ? ALL_MODELS : RESTRICTED_MODELS);
+      if (!newState) {
+        setSelectedModel(DEFAULT_MODEL_ID);
+        toast.error("Security key disconnected in another tab. Access restricted to default model.");
+      }
+    }
+  };
+
+  // Add event listeners
+  window.addEventListener('keydown', handleKeyPress);
+  window.addEventListener('storage', handleStorageChange);
+
+  // Clear key state on page unload
+  window.addEventListener('beforeunload', () => {
+    localStorage.removeItem('securityKeyConnected');
+  });
+
+  // Clean up
+  return () => {
+    window.removeEventListener('keydown', handleKeyPress);
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, [userData]);
+
+
 
   if (error) return <div>{error.message}</div>;
 
+  // Loading state while checking initial auth/user data
   if (!userData) {
     return (
         <div className="flex items-center justify-center min-h-screen">
@@ -232,9 +180,10 @@ export default function Page() {
     );
   }
 
+  // Main chat UI
   return (
       <div className="h-dvh flex flex-col justify-center font-montserrat w-full stretch">
-        <Header onShowSecurityModal={handleShowSecurityModal} />
+        <Header />
 
         {messages.length === 0 ? (
             <div className="max-w-xl mx-auto w-full">
@@ -248,6 +197,7 @@ export default function Page() {
             onSubmit={handleSubmit}
             className="pb-8 bg-white dark:bg-black w-full max-w-xl mx-auto px-4 sm:px-0"
         >
+          {/* Pass availableModels down */}
           <Textarea
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
@@ -256,16 +206,10 @@ export default function Page() {
               isLoading={isLoading}
               status={status}
               stop={stop}
+              models={availableModels} // Pass the dynamic models list
           />
         </form>
-
-        {/* Security key registration modal */}
-        <SecurityKeyModal
-            isOpen={showSecurityKeyModal}
-            setIsOpen={setShowSecurityKeyModal}
-            userData={userData}
-            onRegisterSuccess={handleKeyRegistrationSuccess}
-        />
       </div>
   );
 }
+
