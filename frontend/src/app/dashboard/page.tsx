@@ -208,11 +208,11 @@ export default function DashboardPage() {
     return "#16a34a"; // Green for Low Risk
   };
 
-  const formatRiskScore = (score) => {
+  const formatRiskScore = (score: number | string | null | undefined): string => {
     if (typeof score === 'number') {
       return score.toFixed(1);
-    } else if (score !== undefined && score !== null && !isNaN(parseFloat(score))) {
-      return parseFloat(score).toFixed(1);
+    } else if (score !== undefined && score !== null && typeof score === 'string' && !isNaN(parseFloat(score))) {
+      return parseFloat(score.toString()).toFixed(1);
     } else {
       return "N/A";
     }
