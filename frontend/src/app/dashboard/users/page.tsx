@@ -51,9 +51,12 @@ import { Card, CardContent } from "@/components/ui/card"
 // User type definition for real API integration
 interface User {
   id: number
+  nationalId: string
   username: string
   firstName: string
+  middlename: string | null
   lastName: string
+  email: string
   role: string
   hasSecurityKey: boolean
   lastLogin: string | null
@@ -64,8 +67,11 @@ interface User {
 // New user form interface for real API integration
 interface UserFormData {
   firstName: string
+  middlename: string
   lastName: string
+  nationalId: string
   username: string
+  email: string
   password: string
   role: string
 }
@@ -132,8 +138,11 @@ export default function UsersPage() {
   // New user form state and handlers
   const [newUserForm, setNewUserForm] = useState<UserFormData>({
     firstName: "",
+    middlename: "",
     lastName: "",
+    nationalId: "",
     username: "",
+    email: "",
     password: "",
     role: "user",
   })
@@ -179,8 +188,11 @@ export default function UsersPage() {
       // Reset form
       setNewUserForm({
         firstName: "",
+        middlename: "",
         lastName: "",
+        nationalId: "",
         username: "",
+        email: "",
         password: "",
         role: "user",
       })
@@ -248,6 +260,15 @@ export default function UsersPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="middlename">Middle Name</Label>
+                <Input
+                  id="middlename"
+                  name="middlename"
+                  value={newUserForm.middlename}
+                  onChange={handleNewUserInputChange}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
@@ -258,11 +279,33 @@ export default function UsersPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="nationalId">National ID</Label>
+                <Input
+                  id="nationalId"
+                  name="nationalId"
+                  type="number"
+                  value={newUserForm.nationalId}
+                  onChange={handleNewUserInputChange}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
                   name="username"
                   value={newUserForm.username}
+                  onChange={handleNewUserInputChange}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={newUserForm.email}
                   onChange={handleNewUserInputChange}
                   required
                 />
@@ -343,8 +386,11 @@ export default function UsersPage() {
                   `${API_URL}/users/${selectedUser.id}`,
                   {
                     firstName: selectedUser.firstName,
+                    middlename: selectedUser.middlename,
                     lastName: selectedUser.lastName,
+                    nationalId: selectedUser.nationalId,
                     username: selectedUser.username,
+                    email: selectedUser.email,
                     role: selectedUser.role,
                   },
                   {
@@ -379,6 +425,18 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="edit-middlename">Middle Name</Label>
+                  <Input
+                    id="edit-middlename"
+                    name="middlename"
+                    value={selectedUser.middlename || ""}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      middlename: e.target.value
+                    })}
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="edit-lastName">Last Name</Label>
                   <Input
                     id="edit-lastName"
@@ -392,6 +450,20 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="edit-nationalId">National ID</Label>
+                  <Input
+                    id="edit-nationalId"
+                    name="nationalId"
+                    type="number"
+                    value={selectedUser.nationalId}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      nationalId: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="edit-username">Username</Label>
                   <Input
                     id="edit-username"
@@ -400,6 +472,20 @@ export default function UsersPage() {
                     onChange={(e) => setSelectedUser({
                       ...selectedUser,
                       username: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    name="email"
+                    type="email"
+                    value={selectedUser.email}
+                    onChange={(e) => setSelectedUser({
+                      ...selectedUser,
+                      email: e.target.value
                     })}
                     required
                   />

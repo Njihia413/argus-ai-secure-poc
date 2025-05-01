@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, ShieldCheck, Key } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 
@@ -96,7 +96,7 @@ const SecurityKeyPrompt = ({
                 <AlertDialogTitle>Security Key Required</AlertDialogTitle>
                 <AlertDialogDescription className="space-y-4">
                     <p>
-                        Your password has been verified. Please use your registered security key to complete login.
+                        Please use your registered security key to complete login.
                     </p>
 
                     {riskScore > 0 && (
@@ -149,19 +149,7 @@ const SecurityKeyPrompt = ({
 
 export default function LoginPage() {
     const router = useRouter()
-    
-    // Handle database reset
-    const handleResetDb = async () => {
-        if (window.confirm('Are you sure you want to reset the database? All user data will be lost.')) {
-            try {
-                const response = await axios.post(`${API_URL}/reset-db`);
-                toast.success(response.data.message || 'Database reset successfully');
-            } catch (err) {
-                toast.error('Failed to reset database');
-                console.error('Reset database error:', err);
-            }
-        }
-    };
+
     const [showPassword, setShowPassword] = useState(false)
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
@@ -170,6 +158,7 @@ export default function LoginPage() {
 
     // States for second-factor authentication
     const [securityKeyDialogOpen, setSecurityKeyDialogOpen] = useState(false)
+    const [authMethod, setAuthMethod] = useState<'password' | 'security_key'>('password')
     const [authToken, setAuthToken] = useState("")
     const [bindingNonce, setBindingNonce] = useState("")
     const [riskScore, setRiskScore] = useState(0)
@@ -226,49 +215,30 @@ export default function LoginPage() {
         e.preventDefault()
 
         if (!username || !password) {
-            toast.error("Please enter both username and password")
+            toast.error("Please enter both your national ID/email and password")
             return
         }
 
         setIsLoading(true)
+        setAuthMethod('password')
 
         try {
-            const response = await axios.post(`${API_URL}/login`, {
+            const response = await axios.post<{
+                user_id: string;
+                has_security_key: boolean;
+                firstName: string;
+                lastName: string;
+                role: string;
+                auth_token: string;
+            }>(`${API_URL}/login`, {
                 username,
                 password
             })
 
             setIsLoading(false)
 
-            // Check if the user has a security key registered
-            if (response.data.has_security_key) {
-                // Keep loading state active during security key verification
-                setIsLoading(true)
-                // Store auth token and binding nonce for second factor
-                if (response.data.auth_token && response.data.binding_nonce) {
-                    setAuthToken(response.data.auth_token)
-                    setBindingNonce(response.data.binding_nonce)
-                    storeBindingData(response.data.auth_token, response.data.binding_nonce)
-                }
-
-                // Store risk score if provided
-                if (response.data.risk_score !== undefined) {
-                    setRiskScore(response.data.risk_score)
-                }
-
-                // Show appropriate message based on risk
-                if (response.data.risk_score > 75) {
-                    toast.warning("High risk login detected! Additional verification required.")
-                } else if (response.data.risk_score > 40) {
-                    toast.info("Unusual login detected. Please verify with your security key.")
-                } else {
-                    toast.info("Password verified. Please use your security key to complete login.")
-                }
-
-                // Open the security key dialog
-                setSecurityKeyDialogOpen(true)
-            } else {
-                // If user doesn't have a security key registered
+            // If user doesn't have a security key, proceed with login
+            if (!response.data.has_security_key) {
                 toast.success("Login successful!")
 
                 // Store user data in session storage
@@ -277,7 +247,7 @@ export default function LoginPage() {
                     username,
                     firstName: response.data.firstName,
                     lastName: response.data.lastName,
-                    role: response.data.role, // Store role information
+                    role: response.data.role,
                     hasSecurityKey: false,
                     authToken: response.data.auth_token
                 }
@@ -287,7 +257,29 @@ export default function LoginPage() {
 
                 // Redirect based on role
                 redirectBasedOnRole(response.data.role)
+                return
             }
+
+            // Login successful for users with registered key but logged in with password
+            toast.success("Login successful!")
+
+            // Store user data in session storage
+            const userInfo = {
+                id: response.data.user_id,
+                username,
+                firstName: response.data.firstName,
+                lastName: response.data.lastName,
+                role: response.data.role,
+                hasSecurityKey: true,
+                authToken: response.data.auth_token
+            }
+
+            // Save to session storage
+            sessionStorage.setItem('user', JSON.stringify(userInfo))
+
+            // Redirect based on role
+            redirectBasedOnRole(response.data.role)
+
         } catch (err: any) {
             setIsLoading(false)
 
@@ -321,10 +313,48 @@ export default function LoginPage() {
         }
     }
 
+    // Handle security key login
+    const handleSecurityKeyLogin = async () => {
+        if (!username) {
+            toast.error("Please enter your national ID/email first")
+            return
+        }
+
+        setIsLoading(true)
+        setAuthMethod('security_key')
+
+        try {
+            // First, verify the username to get authentication options
+            const authResponse = await axios.post<{ publicKey: { challenge: string }; riskScore?: number }>(`${API_URL}/webauthn/login/begin`, {
+                username,
+                secondFactor: true
+            })
+
+            // Store auth token and binding nonce
+            const authToken = (authResponse.data as { publicKey: { challenge: string } }).publicKey.challenge
+            const bindingNonce = authToken
+
+            setAuthToken(authToken)
+            setBindingNonce(bindingNonce)
+            storeBindingData(authToken, bindingNonce)
+
+            // Store risk score if provided
+            if (authResponse.data.riskScore !== undefined) {
+                setRiskScore(authResponse.data.riskScore)
+            }
+
+            // Open the security key dialog
+            setSecurityKeyDialogOpen(true)
+        } catch (err: any) {
+            setIsLoading(false)
+            toast.error(err.response?.data?.error || "Failed to initiate security key login")
+        }
+    }
+
     // Handle successful second factor authentication
     const handleSecondFactorSuccess = (userData: any) => {
         setSecurityKeyDialogOpen(false)
-        toast.success("Login successful! Both password and security key verified.")
+        toast.success("Login successful!")
 
         // Store user data in session storage
         const userInfo = {
@@ -381,14 +411,13 @@ export default function LoginPage() {
                     <form onSubmit={handlePasswordLogin} className="space-y-6">
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="username">Username</Label>
+                                <Label htmlFor="username">National ID or Email</Label>
                                 <Input
                                     id="username"
-                                    placeholder="Enter your username"
+                                    placeholder="Enter your national ID or email"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    required
-                                />
+                                    required/>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -424,7 +453,30 @@ export default function LoginPage() {
 
                         {/* Standard Login Button */}
                         <Button className="w-full" type="submit" disabled={isLoading}>
-                            {isLoading ? "Logging in..." : "Login"}
+                            {isLoading && authMethod === 'password' ? "Logging in..." : "Login"}
+                        </Button>
+
+                        {/* OR Divider */}
+                        <div className="flex items-center my-4">
+                            <div className="flex-grow border-t border-gray-300"></div>
+                            <span className="px-4 text-gray-500 text-sm">or</span>
+                            <div className="flex-grow border-t border-gray-300"></div>
+                        </div>
+
+                        {/* Login with Security Key Button */}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleSecurityKeyLogin}
+                            disabled={isLoading}
+                        >
+                            {isLoading && authMethod === 'security_key' ? "Preparing..." : (
+                                <>
+                                    <Key className="h-4 w-4 mr-2" />
+                                    Login with Security Key
+                                </>
+                            )}
                         </Button>
 
                         {accountLocked && (
@@ -441,23 +493,10 @@ export default function LoginPage() {
                             </div>
                         )}
                     </form>
-
-                    {/* Admin Functions */}
-                    {/* <div className="mt-8 pt-4 border-t border-gray-300">
-                        <p className="text-xs text-gray-500 mb-2">Admin Functions (Development Only)</p>
-                        <Button
-                            onClick={handleResetDb}
-                            variant="destructive"
-                            className="w-full"
-                        >
-                            Reset Database
-                        </Button>
-                        <p className="text-xs text-gray-500 mt-1">Warning: This will delete all user data</p>
-                    </div> */}
                 </div>
             </div>
 
-            {/* Security Key Alert Dialog with improved padding for small screens */}
+            {/* Security Key Alert Dialog */}
             <AlertDialog open={securityKeyDialogOpen} onOpenChange={setSecurityKeyDialogOpen}>
                 <AlertDialogContent className="w-[90%] max-w-md p-6">
                     <SecurityKeyPrompt

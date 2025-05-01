@@ -1,5 +1,6 @@
 import json
 import hashlib
+import math
 import secrets
 import requests
 from datetime import datetime, timedelta, timezone
@@ -23,7 +24,7 @@ from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserE
 from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
 
-from sqlalchemy import func, case
+from sqlalchemy import func, case, MetaData
 
 app = Flask(__name__)
 CORS(app)
@@ -47,11 +48,16 @@ migrate = Migrate(app, db)
 # User model renamed to Users and with additional fields including role
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    national_id = db.Column(db.Integer, unique=True, nullable=False)
     first_name = db.Column(db.String(100), nullable=False)
+    middle_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=False)
     username = db.Column(db.String(100), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=True)  # Optional for passwordless auth
-    role = db.Column(db.String(20), nullable=False, default='user')  # New role column with default value 'user'
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=True)
+    role = db.Column(db.String(20), nullable=False, default='user')
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
 
     # User timezone for risk-based authentication
     timezone = db.Column(db.String(50), default='UTC')
@@ -142,9 +148,10 @@ class AuthenticationAttempt(db.Model):
     device_type = db.Column(db.String(50))  # New column for device type
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     success = db.Column(db.Boolean, default=False)
-    auth_type = db.Column(db.String(50))  # Add this column for tracking authentication type
+    auth_type = db.Column(db.String(50))
     risk_score = db.Column(db.Integer, default=0)
-    location = db.Column(db.String(255))  # For storing geolocation data
+    location = db.Column(db.String(255))
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False)
 
     user = db.relationship('Users', backref=db.backref('auth_attempts', lazy=True))
 
@@ -189,7 +196,7 @@ def get_public_ip():
     return None
 
 def get_location_from_ip(ip_address):
-    """Get location information from IP address"""
+    """Get detailed location information from IP address"""
     try:
         # If it's localhost, try to get the public IP
         if ip_address in ('127.0.0.1', 'localhost', '::1'):
@@ -197,28 +204,58 @@ def get_location_from_ip(ip_address):
             if public_ip:
                 ip_address = public_ip
 
-        # Try ip-api.com first
-        response = requests.get(f'http://ip-api.com/json/{ip_address}')
+        # Try ip-api.com first for detailed info
+        response = requests.get(f'http://ip-api.com/json/{ip_address}?fields=status,message,country,regionName,city,district')
         if response.status_code == 200:
             data = response.json()
             if data['status'] == 'success':
-                city = data.get('city', '')
-                country = data.get('country', '')
-                if city and country:
-                    return f"{city}, {country}"
-                elif country:
-                    return country
+                location_parts = []
+                
+                # Add district/neighborhood/area if available
+                if data.get('district'):
+                    location_parts.append(data['district'])
+                
+                # Add city
+                if data.get('city'):
+                    location_parts.append(data['city'])
+                
+                # Add region/state
+                if data.get('regionName'):
+                    location_parts.append(data['regionName'])
+                
+                # Add country
+                if data.get('country'):
+                    location_parts.append(data['country'])
+                
+                if location_parts:
+                    return ", ".join(location_parts)
 
-        # Fallback to ipapi.co if ip-api.com fails
+        # Fallback to ipapi.co with more detailed location info
         response = requests.get(f'https://ipapi.co/{ip_address}/json/')
         if response.status_code == 200:
             data = response.json()
-            city = data.get('city', '')
-            country = data.get('country_name', '')
-            if city and country:
-                return f"{city}, {country}"
-            elif country:
-                return country
+            location_parts = []
+            
+            # Try to get neighborhood or area name
+            if data.get('neighbourhood'):
+                location_parts.append(data['neighbourhood'])
+            elif data.get('postal'):  # Use postal area as fallback for neighborhood
+                location_parts.append(data['postal'])
+            
+            # Add city
+            if data.get('city'):
+                location_parts.append(data['city'])
+            
+            # Add region
+            if data.get('region'):
+                location_parts.append(data['region'])
+            
+            # Add country
+            if data.get('country_name'):
+                location_parts.append(data['country_name'])
+            
+            if location_parts:
+                return ", ".join(location_parts)
 
         return "Unknown Location"
     except Exception as e:
@@ -293,75 +330,176 @@ def assess_risk(user_id, request):
     if not user:
         return 100  # High risk if user not found
 
-    # Start with a base risk score
-    risk_score = 0
+    # Start with a base risk score - start at 30 for first-time logins
+    risk_score = 30
+    print(f"Risk: Starting with base score of 30 for all logins")
+
+    # Get current time
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # 1. Check IP address history
     current_ip = request.remote_addr
-    ip_history = AuthenticationAttempt.query.filter_by(
-        user_id=user_id,
-        ip_address=current_ip,
-        success=True
+    ip_history = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user_id,
+        AuthenticationAttempt.ip_address == current_ip,
+        AuthenticationAttempt.success == True,
+        AuthenticationAttempt.timestamp >= today_start  # Only consider today's logins
     ).count()
 
     if ip_history == 0:
-        # New IP address
+        # New IP address for today
         risk_score += 30
-        print(f"Risk: +30 for new IP address {current_ip}")
+        print(f"Risk: +30 for new IP address {current_ip} today")
 
-    # 2. Check for failed attempts
-    recent_failed_attempts = AuthenticationAttempt.query.filter_by(
-        user_id=user_id,
-        success=False
-    ).filter(
-        AuthenticationAttempt.timestamp > datetime.now(timezone.utc) - timedelta(hours=24)
+    # 2. Check for failed attempts today
+    recent_failed_attempts = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user_id,
+        AuthenticationAttempt.success == False,
+        AuthenticationAttempt.timestamp >= today_start  # Only consider today's failed attempts
     ).count()
 
     # Each failed attempt adds 15 to risk score (no cap)
     failed_risk = recent_failed_attempts * 15
     risk_score += failed_risk
     if failed_risk > 0:
-        print(f"Risk: +{failed_risk} for {recent_failed_attempts} recent failed attempts")
+        print(f"Risk: +{failed_risk} for {recent_failed_attempts} failed attempts today")
 
     # 3. Check for unusual timing
     user_timezone = user.timezone or 'UTC'  # Assuming you store user's timezone
-    current_hour = datetime.now(timezone.utc).hour
+    current_hour = now.hour
     if current_hour < 6 or current_hour > 22:  # Outside normal hours
         risk_score += 10
         print(f"Risk: +10 for unusual hour ({current_hour})")
 
-    # 4. Check device history (simplified)
+    # 4. Check device history (for today only)
     current_user_agent = request.headers.get('User-Agent', '')
-    device_history = AuthenticationAttempt.query.filter_by(
-        user_id=user_id,
-        user_agent=current_user_agent,
-        success=True
+    device_history = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user_id,
+        AuthenticationAttempt.user_agent == current_user_agent,
+        AuthenticationAttempt.success == True,
+        AuthenticationAttempt.timestamp >= today_start  # Only consider today's successful logins
     ).count()
 
     if device_history == 0:
-        # New device
+        # New device today
         risk_score += 20
-        print(f"Risk: +20 for new device")
+        print(f"Risk: +20 for new device today")
 
-    # 5. Check location (simplified - just using IP as proxy)
-    if user.last_login_ip and user.last_login_ip != current_ip:
+    # 5. Check location (for today only)
+    # Get last successful login from today
+    last_login_today = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user_id,
+        AuthenticationAttempt.success == True,
+        AuthenticationAttempt.timestamp >= today_start
+    ).order_by(AuthenticationAttempt.timestamp.desc()).first()
+
+    if last_login_today and last_login_today.ip_address != current_ip:
         risk_score += 15
-        print(f"Risk: +15 for location change")
+        print(f"Risk: +15 for location change today")
 
-    # Check for rapid authentication from different locations
-    if user.last_login_time:
-        # Ensure both times are timezone-aware
-        current_time = datetime.now(timezone.utc)
-        last_login = user.last_login_time if user.last_login_time.tzinfo else user.last_login_time.replace(tzinfo=timezone.utc)
-        time_since_last_login = current_time - last_login
-        
-        if time_since_last_login < timedelta(hours=1) and user.last_login_ip != current_ip:
+        # Check for rapid authentication from different locations (within the last hour)
+        time_since_last_login = now - last_login_today.timestamp
+        if time_since_last_login < timedelta(hours=1):
             risk_score += 25
-            print(f"Risk: +25 for rapid location change")
+            print(f"Risk: +25 for rapid location change (within the last hour)")
 
     final_score = min(risk_score, 100)  # Cap at 100
     print(f"Final risk score: {final_score}")
     return final_score
+
+# Add this new endpoint to your app.py file
+
+@app.route('/api/risk-score-trend', methods=['GET'])
+def get_risk_score_trend():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+
+        # Verify auth session
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid auth token'}), 401
+
+        # Get the start of the current month
+        now = datetime.now(timezone.utc)
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        try:
+            # Group authentication attempts by day and calculate average risk score
+            # Using corrected syntax for the case() function in newer SQLAlchemy versions
+            results = db.session.query(
+                func.date(AuthenticationAttempt.timestamp).label('date'),
+                func.avg(
+                    case(
+                        (AuthenticationAttempt.risk_score.isnot(None), AuthenticationAttempt.risk_score),
+                        else_=0
+                    )
+                ).label('avg_risk_score'),
+                func.count(AuthenticationAttempt.id).label('attempt_count')
+            ).filter(
+                AuthenticationAttempt.timestamp >= current_month_start
+            ).group_by(
+                func.date(AuthenticationAttempt.timestamp)
+            ).order_by(
+                func.date(AuthenticationAttempt.timestamp)
+            ).all()
+
+            # Debug the query results
+            print(f"Found {len(results)} days with risk data")
+            for row in results:
+                print(f"Date: {row.date}, Avg Score: {row.avg_risk_score}, Count: {row.attempt_count}")
+
+            # Format data for the chart with better type handling
+            risk_trend = []
+            for date, avg_score, count in results:
+                formatted_date = date.strftime('%b %d')
+                try:
+                    # Explicitly convert to float and round to 1 decimal place
+                    avg_risk_score = round(float(avg_score), 1) if avg_score is not None else 0
+                except (ValueError, TypeError):
+                    print(f"Error converting risk score for {date}: {avg_score}")
+                    avg_risk_score = 0
+
+                risk_trend.append({
+                    'name': formatted_date,
+                    'riskScore': avg_risk_score,
+                    'attemptCount': count
+                })
+
+            # If no results, provide empty data with current date
+            if not risk_trend:
+                today = now.strftime('%b %d')
+                risk_trend.append({
+                    'name': today,
+                    'riskScore': 0,
+                    'attemptCount': 0
+                })
+
+            return jsonify({'riskTrend': risk_trend})
+
+        except Exception as db_error:
+            print(f"Database error in risk trend calculation: {str(db_error)}")
+            import traceback
+            print(traceback.format_exc())
+
+            # Return graceful fallback with current date
+            today = now.strftime('%b %d')
+            return jsonify({'riskTrend': [{
+                'name': today,
+                'riskScore': 0,
+                'attemptCount': 0
+            }]})
+
+    except Exception as e:
+        print(f"Error fetching risk score trend: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to fetch risk score trend'}), 500
 
 
 # Simple route to test if the server is running
@@ -377,8 +515,17 @@ def register():
 
     # Check if all required fields are provided
     if not data or not data.get('username') or not data.get('password') or \
-            not data.get('firstName') or not data.get('lastName'):
-        return jsonify({'error': 'Missing required fields (firstName, lastName, username, or password)'}), 400
+            not data.get('firstName') or not data.get('lastName') or \
+            not data.get('nationalId') or not data.get('email'):
+        return jsonify({'error': 'Missing required fields (firstName, lastName, username, password, nationalId, or email)'}), 400
+    
+    # Validate national ID
+    try:
+        national_id = int(data.get('nationalId'))
+        if len(str(national_id)) != 8:
+            return jsonify({'error': 'National ID must be exactly 8 digits'}), 400
+    except ValueError:
+        return jsonify({'error': 'National ID must be a number'}), 400
 
     # Get the admin's auth token for authorization
     admin_token = request.headers.get('Authorization')
@@ -408,8 +555,11 @@ def register():
 
     user = Users(
         first_name=data['firstName'],
+        middle_name=data.get('middlename'),
         last_name=data['lastName'],
         username=data['username'],
+        email=data['email'],
+        national_id=national_id,
         role=role
     )
     user.set_password(data['password'])
@@ -429,66 +579,61 @@ def register():
     }), 201
 
 
+def get_active_users():
+    return Users.query.filter_by(is_deleted=False).all()
+
+
 # Add a new route to get all users (admin only)
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    # Get the admin's auth token for authorization
-    admin_token = request.headers.get('Authorization')
-    if not admin_token:
-        return jsonify({'error': 'Admin authorization required'}), 401
+    # Existing authentication checks...
 
-    # Verify the admin token
-    admin_token = admin_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
-
-    if not auth_session:
-        return jsonify({'error': 'Invalid admin token'}), 401
+    # Find the admin session
+    auth_token = request.headers.get('Authorization')
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
 
-    # Return all users with their login attempt counts
-    # Delete any registration entries
-    AuthenticationAttempt.query.filter_by(auth_type='registration').delete()
-    db.session.commit()
+    # Use the filtered query to exclude soft-deleted users
+    users = Users.query.filter_by(is_deleted=False).all()
 
-    # Update login attempts
-    for user in Users.query.all():
-        # Update failed attempts
-        failed_attempts = AuthenticationAttempt.query.filter_by(
-            user_id=user.id,
-            success=False,
-            auth_type='password'
-        ).count()
-        user.failed_login_attempts = failed_attempts
-
-        # Update total successful logins
-        successful_attempts = AuthenticationAttempt.query.filter_by(
-            user_id=user.id,
-            success=True,
-            auth_type='password'
-        ).count()
-        user.total_login_attempts = successful_attempts
-
-    db.session.commit()
-
-    # Now get users with updated counts
-    users = Users.query.all()
+    # Now update login attempts with the current active state
     user_list = []
-    
+
     for user in users:
+        # Only update attempts for non-deleted users
+        failed_attempts = AuthenticationAttempt.query.filter(
+            AuthenticationAttempt.user_id == user.id,
+            AuthenticationAttempt.success == False,
+            AuthenticationAttempt.is_deleted == False,
+            AuthenticationAttempt.auth_type == 'password'
+        ).count()
+
+        successful_attempts = AuthenticationAttempt.query.filter(
+            AuthenticationAttempt.user_id == user.id,
+            AuthenticationAttempt.success == True,
+            AuthenticationAttempt.is_deleted == False,
+            AuthenticationAttempt.auth_type == 'password'
+        ).count()
+
         user_list.append({
             'id': user.id,
+            'nationalId': user.national_id,
             'username': user.username,
             'firstName': user.first_name,
+            'middlename': user.middle_name,
             'lastName': user.last_name,
+            'email': user.email,
             'role': user.role,
             'hasSecurityKey': user.has_security_key,
             'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
-            'loginAttempts': user.total_login_attempts,
-            'failedAttempts': user.failed_login_attempts
+            'loginAttempts': successful_attempts,
+            'failedAttempts': failed_attempts,
+            'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None
         })
 
     return jsonify({'users': user_list})
@@ -496,74 +641,90 @@ def get_users():
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
-    # Get the admin's auth token for authorization
-    admin_token = request.headers.get('Authorization')
-    if not admin_token:
-        return jsonify({'error': 'Admin authorization required'}), 401
-
-    # Verify the admin token
-    admin_token = admin_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
-
-    if not auth_session:
-        return jsonify({'error': 'Invalid admin token'}), 401
+    # Existing authentication checks...
+    auth_token = request.headers.get('Authorization')
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
 
-    # Get the user
-    user = Users.query.get(user_id)
+    # Find user, ensuring they are not soft-deleted
+    user = Users.query.filter_by(id=user_id, is_deleted=False).first()
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
     # Get login attempts
-    failed_attempts = AuthenticationAttempt.query.filter_by(
-        user_id=user.id,
-        success=False,
-        auth_type='password'
+    failed_attempts = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user.id,
+        AuthenticationAttempt.success == False,
+        AuthenticationAttempt.is_deleted == False,
+        AuthenticationAttempt.auth_type == 'password'
     ).count()
 
-    successful_attempts = AuthenticationAttempt.query.filter_by(
-        user_id=user.id,
-        success=True,
-        auth_type='password'
+    successful_attempts = AuthenticationAttempt.query.filter(
+        AuthenticationAttempt.user_id == user.id,
+        AuthenticationAttempt.success == True,
+        AuthenticationAttempt.is_deleted == False,
+        AuthenticationAttempt.auth_type == 'password'
     ).count()
 
     return jsonify({
         'user': {
             'id': user.id,
+            'nationalId': user.national_id,
             'username': user.username,
             'firstName': user.first_name,
+            'middlename': user.middle_name,
             'lastName': user.last_name,
+            'email': user.email,
             'role': user.role,
             'hasSecurityKey': user.has_security_key,
             'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
             'loginAttempts': successful_attempts,
-            'failedAttempts': failed_attempts
+            'failedAttempts': failed_attempts,
+            'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None
         }
     })
 
+
+# Modified portion of the login endpoint to store risk score correctly
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
 
     if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'error': 'Missing username or password'}), 400
+        return jsonify({'error': 'Missing credentials or password'}), 400
 
-    user = Users.query.filter_by(username=data['username']).first()
+    identifier = data.get('username')
+    user = None
 
-    # Check if user exists first before creating authentication attempt
+    # Try to find user by national ID if it's a number
+    try:
+        national_id = int(identifier)
+        user = Users.query.filter_by(national_id=national_id).first()
+    except ValueError:
+        # If not a number, try email
+        user = Users.query.filter_by(email=identifier).first()
+
+    # If no user found by national ID or email, check if they exist by username
     if not user:
+        user_by_username = Users.query.filter_by(username=identifier).first()
+        if user_by_username:
+            return jsonify({'error': 'Please login with your email or national ID'}), 400
         return jsonify({'error': 'User not found'}), 404
 
     # Get location from IP
     ip_address = request.remote_addr
     location = get_location_from_ip(ip_address)
-    
-    # Create a new authentication attempt record after confirming user exists
+
+    # Assess risk before creating the authentication attempt
+    risk_score = assess_risk(user.id, request)
+
+    # Create a new authentication attempt record
     user_agent = request.headers.get('User-Agent', '')
     auth_attempt = AuthenticationAttempt(
         user_id=user.id,
@@ -571,15 +732,15 @@ def login():
         user_agent=user_agent,
         device_type=detect_device_type(user_agent),
         auth_type='password',
-        location=location,  # Add location data
+        location=location,
+        risk_score=risk_score,  # Store the risk score in the attempt
         success=False  # Will update to True if successful
     )
+    db.session.add(auth_attempt)
 
     # Check if account is locked
     if user.is_account_locked():
-        auth_attempt.risk_score = 100  # Max risk for locked account
-        db.session.add(auth_attempt)
-        db.session.commit()
+        db.session.commit()  # Commit the failed attempt with high risk
 
         # Return both a human-readable time and ISO timestamp for countdown implementation
         locked_until_human = user.account_locked_until.strftime('%H:%M:%S')
@@ -591,14 +752,9 @@ def login():
             'accountLocked': True
         }), 401
 
-    # Assess risk
-    risk_score = assess_risk(user.id, request)
-    auth_attempt.risk_score = risk_score
-
     # Verify password
     if not user.check_password(data['password']):
         auth_attempt.success = False
-        db.session.add(auth_attempt)
         db.session.commit()
 
         # Increment failed login attempts
@@ -606,9 +762,8 @@ def login():
 
         return jsonify({'error': 'Invalid password'}), 401
 
-    # Password is correct - record successful login
+    # Password is correct - update attempt to successful
     auth_attempt.success = True
-    db.session.add(auth_attempt)
 
     # Increment total successful logins
     user.total_login_attempts += 1
@@ -651,7 +806,7 @@ def login():
         'user_id': user.id,
         'firstName': user.first_name,
         'lastName': user.last_name,
-        'role': user.role,  # Include user role
+        'role': user.role,
         'has_security_key': has_security_key,
         'auth_token': auth_session.session_token,
         'binding_nonce': binding_nonce,
@@ -977,31 +1132,10 @@ def webauthn_register_complete():
 
             db.session.commit()  # Commit the entire transaction
 
-            # Record successful security key registration
-            auth_attempt = AuthenticationAttempt(
-                user_id=user.id,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent', ''),
-                auth_type='security_key_registration',
-                success=True
-            )
-            db.session.add(auth_attempt)
-            db.session.commit()
-
             return jsonify({'status': 'success', 'message': 'Security key registered successfully'})
         except ValueError as ve:
             print(f"ValueError during register_complete: {str(ve)}")
 
-            # Record failed registration
-            auth_attempt = AuthenticationAttempt(
-                user_id=user.id,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent', ''),
-                auth_type='security_key_registration',
-                success=False
-            )
-            db.session.add(auth_attempt)
-            db.session.commit()
 
             return jsonify({'error': str(ve), 'detail': 'Challenge verification failed'}), 400
 
@@ -1010,16 +1144,6 @@ def webauthn_register_complete():
         import traceback
         print(traceback.format_exc())
 
-        # Record failed registration
-        auth_attempt = AuthenticationAttempt(
-            user_id=user.id if user else None,
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get('User-Agent', ''),
-            auth_type='security_key_registration',
-            success=False
-        )
-        db.session.add(auth_attempt)
-        db.session.commit()
 
         return jsonify({'error': str(e)}), 400
 
@@ -1028,18 +1152,35 @@ def webauthn_register_complete():
 @app.route('/api/webauthn/login/begin', methods=['POST'])
 def webauthn_login_begin():
     data = request.get_json()
-    username = data.get('username')
+    identifier = data.get('username')
     second_factor = data.get('secondFactor', False)
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
 
-    if not username:
-        return jsonify({'error': 'Username required'}), 400
+    if not identifier:
+        return jsonify({'error': 'Username, email, or national ID required'}), 400
 
-    # Find user
-    user = Users.query.filter_by(username=username).first()
-    if not user or not user.credential_id:
-        return jsonify({'error': 'User not found or no security key registered'}), 404
+    # Find user by different identifier types
+    user = None
+
+    # Try to find user by national ID if it's a number
+    try:
+        national_id = int(identifier)
+        user = Users.query.filter_by(national_id=national_id).first()
+    except ValueError:
+        # If not a number, try email
+        user = Users.query.filter_by(email=identifier).first()
+
+    # If no user found by national ID or email, check by username
+    if not user:
+        user = Users.query.filter_by(username=identifier).first()
+
+    # Final check for user existence and security key
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    if not user.credential_id:
+        return jsonify({'error': 'No security key registered for this user'}), 404
 
     # If this is meant to be a second factor, verify that password auth happened first
     if second_factor:
@@ -1211,13 +1352,19 @@ def webauthn_login_complete():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
+    # Calculate risk score - important to do this for every authentication attempt
+    risk_score = assess_risk(user.id, request)
+
     # Create an authentication attempt record
     auth_attempt = AuthenticationAttempt(
         user_id=user.id,
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent', ''),
         auth_type='security_key_auth',
-        success=False  # Will update to True if successful
+        risk_score=risk_score,  # Store the calculated risk score
+        success=False,  # Will update to True if successful
+        location=get_location_from_ip(request.remote_addr),  # Add location info
+        device_type=detect_device_type(request.headers.get('User-Agent', ''))  # Add device type
     )
     db.session.add(auth_attempt)
 
@@ -1324,13 +1471,17 @@ def webauthn_login_complete():
                 # Mark security key as verified
                 auth_session.security_key_verified = True
 
+                # Update session with the latest risk score calculation
+                auth_session.risk_score = risk_score
+                auth_session.requires_additional_verification = risk_score > 50
+
                 # Update user's last login information
-                user.last_login_time = datetime.utcnow()
+                user.last_login_time = datetime.now(timezone.utc)
                 user.last_login_ip = request.remote_addr
 
                 # Mark the authentication attempt as successful
                 auth_attempt.success = True
-                auth_attempt.risk_score = auth_session.risk_score
+                auth_attempt.risk_score = risk_score
 
                 db.session.commit()
 
@@ -1345,8 +1496,8 @@ def webauthn_login_complete():
                     'has_security_key': True,
                     'fully_authenticated': True,
                     'auth_token': auth_session.session_token,
-                    'risk_score': auth_session.risk_score,
-                    'requires_additional_verification': auth_session.requires_additional_verification
+                    'risk_score': risk_score,
+                    'requires_additional_verification': risk_score > 50
                 })
             else:
                 db.session.commit()  # Commit the failed attempt
@@ -1735,28 +1886,114 @@ def get_device_stats():
 # Function to create default admin user
 def create_admin_user():
     # Check if admin user already exists
-    admin = Users.query.filter_by(username='admin').first()
-    if admin:
-        print("Admin user already exists.")
+    try:
+        admin = Users.query.filter_by(username='admin').first()
+        if admin:
+            print("Admin user already exists.")
+            return admin
+
+        # Create admin user
+        admin = Users(
+            first_name='System',
+            middle_name=None,
+            last_name='Administrator',
+            username='admin',
+            email='admin@argus.ai',
+            national_id=12345678,  # Default admin national ID
+            role='admin'
+        )
+        admin.set_password('admin123')  # Default password - should be changed after first login
+
+        db.session.add(admin)
+        db.session.commit()
+        print("Default admin user created successfully.")
         return admin
-
-    # Create admin user
-    admin = Users(
-        first_name='System',
-        last_name='Administrator',
-        username='admin',
-        role='admin'
-    )
-    admin.set_password('admin123')  # Default password - should be changed after first login
-
-    db.session.add(admin)
-    db.session.commit()
-    print("Default admin user created successfully.")
-    return admin
+    except Exception as e:
+        print(f"Error creating admin user: {str(e)}")
+        db.session.rollback()
+        return None
 
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 def update_user(user_id):
+    data = request.get_json()
+
+    # Verify admin token and authorization
+    admin_token = request.headers.get('Authorization')
+    if not admin_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    admin_token = admin_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the user to update
+    user = Users.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Validate national ID if provided
+    if 'nationalId' in data:
+        try:
+            national_id = int(data['nationalId'])
+            if len(str(national_id)) != 8:
+                return jsonify({'error': 'National ID must be exactly 8 digits'}), 400
+            
+            # Check if national ID is already taken by another user
+            existing_user = Users.query.filter(Users.national_id == national_id, Users.id != user_id).first()
+            if existing_user:
+                return jsonify({'error': 'National ID already exists'}), 409
+                
+            user.national_id = national_id
+        except ValueError:
+            return jsonify({'error': 'National ID must be a number'}), 400
+
+    # Update other fields
+    if 'firstName' in data:
+        user.first_name = data['firstName']
+    if 'middlename' in data:
+        user.middle_name = data['middlename']
+    if 'lastName' in data:
+        user.last_name = data['lastName']
+    if 'email' in data:
+        existing_user = Users.query.filter(Users.email == data['email'], Users.id != user_id).first()
+        if existing_user:
+            return jsonify({'error': 'Email already exists'}), 409
+        user.email = data['email']
+    if 'username' in data:
+        existing_user = Users.query.filter(Users.username == data['username'], Users.id != user_id).first()
+        if existing_user:
+            return jsonify({'error': 'Username already exists'}), 409
+        user.username = data['username']
+    if 'role' in data:
+        user.role = data['role']
+
+    try:
+        db.session.commit()
+        return jsonify({
+            'message': 'User updated successfully',
+            'user': {
+                'id': user.id,
+                'nationalId': user.national_id,
+                'username': user.username,
+                'firstName': user.first_name,
+                'middlename': user.middle_name,
+                'lastName': user.last_name,
+                'email': user.email,
+                'role': user.role
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
     # Get the admin's auth token for authorization
     admin_token = request.headers.get('Authorization')
     if not admin_token:
@@ -1820,8 +2057,14 @@ def update_user(user_id):
 @app.route('/api/reset-db', methods=['POST'])
 def reset_db():
     try:
-        # This is dangerous and should be protected/removed in production!
-        db.drop_all()
+        # Reflect the database tables
+        meta = MetaData()
+        meta.reflect(bind=db.engine)
+
+        # Drop all tables respecting dependencies
+        meta.drop_all(bind=db.engine)
+
+        # Recreate all tables
         db.create_all()
 
         # Create default admin user after reset
@@ -1835,7 +2078,9 @@ def reset_db():
                 'role': admin.role
             }
         }), 200
+
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 
@@ -1913,19 +2158,26 @@ def delete_user_data(user_id):
         if user_id == admin_user.id:
             return jsonify({'error': 'Cannot delete your own account'}), 400
 
-        # Delete related records first
-        AuthenticationAttempt.query.filter_by(user_id=user_id).delete()
-        WebAuthnChallenge.query.filter_by(user_id=user_id).delete()
-        AuthenticationSession.query.filter_by(user_id=user_id).delete()
-        
-        # Then delete the user
+        # Soft delete the user
         user = Users.query.get(user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-            
-        db.session.delete(user)
+
+        # Mark user as deleted
+        user.is_deleted = True
+        user.deleted_at = datetime.now(timezone.utc)
+
+        # Optional: Invalidate any active sessions
+        AuthenticationSession.query.filter_by(user_id=user_id).delete()
+
+        # Optional: Also mark related authentication attempts as soft-deleted
+        AuthenticationAttempt.query.filter_by(user_id=user_id).update({"is_deleted": True})
+
         db.session.commit()
-        return jsonify({'message': f'All data for user {user_id} deleted successfully'}), 200
+        return jsonify({
+            'message': f'User {user_id} marked as deleted successfully',
+            'deleted_at': user.deleted_at.isoformat()
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -2012,6 +2264,149 @@ def get_location_stats():
         print(f"Error getting location stats: {str(e)}")
         return jsonify({'error': 'Failed to fetch location stats'}), 500
 
+
+def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
+    """
+    Smart suspicious IP detection based on behavioral analytics and anomaly detection.
+    Optimized for performance with fewer database queries.
+
+    Args:
+        ip_address (str): The IP address to check
+        location (str): The location string
+        user_id (int, optional): The user ID
+        attempt_id (int, optional): Current authentication attempt ID
+
+    Returns:
+        bool: True if suspicious, False otherwise
+    """
+    if not ip_address:
+        return False
+
+    try:
+        import ipaddress
+        from datetime import datetime, timedelta, timezone
+        from sqlalchemy import func, desc, and_, case
+        from app import db, AuthenticationAttempt
+
+        now = datetime.now(timezone.utc)
+        past_day = now - timedelta(days=1)
+
+        # 1. QUICK CHECKS FIRST: Network validation checks (no DB queries)
+        try:
+            ip_obj = ipaddress.ip_address(ip_address)
+            if any([ip_obj.is_private, ip_obj.is_multicast, ip_obj.is_reserved, ip_obj.is_loopback]):
+                print(f"Suspicious IP: {ip_address} is in a special/private IP range")
+                return True
+        except ValueError:
+            # Invalid IP format
+            print(f"Suspicious IP: {ip_address} is not a valid IP format")
+            return True
+
+        # Skip further checks if we don't have user_id
+        if not user_id:
+            return False
+
+        # 2. SYSTEM-WIDE BEHAVIORAL ANALYSIS (fewer DB operations)
+
+        # Check system-wide data about this IP in a single query
+        ip_stats = db.session.query(
+            func.count(AuthenticationAttempt.id).label('total_attempts'),
+            func.count(func.distinct(AuthenticationAttempt.user_id)).label('distinct_users'),
+            func.sum(case([(AuthenticationAttempt.success == False, 1)], else_=0)).label('failed_attempts')
+        ).filter(
+            AuthenticationAttempt.ip_address == ip_address,
+            AuthenticationAttempt.timestamp >= past_day
+        ).first()
+
+        if ip_stats:
+            # High number of failed attempts from this IP across all users
+            if ip_stats.failed_attempts and ip_stats.failed_attempts > 10:
+                print(f"Suspicious IP: {ip_address} has {ip_stats.failed_attempts} failed login attempts")
+                return True
+
+            # IP is used by many different users in a short time (potential credential stuffing)
+            if ip_stats.distinct_users and ip_stats.distinct_users > 5:
+                print(f"Suspicious IP: {ip_address} used by {ip_stats.distinct_users} different users in 24 hours")
+                return True
+
+        # 3. USER-SPECIFIC BEHAVIORAL ANALYSIS
+
+        # Get recent successful logins for this user
+        recent_user_logins = db.session.query(
+            AuthenticationAttempt.location,
+            AuthenticationAttempt.timestamp,
+            func.extract('hour', AuthenticationAttempt.timestamp).label('hour'),
+            AuthenticationAttempt.id
+        ).filter(
+            AuthenticationAttempt.user_id == user_id,
+            AuthenticationAttempt.success == True,
+            AuthenticationAttempt.timestamp >= now - timedelta(days=30)
+        ).order_by(desc(AuthenticationAttempt.timestamp)).all()
+
+        # Skip further checks if not enough login history
+        if not recent_user_logins or len(recent_user_logins) < 3:
+            return False
+
+        # Extract location and time patterns
+        login_locations = {}
+        login_hours = {}
+
+        for login in recent_user_logins:
+            # Count locations
+            if login.location:
+                login_locations[login.location] = login_locations.get(login.location, 0) + 1
+
+            # Count hours
+            if login.hour is not None:
+                hour_val = int(login.hour)
+                login_hours[hour_val] = login_hours.get(hour_val, 0) + 1
+
+        total_logins = len(recent_user_logins)
+
+        # a. Location Anomaly Detection
+        if total_logins >= 5 and location:
+            # Check if this is a rarely used location for this user
+            location_count = login_locations.get(location, 0)
+            if location_count > 0:
+                location_percentage = (location_count / total_logins) * 100
+                if location_percentage < 5:
+                    print(f"Suspicious IP: Rare location for user (only {location_percentage:.1f}% of logins)")
+                    return True
+            # Or if it's a completely new location for a user with established patterns
+            elif len(login_locations) >= 2:
+                print(f"Suspicious IP: New location for user with established login patterns")
+                return True
+
+        # b. Impossible Travel Detection
+        if recent_user_logins and location:
+            last_login = recent_user_logins[0]  # Already ordered by desc timestamp
+            # Skip if it's the current login attempt
+            if attempt_id and last_login.id == attempt_id and len(recent_user_logins) > 1:
+                last_login = recent_user_logins[1]
+
+            if last_login and last_login.location and last_login.location != location:
+                hours_since_last_login = (now - last_login.timestamp).total_seconds() / 3600
+                # Simple travel time check - in production use geolocation APIs for distance
+                if hours_since_last_login < 1:
+                    print(f"Suspicious IP: Impossible travel detected ({last_login.location} to {location})")
+                    return True
+
+        # c. Time-based Anomaly Detection
+        if total_logins > 10 and login_hours:
+            current_hour = now.hour
+            if current_hour not in login_hours and total_logins > 20:
+                print(f"Suspicious IP: Login at unusual hour ({current_hour}:00) for this user")
+                return True
+
+        return False
+
+    except Exception as e:
+        # Log error but don't block login
+        print(f"Error in suspicious IP detection: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return False
+
 @app.route('/api/security/alerts', methods=['GET'])
 def get_security_alerts():
     try:
@@ -2029,48 +2424,139 @@ def get_security_alerts():
         per_page = request.args.get('per_page', 10, type=int)
 
         # Query alerts from authentication attempts
-        alerts = []
         attempts = AuthenticationAttempt.query.order_by(
             AuthenticationAttempt.timestamp.desc()
         ).paginate(page=page, per_page=per_page)
 
+        alerts = []
         for attempt in attempts.items:
-            severity = "High" if attempt.risk_score > 75 else "Medium" if attempt.risk_score > 40 else "Low"
-            
-            # Determine alert type based on conditions
+            # Initialize with a default alert type
+            alert_type = None
+            severity = "Low"
+
+            # Determine alert type and severity based on conditions
             if not attempt.success:
+                # Count recent failed attempts for this user
+                recent_failed_count = AuthenticationAttempt.query.filter(
+                    AuthenticationAttempt.user_id == attempt.user_id,
+                    AuthenticationAttempt.success == False,
+                    AuthenticationAttempt.timestamp >= attempt.timestamp - timedelta(hours=24)
+                ).count()
+
+                # Set failed login alert with severity based on failure count
                 alert_type = "Failed Login"
-            elif attempt.risk_score > 75:
-                alert_type = "Suspicious IP"
-            elif attempt.device_type and not AuthenticationAttempt.query.filter(
-                AuthenticationAttempt.device_type == attempt.device_type,
-                AuthenticationAttempt.timestamp < attempt.timestamp
-            ).first():
-                alert_type = "New Device"
-            elif attempt.location != "Unknown Location":
-                alert_type = "Location Change"
-            else:
-                alert_type = "Multiple Attempts"
-            
-            alerts.append({
-                'id': attempt.id,
-                'type': alert_type,
-                'user': attempt.user.username,
-                'details': f"{'Failed' if not attempt.success else 'Successful'} login attempt from {attempt.location} using {attempt.device_type}",
-                'time': attempt.timestamp.isoformat(),
-                'severity': severity,
-                'resolved': attempt.success
-            })
+                if recent_failed_count >= 5:
+                    severity = "High"
+                elif recent_failed_count >= 3:
+                    severity = "Medium"
+                else:
+                    severity = "Low"
+
+                # Check if this led to account lockout
+                if recent_failed_count >= 5:
+                    user = Users.query.get(attempt.user_id)
+                    if user and user.is_account_locked():
+                        alert_type = "Account Lockout"
+                        severity = "High"
+
+            # For successful logins, check various conditions
+            elif attempt.success:
+                # Check for high risk score
+                if attempt.risk_score > 75:
+                    alert_type = "High Risk Login"
+                    severity = "High"
+                elif attempt.risk_score > 40:
+                    alert_type = "Moderate Risk Login"
+                    severity = "Medium"
+
+                # Check for previous risk scores to detect increases
+                previous_attempt = AuthenticationAttempt.query.filter(
+                    AuthenticationAttempt.user_id == attempt.user_id,
+                    AuthenticationAttempt.success == True,
+                    AuthenticationAttempt.timestamp < attempt.timestamp
+                ).order_by(AuthenticationAttempt.timestamp.desc()).first()
+
+                if previous_attempt and previous_attempt.risk_score and attempt.risk_score > previous_attempt.risk_score + 30:
+                    alert_type = "Risk Score Increase"
+                    severity = "Medium"
+
+                # Check for IP-based alerts
+                previous_ips = AuthenticationAttempt.query.filter(
+                    AuthenticationAttempt.user_id == attempt.user_id,
+                    AuthenticationAttempt.success == True,
+                    AuthenticationAttempt.timestamp < attempt.timestamp
+                ).with_entities(AuthenticationAttempt.ip_address).distinct().all()
+
+                previous_ips_list = [ip[0] for ip in previous_ips]
+
+                if attempt.ip_address not in previous_ips_list:
+                    alert_type = "New IP Address"
+                    severity = "Low"
+
+                # Check if IP is suspicious
+                if is_suspicious_ip(attempt.ip_address, attempt.location):
+                    alert_type = "Suspicious IP"
+                    severity = "High"
+
+                # Check for location change
+                previous_location = AuthenticationAttempt.query.filter(
+                    AuthenticationAttempt.user_id == attempt.user_id,
+                    AuthenticationAttempt.success == True,
+                    AuthenticationAttempt.timestamp < attempt.timestamp
+                ).order_by(AuthenticationAttempt.timestamp.desc()).first()
+
+                if previous_location and previous_location.location != attempt.location:
+                    # Check if it's a rapid location change (within 3 hours)
+                    time_diff = attempt.timestamp - previous_location.timestamp
+                    if time_diff < timedelta(hours=3):
+                        alert_type = "Rapid Travel"
+                        severity = "High"
+                    else:
+                        alert_type = "Location Change"
+                        severity = "Medium"
+
+                # Check for new device
+                if attempt.device_type:
+                    previous_devices = AuthenticationAttempt.query.filter(
+                        AuthenticationAttempt.user_id == attempt.user_id,
+                        AuthenticationAttempt.success == True,
+                        AuthenticationAttempt.device_type == attempt.device_type,
+                        AuthenticationAttempt.timestamp < attempt.timestamp
+                    ).count()
+
+                    if previous_devices == 0:
+                        alert_type = "New Device"
+                        severity = "Low"
+
+                # Check for unusual login time (10 PM - 6 AM)
+                hour = attempt.timestamp.hour
+                if hour < 6 or hour >= 22:
+                    alert_type = "Unusual Time"
+                    severity = "Medium"
+
+            # Only add the alert if we assigned an alert type
+            if alert_type:
+                alerts.append({
+                    'id': attempt.id,
+                    'type': alert_type,
+                    'user': attempt.user.username,
+                    'details': f"{'Failed' if not attempt.success else 'Successful'} login attempt from {attempt.location or 'Unknown'} using {attempt.device_type or 'Unknown Device'}",
+                    'time': attempt.timestamp.isoformat(),
+                    'severity': severity,
+                    'resolved': attempt.success
+                })
 
         return jsonify({
             'alerts': alerts,
-            'total': attempts.total,
-            'pages': attempts.pages,
-            'current_page': attempts.page
+            'total': len(alerts),  # Updated to use actual filtered count
+            'pages': max(1, math.ceil(len(alerts) / per_page)),
+            'current_page': page
         })
 
     except Exception as e:
         print(f"Error fetching security alerts: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return jsonify({'error': 'Failed to fetch security alerts'}), 500
 
 @app.route('/api/security/stats', methods=['GET'])
@@ -2157,6 +2643,8 @@ with app.app_context():
     db.create_all()
     # Create admin user if it doesn't exist
     create_admin_user()
+    db.session.commit()
+    db.session.commit()
 
 if __name__ == '__main__':
     with app.app_context():

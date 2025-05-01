@@ -23,9 +23,12 @@ import {
 
 interface User {
   id: number
+  nationalId: number
   username: string
   firstName: string
+  middlename: string | null
   lastName: string
+  email: string
   role: string
   hasSecurityKey: boolean
   lastLogin: string | null
@@ -133,28 +136,44 @@ export default function UserDetailsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label>Middle Name</Label>
+                <Input value={user.middlename || 'N/A'} disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>National ID</Label>
+                <Input value={user.nationalId} disabled />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input value={user.email} disabled />
+              </div>
+              <div className="space-y-2">
                 <Label>Username</Label>
                 <Input value={user.username} disabled />
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Role</Label>
                 <Input value={user.role} disabled />
               </div>
-            </div>
-
-            <div>
-              <Label>Last Login</Label>
-              <Input 
-                value={user.lastLogin 
-                  ? new Date(user.lastLogin).toLocaleString('en-US', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short'
-                    })
-                  : 'Not available'
-                } 
-                disabled
-                className="mb-4" 
-              />
+              <div className="space-y-2">
+                <Label>Last Login</Label>
+                <Input
+                  value={user.lastLogin
+                    ? new Date(user.lastLogin).toLocaleString('en-US', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
+                      })
+                    : 'Not available'
+                  }
+                  disabled
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -187,7 +206,7 @@ export default function UserDetailsPage() {
                     className="bg-black hover:bg-black/90 text-white"
                     onClick={() => setShowRegistrationModal(true)}
                   >
-                    <Key className="h-4 w-4 mr-1" />
+                    <KeyRound className="h-4 w-4 mr-1" />
                     Register Security Key
                   </Button>
                 )}
@@ -207,26 +226,6 @@ export default function UserDetailsPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="p-3 bg-amber-50 rounded-md border border-amber-200">
-              <h3 className="text-amber-800 font-medium">Why Use a Security Key?</h3>
-              <p className="text-amber-700 text-sm mt-1">
-                Security keys provide significantly stronger protection than
-                passwords alone. Even if the password is compromised, attackers
-                cannot access the account without the physical security key.
-              </p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="p-3 bg-blue-50 rounded-md">
-                <h4 className="font-medium text-blue-800">Compatible Devices</h4>
-                <p className="text-blue-700 mt-1">
-                  YubiKeys, Google Titan Security Keys, and most FIDO2-compatible
-                  security keys
-                </p>
-              </div>
-            </div>
-          </div>
-
           <div className="flex justify-end space-x-4">
             <Button
               variant="outline"
@@ -267,8 +266,7 @@ export default function UserDetailsPage() {
                 </>
               ) : (
                 <>
-                  <KeyRound className="h-4 w-4 mr-1" />
-                  Register Security Key
+                  Start Registration
                 </>
               )}
             </Button>

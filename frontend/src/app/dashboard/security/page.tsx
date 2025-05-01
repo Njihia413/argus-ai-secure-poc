@@ -1,7 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AlertTriangle, Shield } from "lucide-react"
+import {
+  AlertTriangle,
+  Shield,
+  Clock,
+  MapPin,
+  Laptop,
+  UserX,
+  User,
+  Lock,
+  Globe,
+  AlertCircle,
+  ArrowDownUp
+} from "lucide-react"
 import { API_URL } from "@/app/utils/constants"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -61,70 +73,21 @@ const emptyStats: SecurityStats = {
     uniqueDevices: 0
   }
 }
-const columns: ColumnDef<SecurityAlert, unknown>[] = [
-  {
-    accessorKey: "type",
-    header: "Type",
-    cell: ({ row }: { row: { original: SecurityAlert } }) => {
-      const alert = row.original
-      return (
-        <div className="flex items-center">
-          <AlertTriangle
-            className={`h-4 w-4 mr-2 ${
-              alert.severity === "High"
-                ? "text-red-500"
-                : alert.severity === "Medium"
-                  ? "text-amber-500"
-                  : "text-green-500"
-            }`}
-          />
-          {alert.type}
-        </div>
-      )
-    }
-  },
-  {
-    accessorKey: "user",
-    header: "User"
-  },
-  {
-    accessorKey: "details",
-    header: "Details",
-  },
-  {
-    accessorKey: "time",
-    header: "Time",
-  },
-  {
-    accessorKey: "severity",
-    header: "Severity",
-    filterFn: (row, id, value) => {
-      return value === "" || row.getValue(id) === value
-    },
-    cell: ({ row }: { row: { original: SecurityAlert } }) => {
-      const alert = row.original
-      return (
-        <Badge
-          variant={
-            alert.severity === "High"
-              ? "destructive"
-              : alert.severity === "Medium"
-                ? "outline"
-                : "outline"
-          }
-          className={
-            alert.severity === "High"
-              ? "bg-red-50 text-red-700 border-red-200"
-              : alert.severity === "Medium"
-                ? "bg-amber-50 text-amber-700 border-amber-200"
-                : "bg-green-50 text-green-700 border-green-200"
-          }
-        >
-          {alert.severity}
-        </Badge>
-      )
-    }
-  }
+
+// Alert type options for filtering with non-empty values
+const alertTypeOptions = [
+  { label: "All Types", value: "all" }, // Changed from empty string to "all"
+  { label: "Failed Login", value: "Failed Login" },
+  { label: "New IP Address", value: "New IP Address" },
+  { label: "Suspicious IP", value: "Suspicious IP" },
+  { label: "Account Lockout", value: "Account Lockout" },
+  { label: "New Device", value: "New Device" },
+  { label: "Unusual Time", value: "Unusual Time" },
+  { label: "Location Change", value: "Location Change" },
+  { label: "Rapid Travel", value: "Rapid Travel" },
+  { label: "High Risk Login", value: "High Risk Login" },
+  { label: "Moderate Risk Login", value: "Moderate Risk Login" },
+  { label: "Admin Account Login", value: "Admin Account Login" }
 ]
 
 export default function SecurityPage() {
@@ -135,6 +98,126 @@ export default function SecurityPage() {
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
   const [table, setTable] = useState<Table<SecurityAlert> | null>(null)
+
+  // Column definitions with appropriate icons for each alert type
+  const columns: ColumnDef<SecurityAlert, unknown>[] = [
+    {
+      accessorKey: "type",
+      header: "Type",
+      filterFn: (row, id, value) => {
+        // Adjust filter logic for "all" value
+        return value === "all" || row.getValue(id) === value
+      },
+      cell: ({ row }: { row: { original: SecurityAlert } }) => {
+        const alert = row.original
+
+        // Select the appropriate icon based on the alert type
+        const getAlertIcon = (type: string) => {
+          switch(type) {
+            case "Failed Login":
+              return <UserX className="h-4 w-4 mr-2 text-red-500" />
+            case "New IP Address":
+              return <Globe className="h-4 w-4 mr-2 text-blue-500" />
+            case "Suspicious IP":
+              return <AlertTriangle className="h-4 w-4 mr-2 text-red-500" />
+            case "Account Lockout":
+              return <Lock className="h-4 w-4 mr-2 text-red-500" />
+            case "New Device":
+              return <Laptop className="h-4 w-4 mr-2 text-blue-500" />
+            case "Unusual Time":
+              return <Clock className="h-4 w-4 mr-2 text-amber-500" />
+            case "Location Change":
+              return <MapPin className="h-4 w-4 mr-2 text-amber-500" />
+            case "Rapid Travel":
+              return <ArrowDownUp className="h-4 w-4 mr-2 text-red-500" />
+            case "High Risk Login":
+              return <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+            case "Moderate Risk Login":
+              return <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
+            case "Admin Account Login":
+              return <User className="h-4 w-4 mr-2 text-blue-500" />
+            default:
+              return <Shield className="h-4 w-4 mr-2 text-gray-500" />
+          }
+        }
+
+        return (
+            <div className="flex items-center">
+              {getAlertIcon(alert.type)}
+              {alert.type}
+            </div>
+        )
+      }
+    },
+    {
+      accessorKey: "user",
+      header: "User"
+    },
+    {
+      accessorKey: "details",
+      header: "Details",
+    },
+    {
+      accessorKey: "time",
+      header: "Time",
+      cell: ({ row }) => {
+        // Format the timestamp for better readability
+        const isoTime = row.getValue("time") as string;
+        try {
+          const date = new Date(isoTime);
+          return date.toLocaleString();
+        } catch (e) {
+          return isoTime;
+        }
+      }
+    },
+    {
+      accessorKey: "severity",
+      header: "Severity",
+      filterFn: (row, id, value) => {
+        // Adjust filter logic for "all" value
+        return value === "all" || row.getValue(id) === value
+      },
+      cell: ({ row }: { row: { original: SecurityAlert } }) => {
+        const alert = row.original
+        return (
+            <Badge
+                variant={
+                  alert.severity === "High"
+                      ? "destructive"
+                      : alert.severity === "Medium"
+                          ? "outline"
+                          : "outline"
+                }
+                className={
+                  alert.severity === "High"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : alert.severity === "Medium"
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-green-50 text-green-700 border-green-200"
+                }
+            >
+              {alert.severity}
+            </Badge>
+        )
+      }
+    },
+    // {
+    //   accessorKey: "resolved",
+    //   header: "Status",
+    //   cell: ({ row }: { row: { original: SecurityAlert } }) => {
+    //     const alert = row.original
+    //     return (
+    //         <Badge
+    //             variant="outline"
+    //             className={alert.resolved ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}
+    //         >
+    //           {alert.resolved ? "Resolved" : "Unresolved"}
+    //         </Badge>
+    //     )
+    //   }
+    // }
+  ]
 
   // Handle table reference
   const handleTableInit = (tableInstance: Table<SecurityAlert>) => {
@@ -160,12 +243,12 @@ export default function SecurityPage() {
             'Authorization': `Bearer ${authToken}`
           }
         })
-        
+
         if (!alertsRes.ok) {
           const alertsError = await alertsRes.json()
           throw new Error(alertsError.error || 'Failed to fetch alerts')
         }
-        
+
         const alertsData = await alertsRes.json()
 
         // Fetch stats
@@ -195,91 +278,206 @@ export default function SecurityPage() {
     fetchData()
   }, [pageIndex, pageSize])
 
+  // Function to export alerts as CSV
+  const exportAlerts = () => {
+    if (!alerts.length) return;
+
+    const headers = ["Type", "User", "Details", "Time", "Severity", "Status"];
+    const csvData = alerts.map(alert => [
+      alert.type,
+      alert.user,
+      alert.details,
+      alert.time,
+      alert.severity,
+      alert.resolved ? "Resolved" : "Unresolved"
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `security-alerts-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Security Overview</h2>
-        <Button onClick={() => {}} className="bg-black hover:bg-black/90 text-white">
-          Export Report
-        </Button>
-      </div>
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Security Overview</h2>
+          <Button
+              onClick={exportAlerts}
+              className="bg-black hover:bg-black/90 text-white"
+              disabled={alerts.length === 0 || loading}
+          >
+            Export Report
+          </Button>
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">All Alerts</CardTitle>
-          </CardHeader>
-          <CardContent>
-           <div className="text-2xl font-bold">{alerts.length}</div>
-           <div className="mt-2 flex gap-2">
-             <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
-               {alerts.filter(a => a.severity === "High").length} High
-             </Badge>
-             <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-               {alerts.filter(a => a.severity === "Medium").length} Medium
-             </Badge>
-             <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-               {alerts.filter(a => a.severity === "Low").length} Low
-             </Badge>
-           </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">All Alerts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.alertStats.total || alerts.length}</div>
+              <div className="mt-2 flex gap-2">
+                <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                  {stats?.alertStats.bySeverity.High || alerts.filter(a => a.severity === "High").length} High
+                </Badge>
+                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                  {stats?.alertStats.bySeverity.Medium || alerts.filter(a => a.severity === "Medium").length} Medium
+                </Badge>
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  {stats?.alertStats.bySeverity.Low || alerts.filter(a => a.severity === "Low").length} Low
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Security Score</CardTitle>
-            <Shield className="h-4 w-4 text-teal-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.securityScore.current?.toFixed(1) || '0.0'}%</div>
-            <div className="mt-2">
-              <Progress value={stats?.securityScore.current || 0} className="h-2" />
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Based on security key adoption
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Security Score</CardTitle>
+              <Shield className="h-4 w-4 text-teal-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.securityScore.current?.toFixed(1) || '0.0'}%</div>
+              <div className="mt-2">
+                <Progress value={stats?.securityScore.current || 0} className="h-2" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Based on security key adoption
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader>
-           <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-         </CardHeader>
-         <CardContent>
-           <div className="text-2xl font-bold">{stats?.activeSessions.total || 0}</div>
-           <div className="mt-2 space-y-1">
-             {stats?.activeSessions.byDevice && Object.entries(stats.activeSessions.byDevice).map(([device, count]) => (
-               <div key={device} className="flex items-center justify-between text-xs">
-                 <span className="text-muted-foreground">{device}</span>
-                 <span className="font-medium">{count}</span>
-               </div>
-             ))}
-           </div>
-           <p className="text-xs text-muted-foreground mt-2">
-             Across {stats?.activeSessions.uniqueDevices || 0} unique devices
-           </p>
-         </CardContent>
-        </Card>
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.activeSessions.total || 0}</div>
+              <div className="mt-2 space-y-1 max-h-20 overflow-auto">
+                {stats?.activeSessions.byDevice && Object.entries(stats.activeSessions.byDevice).map(([device, count]) => (
+                    <div key={device} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{device}</span>
+                      <span className="font-medium">{count}</span>
+                    </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Across {stats?.activeSessions.uniqueDevices || 0} unique devices
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Recent Security Alerts</CardTitle>
+            <CardTitle>Security Alerts</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="text-center py-8">Loading security alerts...</div>
+                <div className="text-center py-8">Loading security alerts...</div>
             ) : error ? (
-              <div className="text-center py-8 text-red-500">{error}</div>
+                <div className="text-center py-8 text-red-500">{error}</div>
             ) : (
-              <div className="space-y-4">
-                {/* DataTable */}
-                <SecurityDataTable
-                  columns={columns}
-                  data={alerts}
-                  onTableInit={handleTableInit}
-                />
-              </div>
+                <div className="space-y-4">
+                  {/* Filters for the DataTable */}
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <div className="flex flex-wrap space-x-2 gap-y-2">
+                      <Select
+                          value={table ? (table.getColumn("severity")?.getFilterValue() as string || "all") : "all"}
+                          onValueChange={(value) => {
+                            // Adjust filter logic to handle "all" value
+                            table?.getColumn("severity")?.setFilterValue(value === "all" ? undefined : value)
+                          }}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filter by severity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Severities</SelectItem>
+                          <SelectItem value="High">High</SelectItem>
+                          <SelectItem value="Medium">Medium</SelectItem>
+                          <SelectItem value="Low">Low</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                          value={table ? (table.getColumn("type")?.getFilterValue() as string || "all") : "all"}
+                          onValueChange={(value) => {
+                            // Adjust filter logic to handle "all" value
+                            table?.getColumn("type")?.setFilterValue(value === "all" ? undefined : value)
+                          }}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filter by type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {alertTypeOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {table && alerts.length > 0 && (
+                        <div className="text-sm text-muted-foreground">
+                          Showing {table.getFilteredRowModel().rows.length} of {alerts.length} alerts
+                        </div>
+                    )}
+                  </div>
+
+                  {/* DataTable */}
+                  <SecurityDataTable
+                      columns={columns}
+                      data={alerts}
+                      onTableInit={handleTableInit}
+                  />
+
+                  {/* Manual pagination control */}
+                  {alerts.length > 0 && !loading && (
+                      <div className="flex items-center justify-between py-4">
+                        <div className="flex items-center space-x-2">
+                    <span className="text-sm text-muted-foreground">
+                      Page {pageIndex + 1} of {Math.ceil((stats?.alertStats.total || alerts.length) / pageSize)}
+                    </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                              disabled={pageIndex === 0}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPageIndex(pageIndex + 1)}
+                              disabled={(pageIndex + 1) * pageSize >= (stats?.alertStats.total || alerts.length)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                  )}
+
+                  {alerts.length === 0 && !loading && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No security alerts found
+                      </div>
+                  )}
+                </div>
             )}
           </CardContent>
         </Card>

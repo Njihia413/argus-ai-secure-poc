@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import React from "react"
 import { API_URL } from "@/app/utils/constants"
-import { 
+import {
   BarChart3,
   Shield,
   Bell,
@@ -95,12 +95,20 @@ interface DashboardStats {
   failedChange: number
 }
 
+interface RiskTrend {
+  name: string;
+  riskScore: number;
+  attemptCount: number;
+}
+
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([])
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([])
   const [locationStats, setLocationStats] = useState<LocationStat[]>([])
   const [deviceStats, setDeviceStats] = useState<DeviceStat[]>([])
+  const [riskTrend, setRiskTrend] = useState<RiskTrend[]>([]);
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -150,7 +158,7 @@ export default function DashboardPage() {
           console.log('Total login attempts:', loginData.attempts.length)
         }
         setLoginAttempts(loginData.attempts)
-        
+
         // Fetch security metrics
         const metricsResponse = await fetch(`${API_URL}/security-metrics`, { headers })
         if (!metricsResponse.ok) {
@@ -174,6 +182,14 @@ export default function DashboardPage() {
         }
         const locationData = await locationResponse.json()
         setLocationStats(locationData.locationStats)
+
+        const riskTrendResponse = await fetch(`${API_URL}/risk-score-trend`, { headers });
+        if (!riskTrendResponse.ok) {
+          throw new Error('Failed to fetch risk score trend');
+        }
+        const riskTrendData = await riskTrendResponse.json();
+        setRiskTrend(riskTrendData.riskTrend);
+
       } catch (error) {
         console.error('Error fetching dashboard data:', error)
         // setError(error instanceof Error ? error.message : 'An error occurred') // Allow rendering other charts even if one fetch fails
@@ -190,6 +206,16 @@ export default function DashboardPage() {
     if (score > 75) return "#dc2626"; // Red for High Risk
     if (score > 40) return "#f59e0b"; // Amber for Medium Risk
     return "#16a34a"; // Green for Low Risk
+  };
+
+  const formatRiskScore = (score) => {
+    if (typeof score === 'number') {
+      return score.toFixed(1);
+    } else if (score !== undefined && score !== null && !isNaN(parseFloat(score))) {
+      return parseFloat(score).toFixed(1);
+    } else {
+      return "N/A";
+    }
   };
 
   return (
@@ -375,72 +401,91 @@ export default function DashboardPage() {
           <CardContent>
             <div className="h-[300px]">
               <ChartErrorBoundary>
-              {isLoading ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Loading risk score data...
-                </div>
-              ) : error ? (
-                <div className="h-full flex items-center justify-center text-red-500">
-                  {error}
-                </div>
-              ) : loginAttempts.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No risk score data available
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                   <BarChart
-                   data={loginAttempts.length > 0 ? loginAttempts : [{ name: 'No data', riskScore: 0 }]}
-                   margin={{
-                  top: 5,
-                  right: 10,
-                  left: 10,
-                  bottom: 0,
-                }}
-              >
-                <XAxis
-                  dataKey="name"
-                  stroke="#888888"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                   stroke="#888888"
-                   fontSize={12}
-                   tickLine={false}
-                   axisLine={false}
-                   tickFormatter={(value: number) => value.toString()}
-                   allowDecimals={false}
-                   domain={[0, 100]}
-                   ticks={[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
-                   interval={0}
-                />
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <Bar
-                   dataKey="riskScore"
-                   name="Risk Score"
-                   isAnimationActive={false}
-                   radius={[4, 4, 0, 0]}
-                   activeBar={{ fill: 'none' }}
-                >
-                   {loginAttempts.map((entry, index) => (
-                     <Cell
-                       key={`cell-${index}`}
-                       fill={getRiskColor(entry.riskScore)}
-                     />
-                   ))}
-                </Bar>
-                <Tooltip
-                  formatter={(value: number) => [
-                    value.toFixed(1),
-                    "Risk Score"
-                  ]}
-                  labelFormatter={(label: string) => `${label}`}
-                />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+                {isLoading ? (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      Loading risk score data...
+                    </div>
+                ) : error ? (
+                    <div className="h-full flex items-center justify-center text-red-500">
+                      {error}
+                    </div>
+                ) : riskTrend?.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      No risk score data available
+                    </div>
+                ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                          data={riskTrend?.length > 0 ? riskTrend.map(item => ({
+                            ...item,
+                            // Ensure riskScore is a number
+                            riskScore: typeof item.riskScore === 'number' ? item.riskScore :
+                                !isNaN(parseFloat(item.riskScore)) ? parseFloat(item.riskScore) : 0
+                          })) : [{ name: 'No data', riskScore: 0, attemptCount: 0 }]}
+                          margin={{
+                            top: 5,
+                            right: 10,
+                            left: 10,
+                            bottom: 0,
+                          }}
+                      >
+                        <XAxis
+                            dataKey="name"
+                            stroke="#888888"
+                            fontSize={12}
+                            tickLine={false}
+                            axisLine={false}
+                        />
+                        <YAxis
+                            stroke="#888888"
+                            fontSize={12}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(value: number) => value.toString()}
+                            allowDecimals={false}
+                            domain={[0, 100]}
+                            ticks={[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
+                            interval={0}
+                        />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <Bar
+                            dataKey="riskScore"
+                            name="Risk Score"
+                            isAnimationActive={false}
+                            radius={[4, 4, 0, 0]}
+                            activeBar={{ fill: 'none' }}
+                        >
+                          {(riskTrend || []).map((entry, index) => (
+                              <Cell
+                                  key={`cell-${index}`}
+                                  fill={getRiskColor(typeof entry.riskScore === 'number' ? entry.riskScore :
+                                      !isNaN(parseFloat(entry.riskScore)) ? parseFloat(entry.riskScore) : 0)}
+                              />
+                          ))}
+                        </Bar>
+                        <Tooltip
+                            formatter={(value: any) => [
+                              formatRiskScore(value),
+                              "Risk Score"
+                            ]}
+                            labelFormatter={(label: string) => `${label}`}
+                            content={({ active, payload, label }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                    <div className="bg-white p-2 border border-gray-200 shadow-md text-sm">
+                                      <p className="font-bold">{label}</p>
+                                      <p>Average Risk Score: {formatRiskScore(data.riskScore)}</p>
+                                      <p>Login Attempts: {data.attemptCount || 0}</p>
+                                    </div>
+                                );
+                              }
+                              return null;
+                            }}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                )}
               </ChartErrorBoundary>
             </div>
             {/* Custom Legend for Risk Score Colors */}

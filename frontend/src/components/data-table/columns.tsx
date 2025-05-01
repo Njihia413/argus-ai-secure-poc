@@ -16,9 +16,12 @@ import { useRouter } from "next/navigation"
 
 export type User = {
   id: number
+  nationalId: string
   username: string
   firstName: string
+  middlename: string | null
   lastName: string
+  email: string
   role: string
   hasSecurityKey: boolean
   lastLogin: string | null
@@ -28,18 +31,28 @@ export type User = {
 
 export const columns: ColumnDef<User>[] = [
   {
-    accessorFn: row => `${row.firstName} ${row.lastName}`, // This enables global search on full name
-    id: "fullName",
-    header: "",
-    enableHiding: true,
-  },
-  {
     accessorKey: "firstName",
     header: "First Name",
   },
   {
+    accessorKey: "middlename",
+    header: "Middle Name",
+    cell: ({ row }) => {
+      const middlename = row.getValue("middlename")
+      return middlename || "—"
+    },
+  },
+  {
     accessorKey: "lastName",
     header: "Last Name",
+  },
+  {
+    accessorKey: "nationalId",
+    header: "National ID",
+  },
+  {
+    accessorKey: "email",
+    header: "Email",
   },
   {
     accessorKey: "role",
