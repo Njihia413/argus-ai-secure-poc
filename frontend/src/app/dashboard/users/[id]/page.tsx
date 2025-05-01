@@ -65,7 +65,11 @@ export default function UserDetailsPage() {
   const fetchUserDetails = async (authToken: string) => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${API_URL}/users/${params.id}`, {
+      interface UserResponse {
+        user: User;
+      }
+
+      const response = await axios.get<UserResponse>(`${API_URL}/users/${params.id}`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },

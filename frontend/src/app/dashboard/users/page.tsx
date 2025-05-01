@@ -108,7 +108,7 @@ export default function UsersPage() {
   const fetchUsers = async (authToken: string) => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${API_URL}/users`, {
+      const response = await axios.get<{ users: User[] }>(`${API_URL}/users`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
