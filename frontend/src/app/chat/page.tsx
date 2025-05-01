@@ -2,46 +2,59 @@
 
 import { modelID } from "@/ai/providers";
 import { useChat } from "@ai-sdk/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from 'sonner';
 import { Textarea } from "@/components/textarea";
 import { ProjectOverview } from "@/components/project-overview";
 import { Messages } from "@/components/messages";
 import { Header } from "@/components/header";
-// Removed AvailableModels import from here, it's not needed for state typing
-// Removed duplicate modelID import
+import {
+  checkSecurityKeyStatus,
+  isWebUSBSupported
+} from "@/app/utils/webauthn";
 
 // Type definitions
 interface UserData {
+  id: string;
   username: string;
   firstName: string;
   lastName: string;
   hasSecurityKey: boolean;
-  role?: string; // Assuming role might be available
+  securityKeyAuthenticated?: boolean;
+  role?: string;
+  authToken?: string;
 }
 
 // Type for model dictionaries - make it a partial record to allow subsets of models
 type ModelDict = Partial<Record<modelID, string>>;
 
-// Define Model Lists
+// Define Model Lists - Use model IDs as the display names
 const ALL_MODELS = {
-  "llama-3.1-8b-instant": "A fast cheap model",
-  "deepseek-r1-distill-llama-70b": "A reasoning model",
-  "llama-3.3-70b-versatile": "A large model",
+  "llama-3.1-8b-instant": "llama-3.1-8b-instant",
+  "deepseek-r1-distill-llama-70b": "deepseek-r1-distill-llama-70b",
+  "llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
 };
 
 const RESTRICTED_MODELS: ModelDict = {
-  "llama-3.1-8b-instant": "Default Model",
+  "llama-3.1-8b-instant": "llama-3.1-8b-instant",
 };
 
 const DEFAULT_MODEL_ID: modelID = "llama-3.1-8b-instant";
 
-export default function Page() {
+// How frequently to check security key status (in milliseconds)
+const KEY_CHECK_INTERVAL = 3000; // Every 3 seconds
+
+export default function ChatPage() {
   const router = useRouter();
   const [userData, setUserData] = useState<UserData | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelDict>(RESTRICTED_MODELS);
   const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
+  const [securityKeyStatus, setSecurityKeyStatus] = useState<boolean>(false);
+  const securityKeyDetectionInterval = useRef<NodeJS.Timeout | null>(null);
+  const keyCheckInProgress = useRef<boolean>(false);
+  const initialLoadComplete = useRef<boolean>(false);
+  const webUSBSupported = useRef<boolean>(false);
 
   const {
     messages,
@@ -60,6 +73,12 @@ export default function Page() {
 
   const isLoading = status === "streaming" || status === "submitted";
 
+  // Check WebUSB support on initial load
+  useEffect(() => {
+    webUSBSupported.current = isWebUSBSupported();
+    console.log("WebUSB supported:", webUSBSupported.current);
+  }, []);
+
   // Check authentication status on page load
   useEffect(() => {
     const checkAuth = async () => {
@@ -69,105 +88,162 @@ export default function Page() {
         const userData = storedUser ? JSON.parse(storedUser) : null;
 
         if (!userData || !userData.username) {
-          // For demo purposes, create a mock user if none exists
-          const mockUser: UserData = {
-            username: 'demo@example.com',
-            firstName: 'Demo',
-            lastName: 'User',
-            hasSecurityKey: false
-          };
-          sessionStorage.setItem('user', JSON.stringify(mockUser));
-          setUserData(mockUser);
+          // Redirect to login page if not authenticated
+          router.push("/login");
+          return;
+        }
+
+        setUserData(userData as UserData);
+
+        // Check if the user logged in with a security key
+        const isSecurityKeyAuth = userData.securityKeyAuthenticated === true;
+
+        // Set initial security key status based on auth method
+        setSecurityKeyStatus(isSecurityKeyAuth);
+
+        // Set initial models based on auth method
+        if (isSecurityKeyAuth) {
+          setAvailableModels(ALL_MODELS);
+          // Only show toast on initial page load
+          if (!initialLoadComplete.current) {
+            toast.success("Security Key: Connected - Full model access");
+            initialLoadComplete.current = true;
+          }
         } else {
-          setUserData(userData as UserData);
+          setAvailableModels(RESTRICTED_MODELS);
+          setSelectedModel(DEFAULT_MODEL_ID);
         }
       } catch (err) {
         console.error('Error checking authentication:', err);
-        // Create mock user instead of redirecting for demo purposes
-        const mockUser: UserData = {
-          username: 'demo@example.com',
-          firstName: 'Demo',
-          lastName: 'User',
-          hasSecurityKey: false
-        };
-        sessionStorage.setItem('user', JSON.stringify(mockUser));
-        setUserData(mockUser);
+        toast.error('Session error. Please login again.');
+        router.push("/login");
       }
     };
 
     checkAuth();
-  }, []); // End of initial auth check useEffect
-// Set initial models based on user's security key status
-useEffect(() => {
-  if (!userData?.hasSecurityKey) {
-    setAvailableModels(RESTRICTED_MODELS);
-    setSelectedModel(DEFAULT_MODEL_ID);
-    return;
-  }
+  }, [router]);
 
-  // Get initial state from localStorage or default to connected
-  const storedKeyState = localStorage.getItem('securityKeyConnected');
-  const initialKeyState = storedKeyState === null ? true : storedKeyState === 'true';
-  
-  // Set initial models based on stored state
-  if (initialKeyState) {
-    setAvailableModels(ALL_MODELS);
-  } else {
-    setAvailableModels(RESTRICTED_MODELS);
-    setSelectedModel(DEFAULT_MODEL_ID);
-  }
-
-  // Function to update state based on key status
-  const updateKeyState = (isConnected: boolean) => {
-    localStorage.setItem('securityKeyConnected', String(isConnected));
-    
-    if (isConnected) {
-      setAvailableModels(ALL_MODELS);
-      toast.success("Security key connected. Full model access restored.");
-    } else {
-      setAvailableModels(RESTRICTED_MODELS);
+  // Force update selected model when available models change
+  useEffect(() => {
+    // If the currently selected model isn't available in RESTRICTED_MODELS
+    // and the security key is disconnected, reset to default model
+    if (!RESTRICTED_MODELS[selectedModel] && !securityKeyStatus) {
+      console.log("Forcing model reset to default because current selection is unavailable");
       setSelectedModel(DEFAULT_MODEL_ID);
-      toast.error("Security key disconnected. Access restricted to default model.");
     }
-  };
+  }, [availableModels, selectedModel, securityKeyStatus]);
 
-  // Handle keypress to simulate key removal/insertion (Alt + K)
-  const handleKeyPress = (event: KeyboardEvent) => {
-    if (event.altKey && event.key === 'k') {
-      const newKeyState = !JSON.parse(localStorage.getItem('securityKeyConnected') || 'true');
-      updateKeyState(newKeyState);
+  // Monitor security key connection status
+  useEffect(() => {
+    if (!userData?.hasSecurityKey || !userData?.securityKeyAuthenticated) {
+      return; // Don't monitor if user doesn't have a security key or didn't authenticate with one
     }
-  };
 
-  // Handle storage changes from other tabs
-  const handleStorageChange = (e: StorageEvent) => {
-    if (e.key === 'securityKeyConnected') {
-      const newState = e.newValue === 'true';
-      setAvailableModels(newState ? ALL_MODELS : RESTRICTED_MODELS);
-      if (!newState) {
-        setSelectedModel(DEFAULT_MODEL_ID);
-        toast.error("Security key disconnected in another tab. Access restricted to default model.");
+    console.log("Setting up security key monitoring");
+
+    // Helper function to check key status
+    const checkKeyStatus = async () => {
+      // Prevent multiple simultaneous checks
+      if (keyCheckInProgress.current) return;
+
+      keyCheckInProgress.current = true;
+
+      try {
+        const isConnected = await checkSecurityKeyStatus(userData.username);
+        console.log("Security key status check result:", isConnected, "Current state:", securityKeyStatus);
+
+        // Only update state if the status has changed
+        if (isConnected !== securityKeyStatus) {
+          console.log("Security key status changed from", securityKeyStatus, "to", isConnected);
+
+          // Update status first
+          setSecurityKeyStatus(isConnected);
+
+          if (!isConnected) {
+            // When disconnected, restrict models and reset selection
+            toast.error("Security key disconnected. Access restricted to default model.");
+            setAvailableModels(RESTRICTED_MODELS);
+            setSelectedModel(DEFAULT_MODEL_ID);
+          } else {
+            // When connected, expand available models
+            toast.success("Security key connected. Full model access restored.");
+            setAvailableModels(ALL_MODELS);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking security key status:', error);
+      } finally {
+        keyCheckInProgress.current = false;
       }
-    }
-  };
+    };
 
-  // Add event listeners
-  window.addEventListener('keydown', handleKeyPress);
-  window.addEventListener('storage', handleStorageChange);
+    // Run initial check
+    checkKeyStatus();
 
-  // Clear key state on page unload
-  window.addEventListener('beforeunload', () => {
-    localStorage.removeItem('securityKeyConnected');
-  });
+    // Set up interval for periodic checking
+    securityKeyDetectionInterval.current = setInterval(checkKeyStatus, KEY_CHECK_INTERVAL);
 
-  // Clean up
-  return () => {
-    window.removeEventListener('keydown', handleKeyPress);
-    window.removeEventListener('storage', handleStorageChange);
-  };
-}, [userData]);
+    // Add keyboard shortcut for simulating key removal/insertion (Alt + K)
+    // This is for development/demo purposes only
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === 'k') {
+        const newKeyState = !securityKeyStatus;
+        console.log("Simulating security key state change:", newKeyState);
 
+        setSecurityKeyStatus(newKeyState);
 
+        if (!newKeyState) {
+          // Force immediate model restriction
+          console.log("Restricting models to:", Object.keys(RESTRICTED_MODELS));
+          setAvailableModels(RESTRICTED_MODELS);
+          setSelectedModel(DEFAULT_MODEL_ID);
+          toast.error("Security key disconnected. Access restricted to default model.");
+        } else {
+          console.log("Expanding models to:", Object.keys(ALL_MODELS));
+          setAvailableModels(ALL_MODELS);
+          toast.success("Security key connected. Full model access restored.");
+        }
+
+        // Update localStorage for simulation
+        localStorage.setItem('securityKeyConnected', newKeyState ? 'true' : 'false');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+
+    // Handle storage changes from other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'securityKeyConnected') {
+        const newState = e.newValue === 'true';
+        console.log("Security key status changed in another tab:", newState);
+
+        if (newState !== securityKeyStatus) {
+          setSecurityKeyStatus(newState);
+
+          if (!newState) {
+            // Force immediate model restriction
+            setAvailableModels(RESTRICTED_MODELS);
+            setSelectedModel(DEFAULT_MODEL_ID);
+            toast.error("Security key disconnected in another tab. Access restricted.");
+          } else {
+            setAvailableModels(ALL_MODELS);
+            toast.success("Security key connected. Full model access restored.");
+          }
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // Cleanup
+    return () => {
+      if (securityKeyDetectionInterval.current) {
+        clearInterval(securityKeyDetectionInterval.current);
+      }
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [userData, securityKeyStatus]);
 
   if (error) return <div>{error.message}</div>;
 
@@ -197,7 +273,7 @@ useEffect(() => {
             onSubmit={handleSubmit}
             className="pb-8 bg-white dark:bg-black w-full max-w-xl mx-auto px-4 sm:px-0"
         >
-          {/* Pass availableModels down */}
+          {/* Pass availableModels down to Textarea component */}
           <Textarea
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
@@ -206,10 +282,9 @@ useEffect(() => {
               isLoading={isLoading}
               status={status}
               stop={stop}
-              models={availableModels} // Pass the dynamic models list
+              models={availableModels}
           />
         </form>
       </div>
   );
 }
-

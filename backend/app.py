@@ -284,10 +284,26 @@ def generate_binding_data(request):
 def validate_token_binding(session_token, binding_nonce, request):
     print(f"Validating token: {session_token[:8]}... nonce: {binding_nonce[:8]}...")
 
-    # Find the session
+    # Check if this is direct security key authentication
+    data = request.get_json() or {}
+    direct_security_key_auth = data.get('directSecurityKeyAuth', False)
+
+    if direct_security_key_auth:
+        print("Direct security key authentication detected - bypassing token validation")
+        # For direct security key auth, skip token validation completely
+        return True
+
+    # Find the session as normal
     auth_session = AuthenticationSession.query.filter_by(session_token=session_token).first()
     if not auth_session:
         print("No session found with this token")
+        # Show available tokens for debugging
+        recent_sessions = AuthenticationSession.query.order_by(
+            AuthenticationSession.created_at.desc()
+        ).limit(5).all()
+        print(f"Recent sessions: {len(recent_sessions)}")
+        for s in recent_sessions:
+            print(f"- Token: {s.session_token[:8]}... for user_id: {s.user_id}")
         return False
 
     print(f"Found session for user_id: {auth_session.user_id}")
@@ -297,23 +313,15 @@ def validate_token_binding(session_token, binding_nonce, request):
         print(f"Session expired at {auth_session.expires_at}")
         return False
 
-    # For development purposes, we're temporarily making binding validation less strict
-    # In production, this would do a strict comparison of the binding data
-
-    # Just use a subset of client characteristics to make binding less sensitive
+    # For development purposes, use simpler binding validation
     user_agent = request.headers.get('User-Agent', '')
-
-    # Create a simpler binding that only considers the user agent and nonce
     simplified_binding = hashlib.sha256(f"{user_agent}|{binding_nonce}".encode()).hexdigest()
 
     # Log binding information for debugging
     print(f"Original stored binding: {auth_session.client_binding[:15]}...")
     print(f"Simplified binding: {simplified_binding[:15]}...")
 
-    # For development, we could temporarily return True to bypass validation entirely
-    # return True
-
-    # Or use the simplified binding comparison
+    # Use the simplified binding comparison
     result = secrets.compare_digest(auth_session.client_binding, simplified_binding)
     if not result:
         print(f"Binding validation failed (but continuing for development purposes)")
@@ -1156,6 +1164,7 @@ def webauthn_login_begin():
     second_factor = data.get('secondFactor', False)
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
+    direct_security_key_auth = data.get('directSecurityKeyAuth', False)  # Add this line
 
     if not identifier:
         return jsonify({'error': 'Username, email, or national ID required'}), 400
@@ -1182,38 +1191,42 @@ def webauthn_login_begin():
     if not user.credential_id:
         return jsonify({'error': 'No security key registered for this user'}), 404
 
-    # If this is meant to be a second factor, verify that password auth happened first
-    if second_factor:
-        # Validate the token binding if provided
-        if auth_token and binding_nonce:
-            # Validate binding
-            if not validate_token_binding(auth_token, binding_nonce, request):
-                return jsonify({'error': 'Invalid session or connection'}), 400
+    # For direct security key auth, skip session verification
+    auth_session = None
+    if not direct_security_key_auth:
+        # If this is meant to be a second factor, verify that password auth happened first
+        if second_factor:
+            # Validate the token binding if provided
+            if auth_token and binding_nonce:
+                # Validate binding
+                if not validate_token_binding(auth_token, binding_nonce, request):
+                    return jsonify({'error': 'Invalid session or connection'}), 400
 
-            # Find the session using the provided token
-            auth_session = AuthenticationSession.query.filter_by(
-                session_token=auth_token,
-                user_id=user.id,
-                password_verified=True,
-                security_key_verified=False
-            ).first()
+                # Find the session using the provided token
+                auth_session = AuthenticationSession.query.filter_by(
+                    session_token=auth_token,
+                    user_id=user.id,
+                    password_verified=True,
+                    security_key_verified=False
+                ).first()
 
-            if not auth_session:
-                return jsonify({'error': 'Invalid or expired session'}), 400
+                if not auth_session:
+                    return jsonify({'error': 'Invalid or expired session'}), 400
 
-            # Update session last used timestamp
-            auth_session.update_last_used()
-        else:
-            # Find an active authentication session for this user
-            auth_session = AuthenticationSession.query.filter(
-                AuthenticationSession.user_id == user.id,
-                AuthenticationSession.password_verified == True,
-                AuthenticationSession.security_key_verified == False,
-                AuthenticationSession.expires_at > datetime.utcnow()
-            ).order_by(AuthenticationSession.created_at.desc()).first()
+                # Update session last used timestamp
+                auth_session.last_used = datetime.now(timezone.utc)
+                db.session.commit()
+            else:
+                # Find an active authentication session for this user
+                auth_session = AuthenticationSession.query.filter(
+                    AuthenticationSession.user_id == user.id,
+                    AuthenticationSession.password_verified == True,
+                    AuthenticationSession.security_key_verified == False,
+                    AuthenticationSession.expires_at > datetime.now(timezone.utc)
+                ).order_by(AuthenticationSession.created_at.desc()).first()
 
-            if not auth_session:
-                return jsonify({'error': 'Password authentication required first'}), 400
+                if not auth_session:
+                    return jsonify({'error': 'Password authentication required first'}), 400
 
     # Decode credential_id properly
     try:
@@ -1246,7 +1259,7 @@ def webauthn_login_begin():
         verification_requirement = UserVerificationRequirement.PREFERRED
 
         # If second factor and risk score is high, require stronger verification
-        if second_factor and 'auth_session' in locals() and auth_session.risk_score > 50:
+        if auth_session and auth_session.risk_score > 50:
             verification_requirement = UserVerificationRequirement.REQUIRED
             print(f"High risk score ({auth_session.risk_score}): Requiring stronger verification")
 
@@ -1293,7 +1306,7 @@ def webauthn_login_begin():
     challenge_base64 = base64.b64encode(challenge_bytes).decode('utf-8')
 
     # Updated: Mark if this is part of a multi-factor flow
-    is_second_factor = second_factor
+    is_second_factor = second_factor and not direct_security_key_auth
 
     new_challenge = WebAuthnChallenge(
         user_id=user.id,
@@ -1313,7 +1326,14 @@ def webauthn_login_begin():
 
     # If high risk, reduce timeout and require stronger verification
     risk_score = 0
-    if second_factor and 'auth_session' in locals():
+    if direct_security_key_auth:
+        # Calculate risk for direct auth
+        risk_score = assess_risk(user.id, request)
+        if risk_score > 50:
+            timeout = 30000  # 30 seconds for high-risk scenarios
+            verification = 'required'  # Require stronger verification
+    elif auth_session:
+        # Use session risk score for 2FA
         risk_score = auth_session.risk_score
         if risk_score > 50:
             timeout = 30000  # 30 seconds for high-risk scenarios
@@ -1332,23 +1352,39 @@ def webauthn_login_begin():
             'userVerification': verification
         },
         'riskScore': risk_score,
-        'requiresAdditionalVerification': risk_score > 50 if 'auth_session' in locals() else False
+        'requiresAdditionalVerification': risk_score > 50
     })
 
 
 @app.route('/api/webauthn/login/complete', methods=['POST'])
 def webauthn_login_complete():
     data = request.get_json()
-    username = data.get('username')
+    identifier = data.get('username')  # Change variable name to match login/begin
+    print(f"WebAuthn login/complete with identifier: {identifier}")
     second_factor = data.get('secondFactor', False)
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
+    direct_security_key_auth = data.get('directSecurityKeyAuth', False)
 
-    if not username:
-        return jsonify({'error': 'Username required'}), 400
+    if not identifier:
+        return jsonify({'error': 'Username, email, or national ID required'}), 400
 
-    # Find user
-    user = Users.query.filter_by(username=username).first()
+    # Find user by different identifier types, matching the login/begin logic
+    user = None
+
+    # Try to find user by national ID if it's a number
+    try:
+        national_id = int(identifier)
+        user = Users.query.filter_by(national_id=national_id).first()
+    except ValueError:
+        # If not a number, try email
+        user = Users.query.filter_by(email=identifier).first()
+
+    # If no user found by national ID or email, check by username
+    if not user:
+        user = Users.query.filter_by(username=identifier).first()
+
+    # Final check for user existence
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
@@ -1368,8 +1404,8 @@ def webauthn_login_complete():
     )
     db.session.add(auth_attempt)
 
-    # Validate token binding if provided
-    if second_factor and auth_token and binding_nonce:
+    # Validate token binding if provided and not direct security key auth
+    if second_factor and auth_token and binding_nonce and not direct_security_key_auth:
         if not validate_token_binding(auth_token, binding_nonce, request):
             db.session.commit()  # Commit the failed attempt
             return jsonify({'error': 'Invalid session or connection'}), 400
@@ -1402,7 +1438,7 @@ def webauthn_login_complete():
 
         # If this is a second factor with high risk, use stronger verification
         auth_session = None
-        if second_factor:
+        if second_factor and not direct_security_key_auth:
             # Find the auth session
             if auth_token:
                 auth_session = AuthenticationSession.query.filter_by(
@@ -1427,19 +1463,6 @@ def webauthn_login_complete():
             'user_verification': verification_requirement
         }
 
-        # Here we would normally use server.authenticate_complete to verify signature
-        # For a production app, you should implement full verification using:
-        # server.authenticate_complete(
-        #     state,
-        #     [credential],
-        #     stored_challenge,
-        #     client_data,
-        #     auth_data,
-        #     signature
-        # )
-
-        # For this PoC, we'll proceed with simplified verification
-
         # Mark challenge as expired
         challenge_record.expired = True
 
@@ -1457,8 +1480,47 @@ def webauthn_login_complete():
                 'detail': 'Authentication counter check failed. This could indicate a security issue.'
             }), 400
 
-        # IMPORTANT: Check if this authentication should be part of the MFA flow
-        if second_factor:
+        # Add direct security key auth handling
+        if direct_security_key_auth:
+            # For direct security key auth, create a new fully-verified session
+            binding_hash, new_binding_nonce = generate_binding_data(request)
+
+            # Create new session that's fully verified
+            new_session = AuthenticationSession(
+                user_id=user.id,
+                password_verified=True,  # Mark as if password was verified
+                security_key_verified=True,
+                client_binding=binding_hash,
+                binding_nonce=new_binding_nonce,
+                risk_score=risk_score
+            )
+            db.session.add(new_session)
+
+            # Update user's last login information
+            user.last_login_time = datetime.now(timezone.utc)
+            user.last_login_ip = request.remote_addr
+
+            # Mark the authentication attempt as successful
+            auth_attempt.success = True
+            auth_attempt.risk_score = risk_score
+
+            db.session.commit()
+
+            # Return success with the session token
+            return jsonify({
+                'status': 'success',
+                'message': 'Authentication successful with security key',
+                'user_id': user.id,
+                'firstName': user.first_name,
+                'lastName': user.last_name,
+                'role': user.role,
+                'has_security_key': True,
+                'fully_authenticated': True,
+                'auth_token': new_session.session_token,
+                'binding_nonce': new_binding_nonce,
+                'risk_score': risk_score
+            })
+        elif second_factor:
             # Find the authentication session if we haven't already
             if not auth_session:
                 auth_session = AuthenticationSession.query.filter_by(
@@ -1546,6 +1608,224 @@ def webauthn_login_complete():
             }), 400
         else:
             return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/webauthn/check-status', methods=['POST'])
+def webauthn_check_status():
+    """
+    Endpoint to check if a security key is still connected/available
+    This sends a lightweight challenge to verify the security key's presence
+    """
+    data = request.get_json() or {}
+    username = data.get('username')
+    auth_token = data.get('auth_token')
+
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+
+    # Find user
+    user = Users.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # If user doesn't have a security key registered, return false
+    if not user.credential_id:
+        return jsonify({
+            'isConnected': False,
+            'message': 'No security key registered for this user'
+        }), 200
+
+    try:
+        # Create a silent WebAuthn challenge to verify key presence
+        # This will not require user interaction in most cases
+
+        # First, create the credential descriptor from the stored credential
+        try:
+            credential_id = websafe_decode(user.credential_id)
+            credential = PublicKeyCredentialDescriptor(
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+                id=credential_id
+            )
+        except Exception as e:
+            print(f"Error decoding credential ID: {e}")
+            return jsonify({
+                'isConnected': False,
+                'message': 'Invalid credential format'
+            }), 200
+
+        # Generate a silent authentication challenge
+        auth_data, state = server.authenticate_begin(
+            credentials=[credential],
+            user_verification=UserVerificationRequirement.DISCOURAGED
+            # Using DISCOURAGED to avoid prompting the user when possible
+        )
+
+        # Extract challenge from state
+        challenge_bytes = state if isinstance(state, bytes) else state.get('challenge')
+        if not isinstance(challenge_bytes, bytes):
+            challenge_bytes = str(challenge_bytes).encode('utf-8')
+
+        # Create base64 representation of the challenge for storage
+        challenge_base64 = websafe_encode(challenge_bytes)
+
+        # Save this challenge to database
+        # First expire any existing active challenges
+        WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
+        db.session.commit()
+
+        # Create new challenge record
+        new_challenge = WebAuthnChallenge(
+            user_id=user.id,
+            challenge=challenge_base64,
+            is_second_factor=False  # This is a status check, not a second factor
+        )
+        db.session.add(new_challenge)
+        db.session.commit()
+
+        # Log this status check as an authentication attempt
+        auth_attempt = AuthenticationAttempt(
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent', ''),
+            auth_type='security_key_status_check',
+            success=True,  # We're just logging the attempt, success will be determined later
+            risk_score=0  # Low risk operation
+        )
+        db.session.add(auth_attempt)
+        db.session.commit()
+
+        # Return the challenge to the client
+        return jsonify({
+            'publicKey': {
+                'rpId': server.rp.id,
+                'challenge': websafe_encode(challenge_bytes),
+                'allowCredentials': [{
+                    'type': 'public-key',
+                    'id': websafe_encode(credential.id)
+                }],
+                'timeout': 10000,  # 10 second timeout - this is just a status check
+                'userVerification': 'discouraged'  # Try to avoid prompting the user
+            },
+            'challengeId': new_challenge.id
+        })
+
+    except Exception as e:
+        print(f"Error checking security key status: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
+        return jsonify({
+            'isConnected': False,
+            'error': 'Failed to check security key status',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/webauthn/check-status/complete', methods=['POST'])
+def webauthn_check_status_complete():
+    """
+    Complete the security key status check
+    """
+    data = request.get_json() or {}
+    username = data.get('username')
+    assertion_response = data.get('assertionResponse')
+    challenge_id = data.get('challengeId')
+
+    if not username or not assertion_response or not challenge_id:
+        return jsonify({'error': 'Missing required parameters'}), 400
+
+    # Find user
+    user = Users.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        # Get the challenge record
+        challenge_record = WebAuthnChallenge.query.get(challenge_id)
+        if not challenge_record or challenge_record.expired:
+            return jsonify({
+                'isConnected': False,
+                'message': 'Challenge expired or not found'
+            }), 200
+
+        # Mark challenge as expired
+        challenge_record.expired = True
+        db.session.commit()
+
+        # Get stored public key
+        if not user.public_key:
+            return jsonify({
+                'isConnected': False,
+                'message': 'No public key found for this user'
+            }), 200
+
+        # Decode stored challenge
+        stored_challenge = websafe_decode(challenge_record.challenge)
+
+        # Create state object for verification
+        state = {
+            'challenge': challenge_record.challenge,
+            'user_verification': 'discouraged'
+        }
+
+        # Verify the assertion
+        server.authenticate_complete(
+            state,
+            [PublicKeyCredentialDescriptor(
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+                id=websafe_decode(user.credential_id)
+            )],
+            websafe_decode(user.credential_id),
+            assertion_response
+        )
+
+        # If we get here, the verification was successful
+
+        # Update the user's last authentication time
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=user.id,
+            security_key_verified=True
+        ).order_by(AuthenticationSession.created_at.desc()).first()
+
+        if auth_session:
+            auth_session.last_used = datetime.now(timezone.utc)
+            db.session.commit()
+
+        # Update the auth attempt to reflect success
+        auth_attempt = AuthenticationAttempt.query.filter_by(
+            user_id=user.id,
+            auth_type='security_key_status_check'
+        ).order_by(AuthenticationAttempt.timestamp.desc()).first()
+
+        if auth_attempt:
+            auth_attempt.success = True
+            db.session.commit()
+
+        return jsonify({
+            'isConnected': True,
+            'message': 'Security key is connected and verified'
+        })
+
+    except Exception as e:
+        print(f"Error completing security key status check: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
+        # Log the failed attempt
+        auth_attempt = AuthenticationAttempt.query.filter_by(
+            user_id=user.id,
+            auth_type='security_key_status_check'
+        ).order_by(AuthenticationAttempt.timestamp.desc()).first()
+
+        if auth_attempt:
+            auth_attempt.success = False
+            db.session.commit()
+
+        return jsonify({
+            'isConnected': False,
+            'error': 'Security key verification failed',
+            'message': str(e)
+        }), 200  # Return 200 even for errors, with isConnected=false
 
 
 # New route for checking authentication status

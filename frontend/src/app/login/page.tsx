@@ -22,7 +22,12 @@ import {
     AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 
-import { authenticateWithSecurityKey, storeBindingData, clearBindingData } from "../utils/webauthn"
+import {
+    authenticateWithSecurityKey,
+    storeBindingData,
+    clearBindingData,
+    initializeSecurityKeyStatus
+} from "../utils/webauthn"
 import { API_URL } from "../utils/constants"
 
 // Security key verification component for second factor authentication
@@ -249,11 +254,15 @@ export default function LoginPage() {
                     lastName: response.data.lastName,
                     role: response.data.role,
                     hasSecurityKey: false,
-                    authToken: response.data.auth_token
+                    authToken: response.data.auth_token,
+                    securityKeyAuthenticated: false
                 }
 
                 // Save to session storage
                 sessionStorage.setItem('user', JSON.stringify(userInfo))
+
+                // Initialize security key status (not needed for users without keys)
+                initializeSecurityKeyStatus(false)
 
                 // Redirect based on role
                 redirectBasedOnRole(response.data.role)
@@ -271,11 +280,15 @@ export default function LoginPage() {
                 lastName: response.data.lastName,
                 role: response.data.role,
                 hasSecurityKey: true,
-                authToken: response.data.auth_token
+                authToken: response.data.auth_token,
+                securityKeyAuthenticated: false // Flag to indicate password-only auth
             }
 
             // Save to session storage
             sessionStorage.setItem('user', JSON.stringify(userInfo))
+
+            // Initialize security key status as disconnected for password auth
+            initializeSecurityKeyStatus(false)
 
             // Redirect based on role
             redirectBasedOnRole(response.data.role)
@@ -324,37 +337,47 @@ export default function LoginPage() {
         setAuthMethod('security_key')
 
         try {
-            // First, verify the username to get authentication options
-            const authResponse = await axios.post<{ publicKey: { challenge: string }; riskScore?: number }>(`${API_URL}/webauthn/login/begin`, {
+            // Direct security key authentication
+            const authResponse = await axios.post<{
+                publicKey: any;
+                riskScore?: number;
+            }>(`${API_URL}/webauthn/login/begin`, {
                 username,
-                secondFactor: true
-            })
+                secondFactor: true,
+                directSecurityKeyAuth: true
+            });
 
-            // Store auth token and binding nonce
-            const authToken = (authResponse.data as { publicKey: { challenge: string } }).publicKey.challenge
-            const bindingNonce = authToken
+            console.log('Got WebAuthn challenge');
 
-            setAuthToken(authToken)
-            setBindingNonce(bindingNonce)
-            storeBindingData(authToken, bindingNonce)
+            // Extract the challenge for WebAuthn
+            const webauthnChallenge = authResponse.data.publicKey.challenge;
 
             // Store risk score if provided
             if (authResponse.data.riskScore !== undefined) {
-                setRiskScore(authResponse.data.riskScore)
+                setRiskScore(authResponse.data.riskScore);
             }
 
-            // Open the security key dialog
-            setSecurityKeyDialogOpen(true)
+            // Use challenge as temporary tokens
+            setAuthToken(webauthnChallenge);
+            setBindingNonce(webauthnChallenge);
+
+            // Store for WebAuthn utility
+            sessionStorage.setItem('auth_token', webauthnChallenge);
+            sessionStorage.setItem('binding_nonce', webauthnChallenge);
+
+            // Open security key dialog
+            setSecurityKeyDialogOpen(true);
         } catch (err: any) {
-            setIsLoading(false)
-            toast.error(err.response?.data?.error || "Failed to initiate security key login")
+            setIsLoading(false);
+            console.error("Security key login error:", err);
+            toast.error(err.response?.data?.error || "Failed to initiate security key login");
         }
     }
 
     // Handle successful second factor authentication
     const handleSecondFactorSuccess = (userData: any) => {
         setSecurityKeyDialogOpen(false)
-        toast.success("Login successful!")
+        toast.success("Login successful with security key!")
 
         // Store user data in session storage
         const userInfo = {
@@ -364,11 +387,15 @@ export default function LoginPage() {
             lastName: userData.lastName,
             role: userData.role,
             hasSecurityKey: true,
-            authToken: userData.auth_token
+            authToken: userData.auth_token,
+            securityKeyAuthenticated: true // Flag to indicate security key auth
         }
 
         // Save to session storage
         sessionStorage.setItem('user', JSON.stringify(userInfo))
+
+        // Initialize security key status as connected for security key auth
+        initializeSecurityKeyStatus(true)
 
         redirectBasedOnRole(userData.role)
     }
@@ -457,7 +484,7 @@ export default function LoginPage() {
                         </Button>
 
                         {/* OR Divider */}
-                        <div className="flex items-center my-4">
+                        <div className="flex items-center">
                             <div className="flex-grow border-t border-gray-300"></div>
                             <span className="px-4 text-gray-500 text-sm">or</span>
                             <div className="flex-grow border-t border-gray-300"></div>
@@ -467,11 +494,11 @@ export default function LoginPage() {
                         <Button
                             type="button"
                             variant="outline"
-                            className="w-full"
+                            className="w-full border-black"
                             onClick={handleSecurityKeyLogin}
                             disabled={isLoading}
                         >
-                            {isLoading && authMethod === 'security_key' ? "Preparing..." : (
+                            {isLoading && authMethod === 'security_key' ? "Logging in..." : (
                                 <>
                                     <Key className="h-4 w-4 mr-2" />
                                     Login with Security Key
