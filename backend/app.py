@@ -44,7 +44,6 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
-
 # User model renamed to Users and with additional fields including role
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -64,7 +63,7 @@ class Users(db.Model):
     last_login_time = db.Column(db.DateTime)
     last_login_ip = db.Column(db.String(45))
     failed_login_attempts = db.Column(db.Integer, default=0)
-    
+
     # Security key related fields
     has_security_key = db.Column(db.Boolean, nullable=False, default=False)
     total_login_attempts = db.Column(db.Integer, default=0)  # Track total successful logins
@@ -126,6 +125,7 @@ class WebAuthnChallenge(db.Model):
     expired = db.Column(db.Boolean, default=False)
     is_second_factor = db.Column(db.Boolean, default=False)
 
+
 class AuthenticationSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -139,6 +139,7 @@ class AuthenticationSession(db.Model):
     risk_score = db.Column(db.Integer, default=0)
     requires_additional_verification = db.Column(db.Boolean, default=False)
     last_used = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 class AuthenticationAttempt(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -154,6 +155,7 @@ class AuthenticationAttempt(db.Model):
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
 
     user = db.relationship('Users', backref=db.backref('auth_attempts', lazy=True))
+
 
 # Configure WebAuthn
 rp = PublicKeyCredentialRpEntity(name="Athens AI", id="localhost")
@@ -172,7 +174,7 @@ def detect_device_type(user_agent):
         if 'tablet' in user_agent or 'ipad' in user_agent:
             return 'Tablet'
         return 'Mobile'
-    
+
     # Desktop OS detection
     if 'windows' in user_agent:
         return 'Windows PC'
@@ -183,6 +185,7 @@ def detect_device_type(user_agent):
 
     # Default to Desktop if no specific device detected
     return 'Desktop'
+
 
 def get_public_ip():
     """Get the actual public IP address"""
@@ -195,6 +198,7 @@ def get_public_ip():
         print(f"Error getting public IP: {str(e)}")
     return None
 
+
 def get_location_from_ip(ip_address):
     """Get detailed location information from IP address"""
     try:
@@ -205,28 +209,29 @@ def get_location_from_ip(ip_address):
                 ip_address = public_ip
 
         # Try ip-api.com first for detailed info
-        response = requests.get(f'http://ip-api.com/json/{ip_address}?fields=status,message,country,regionName,city,district')
+        response = requests.get(
+            f'http://ip-api.com/json/{ip_address}?fields=status,message,country,regionName,city,district')
         if response.status_code == 200:
             data = response.json()
             if data['status'] == 'success':
                 location_parts = []
-                
+
                 # Add district/neighborhood/area if available
                 if data.get('district'):
                     location_parts.append(data['district'])
-                
+
                 # Add city
                 if data.get('city'):
                     location_parts.append(data['city'])
-                
+
                 # Add region/state
                 if data.get('regionName'):
                     location_parts.append(data['regionName'])
-                
+
                 # Add country
                 if data.get('country'):
                     location_parts.append(data['country'])
-                
+
                 if location_parts:
                     return ", ".join(location_parts)
 
@@ -235,25 +240,25 @@ def get_location_from_ip(ip_address):
         if response.status_code == 200:
             data = response.json()
             location_parts = []
-            
+
             # Try to get neighborhood or area name
             if data.get('neighbourhood'):
                 location_parts.append(data['neighbourhood'])
             elif data.get('postal'):  # Use postal area as fallback for neighborhood
                 location_parts.append(data['postal'])
-            
+
             # Add city
             if data.get('city'):
                 location_parts.append(data['city'])
-            
+
             # Add region
             if data.get('region'):
                 location_parts.append(data['region'])
-            
+
             # Add country
             if data.get('country_name'):
                 location_parts.append(data['country_name'])
-            
+
             if location_parts:
                 return ", ".join(location_parts)
 
@@ -261,6 +266,7 @@ def get_location_from_ip(ip_address):
     except Exception as e:
         print(f"Error getting location from IP: {str(e)}")
         return "Unknown Location"
+
 
 # Function to generate binding data
 def generate_binding_data(request):
@@ -416,6 +422,7 @@ def assess_risk(user_id, request):
     print(f"Final risk score: {final_score}")
     return final_score
 
+
 # Add this new endpoint to your app.py file
 
 @app.route('/api/risk-score-trend', methods=['GET'])
@@ -525,8 +532,9 @@ def register():
     if not data or not data.get('username') or not data.get('password') or \
             not data.get('firstName') or not data.get('lastName') or \
             not data.get('nationalId') or not data.get('email'):
-        return jsonify({'error': 'Missing required fields (firstName, lastName, username, password, nationalId, or email)'}), 400
-    
+        return jsonify(
+            {'error': 'Missing required fields (firstName, lastName, username, password, nationalId, or email)'}), 400
+
     # Validate national ID
     try:
         national_id = int(data.get('nationalId'))
@@ -1000,10 +1008,11 @@ def webauthn_register_begin():
 @app.route('/api/webauthn/register/complete', methods=['POST'])
 def webauthn_register_complete():
     print("\n=================== REGISTER COMPLETE REQUEST ===================")
-    
+
     def update_security_key_status(user):
         user.has_security_key = True
         db.session.commit()
+
     data = request.get_json()
     print("Request data:", data)
 
@@ -1135,7 +1144,7 @@ def webauthn_register_complete():
                 user.public_key = base64.b64encode(public_key).decode('utf-8')
                 user.sign_count = sign_count
                 user.has_security_key = True
-                
+
                 db.session.flush()  # Ensure changes are visible within transaction
 
             db.session.commit()  # Commit the entire transaction
@@ -1144,14 +1153,12 @@ def webauthn_register_complete():
         except ValueError as ve:
             print(f"ValueError during register_complete: {str(ve)}")
 
-
             return jsonify({'error': str(ve), 'detail': 'Challenge verification failed'}), 400
 
     except Exception as e:
         print(f"\nRegistration error: {str(e)}")
         import traceback
         print(traceback.format_exc())
-
 
         return jsonify({'error': str(e)}), 400
 
@@ -2163,6 +2170,7 @@ def get_device_stats():
         print(f"Error getting device stats: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
 # Function to create default admin user
 def create_admin_user():
     # Check if admin user already exists
@@ -2226,12 +2234,12 @@ def update_user(user_id):
             national_id = int(data['nationalId'])
             if len(str(national_id)) != 8:
                 return jsonify({'error': 'National ID must be exactly 8 digits'}), 400
-            
+
             # Check if national ID is already taken by another user
             existing_user = Users.query.filter(Users.national_id == national_id, Users.id != user_id).first()
             if existing_user:
                 return jsonify({'error': 'National ID already exists'}), 409
-                
+
             user.national_id = national_id
         except ValueError:
             return jsonify({'error': 'National ID must be a number'}), 400
@@ -2333,6 +2341,7 @@ def update_user(user_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/reset-db', methods=['POST'])
 def reset_db():
@@ -2462,6 +2471,7 @@ def delete_user_data(user_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/update-user-id/<int:old_id>/<int:new_id>', methods=['POST'])
 def update_user_id(old_id, new_id):
     try:
@@ -2469,29 +2479,30 @@ def update_user_id(old_id, new_id):
         with db.session.begin():
             # First update all related records to use a temporary ID (to avoid conflicts)
             temp_id = 999999
-            
+
             # Update foreign keys in related tables
             AuthenticationAttempt.query.filter_by(user_id=old_id).update({"user_id": temp_id})
             WebAuthnChallenge.query.filter_by(user_id=old_id).update({"user_id": temp_id})
             AuthenticationSession.query.filter_by(user_id=old_id).update({"user_id": temp_id})
-            
+
             # Update the user ID
             Users.query.filter_by(id=old_id).update({"id": temp_id})
-            
+
             # Now update to the new ID
             AuthenticationAttempt.query.filter_by(user_id=temp_id).update({"user_id": new_id})
             WebAuthnChallenge.query.filter_by(user_id=temp_id).update({"user_id": new_id})
             AuthenticationSession.query.filter_by(user_id=temp_id).update({"user_id": new_id})
             Users.query.filter_by(id=temp_id).update({"id": new_id})
-            
+
             # Reset the sequence to use the next highest ID
             from sqlalchemy import text
             db.session.execute(text("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))"))
-            
+
         return jsonify({'message': f'User ID changed from {old_id} to {new_id}'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/location-stats', methods=['GET'])
 def get_location_stats():
@@ -2528,7 +2539,7 @@ def get_location_stats():
         for location, count in location_stats:
             # Determine severity based on attempt count
             severity = 'low' if count <= 5 else 'medium' if count <= 15 else 'high'
-            
+
             stats_data.append({
                 'name': location or 'Unknown',
                 'value': count,
@@ -2687,6 +2698,7 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
         print(traceback.format_exc())
         return False
 
+
 @app.route('/api/security/alerts', methods=['GET'])
 def get_security_alerts():
     try:
@@ -2838,6 +2850,7 @@ def get_security_alerts():
         import traceback
         print(traceback.format_exc())
         return jsonify({'error': 'Failed to fetch security alerts'}), 500
+
 
 @app.route('/api/security/stats', methods=['GET'])
 def get_security_stats():

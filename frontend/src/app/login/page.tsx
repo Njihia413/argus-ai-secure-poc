@@ -337,11 +337,16 @@ export default function LoginPage() {
         setAuthMethod('security_key')
 
         try {
-            // Direct security key authentication
-            const authResponse = await axios.post<{
-                publicKey: any;
+            // Define the expected response type
+            interface WebAuthnResponse {
+                publicKey: {
+                    challenge: string;
+                };
                 riskScore?: number;
-            }>(`${API_URL}/webauthn/login/begin`, {
+            }
+
+            // Direct security key authentication with type assertion
+            const authResponse = await axios.post<WebAuthnResponse>(`${API_URL}/webauthn/login/begin`, {
                 username,
                 secondFactor: true,
                 directSecurityKeyAuth: true
@@ -367,10 +372,21 @@ export default function LoginPage() {
 
             // Open security key dialog
             setSecurityKeyDialogOpen(true);
-        } catch (err: any) {
+        } catch (error: unknown) {
             setIsLoading(false);
-            console.error("Security key login error:", err);
-            toast.error(err.response?.data?.error || "Failed to initiate security key login");
+            console.error("Security key login error:", error);
+            
+            // Type guard to check if error is an axios error response
+            const isAxiosError = (err: unknown): err is { response?: { data?: { error?: string } } } => {
+                return typeof err === 'object' && err !== null && 'response' in err;
+            };
+            
+            // Handle the error with proper type checking
+            if (isAxiosError(error) && error.response?.data?.error) {
+                toast.error(error.response.data.error);
+            } else {
+                toast.error("Failed to initiate security key login");
+            }
         }
     }
 

@@ -11,6 +11,7 @@ import { Messages } from "@/components/messages";
 import { Header } from "@/components/header";
 import {
   checkSecurityKeyStatus,
+  requestSecurityKeyAccess,
   isWebUSBSupported
 } from "@/app/utils/webauthn";
 

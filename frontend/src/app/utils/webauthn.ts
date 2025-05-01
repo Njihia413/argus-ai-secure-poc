@@ -3,6 +3,14 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 import { toast } from 'sonner';
 import { API_URL } from "@/app/utils/constants";
 
+// Extend the Navigator interface to include the 'usb' property
+interface NavigatorWithUSB extends Navigator {
+    usb: {
+        getDevices: () => Promise<any[]>;
+        requestDevice: (options: { filters: any[] }) => Promise<any>;
+    };
+}
+
 // Global flag to prevent multiple simultaneous authentication attempts
 let authenticationInProgress = false;
 
@@ -51,19 +59,130 @@ export const clearBindingData = (): void => {
 /**
  * Check if WebAuthn is supported by the browser
  */
+export const isWebAuthnSupported = (): boolean => {
+    return window &&
+        window.PublicKeyCredential !== undefined &&
+        typeof window.PublicKeyCredential === 'function';
+};
 
-// Extend the Navigator interface to include the 'usb' property
-interface NavigatorWithUSB extends Navigator {
-    usb: {
-        requestDevice: (options: { filters: any[] }) => Promise<any>;
-    };
-}
+/**
+ * Check if WebUSB is supported by the browser
+ */
 export const isWebUSBSupported = (): boolean => {
     return window &&
         'usb' in navigator &&
-        typeof (navigator as NavigatorWithUSB).usb.requestDevice === 'function';
+        typeof (navigator as Navigator & { usb: any }).usb.requestDevice === 'function';
 };
 
+/**
+ * FIDO U2F USB vendor and product IDs for common security keys
+ * This is a non-exhaustive list based on common security key manufacturers
+ */
+const FIDO_DEVICE_FILTERS = [
+    // YubiKey
+    { vendorId: 0x1050 },
+    // Feitian
+    { vendorId: 0x096e },
+    // Google Titan/Feitian
+    { vendorId: 0x18d1 },
+    // SoloKeys
+    { vendorId: 0x0483 },
+    // Generic FIDO U2F
+    { classCode: 0x0B }, // Smart Card
+    { classCode: 0x03 }  // HID
+];
+
+/**
+ * Check if security key is connected using WebUSB
+ * This tries to detect a security key device without requiring user interaction
+ */
+export const checkSecurityKeyStatus = async (username: string): Promise<boolean> => {
+    console.log("Checking security key status for user:", username);
+
+    // First check if WebAuthn is supported by the browser
+    if (!isWebAuthnSupported()) {
+        console.warn('WebAuthn is not supported in this browser');
+        return false;
+    }
+
+    try {
+        // For production environments, we'll try different approaches in order:
+
+        // 1. First, try to use the WebAuthn isUserVerifyingPlatformAuthenticatorAvailable API
+        // This is a non-intrusive way to check if authenticator is available
+        if ('isUserVerifyingPlatformAuthenticatorAvailable' in navigator.credentials) {
+            try {
+                const isPlatformAuthenticatorAvailable =
+                    await (navigator.credentials as any).isUserVerifyingPlatformAuthenticatorAvailable();
+
+                // If platform authenticator is available, we still need to check if it's a security key
+                if (isPlatformAuthenticatorAvailable) {
+                    console.log("Platform authenticator is available");
+                }
+            } catch (error) {
+                console.warn("Error checking platform authenticator:", error);
+            }
+        }
+
+        // 2. Try to use WebUSB to detect security keys without user interaction
+        if (isWebUSBSupported()) {
+            try {
+                // Get list of USB devices user has already granted permission for
+                const devices = await (navigator as NavigatorWithUSB).usb.getDevices();
+                console.log("USB Devices with existing permissions:", devices);
+
+                // Check if any of these devices match known security key vendors
+                const securityKeys = devices.filter((device: { vendorId: number; deviceClass: number }) =>
+                    FIDO_DEVICE_FILTERS.some(filter =>
+                        (filter.vendorId && device.vendorId === filter.vendorId) ||
+                        (filter.classCode && device.deviceClass === filter.classCode)
+                    )
+                );
+
+                if (securityKeys.length > 0) {
+                    console.log("Found security keys with existing permissions:", securityKeys);
+                    // Store the result in localStorage for the UI to use
+                    localStorage.setItem('securityKeyConnected', 'true');
+                    return true;
+                }
+
+                // Note: We avoid using navigator.usb.requestDevice() as it would trigger a permission prompt
+                // which would be disruptive to the user experience
+            } catch (error) {
+                console.warn("Error accessing USB devices:", error);
+            }
+        }
+
+        // 3. As a fallback, use localStorage if we've previously detected a key
+        // This means once a key is detected as connected, we'll assume it's still connected
+        // until the user manually simulates disconnection or refreshes the page
+        const isConnected = localStorage.getItem('securityKeyConnected') === 'true';
+        return isConnected;
+
+    } catch (error) {
+        console.error('Error checking security key status:', error);
+        return false; // Assume disconnected on error
+    }
+};
+
+/**
+ * Set security key status (for demo/manual simulation)
+ */
+export const setSecurityKeyStatus = (isConnected: boolean): void => {
+    localStorage.setItem('securityKeyConnected', isConnected ? 'true' : 'false');
+
+    // Dispatch storage event to notify other tabs
+    try {
+        const event = new StorageEvent('storage', {
+            key: 'securityKeyConnected',
+            newValue: isConnected ? 'true' : 'false',
+            url: window.location.href
+        });
+        window.dispatchEvent(event);
+    } catch (error) {
+        console.error('Error dispatching storage event:', error);
+    }
+};
 
 /**
  * Initialize security key status based on authentication method
@@ -72,7 +191,7 @@ export const isWebUSBSupported = (): boolean => {
 export const initializeSecurityKeyStatus = (isSecurityKeyAuth: boolean): void => {
     try {
         // Set the initial security key status in localStorage
-        localStorage.setItem('securityKeyConnected', isSecurityKeyAuth ? 'true' : 'false');
+        setSecurityKeyStatus(isSecurityKeyAuth);
         console.log(`Initialized security key status: ${isSecurityKeyAuth ? 'connected' : 'disconnected'}`);
     } catch (error) {
         console.error('Error initializing security key status:', error);
@@ -80,111 +199,25 @@ export const initializeSecurityKeyStatus = (isSecurityKeyAuth: boolean): void =>
 };
 
 /**
- * Checks if a security key is currently connected using a silent WebAuthn challenge
- * This uses a real challenge-response to verify the key without user interaction
+ * Request permission to access security key via WebUSB (requires user interaction)
+ * This should only be called in response to a user action (like a button click)
  */
-export const checkSecurityKeyStatus = async (username: string): Promise<boolean> => {
-    // First check if WebAuthn is supported by the browser
+export const requestSecurityKeyAccess = async (): Promise<boolean> => {
     if (!isWebUSBSupported()) {
-        console.warn('WebAuthn is not supported in this browser');
+        console.warn('WebUSB is not supported in this browser');
         return false;
     }
 
-    // For debugging mode or development, we can use the Alt+K simulation
-    // Return the stored value without making an actual check
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_DEMO_KEY_MODE === 'true') {
-        console.log('Using demo mode for security key status check');
-        return localStorage.getItem('securityKeyConnected') === 'true';
-    }
-
     try {
-        console.log('Checking security key status with real WebAuthn challenge');
-
-        // Step 1: Request a silent challenge from the server
-        const checkResponse = await axios.post(`${API_URL}/api/webauthn/check-status`, {
-            username,
-            ...getBindingData()
+        const device = await (navigator as NavigatorWithUSB).usb.requestDevice({
+            filters: FIDO_DEVICE_FILTERS
         });
 
-        const responseData = checkResponse.data as { publicKey?: any, challengeId?: string };
-
-        if (!responseData.publicKey) {
-            console.warn('No challenge received for security key status check');
-            return false;
-        }
-
-        // Extract the challenge and challenge ID
-        const options = (checkResponse.data as { publicKey: any }).publicKey;
-        const challengeId = (checkResponse.data as { challengeId: string }).challengeId;
-
-        // Step 2: Try to perform a silent authentication
-        try {
-            console.log('Attempting silent WebAuthn authentication');
-
-            // Set a timeout of 5 seconds for the silent check
-            const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error('Security key check timed out')), 5000);
-            });
-
-            // Try to get the credential silently without user interaction
-            // We use true as the second parameter to indicate we want silent authentication if possible
-            const authPromise = startAuthentication(options);
-
-            // Race between the authentication and timeout
-            const assertion = await Promise.race([authPromise, timeoutPromise]);
-
-            // Step 3: Complete verification on the server
-            console.log('Authentication successful, sending to server for verification');
-            const completeResponse = await axios.post(`${API_URL}/api/webauthn/check-status/complete`, {
-                username,
-                assertionResponse: assertion,
-                challengeId
-            });
-
-            console.log('Server verification response:', completeResponse.data);
-
-            // If we get here, the key is connected and verified
-            const isConnected = (completeResponse.data as { isConnected: boolean }).isConnected === true;
-
-            // Update localStorage to reflect the key's status
-            localStorage.setItem('securityKeyConnected', isConnected ? 'true' : 'false');
-
-            // Notify other tabs via storage event
-            try {
-                const event = new StorageEvent('storage', {
-                    key: 'securityKeyConnected',
-                    newValue: isConnected ? 'true' : 'false',
-                    url: window.location.href
-                });
-                window.dispatchEvent(event);
-            } catch (error) {
-                console.error('Error dispatching storage event:', error);
-            }
-
-            return isConnected;
-        } catch (error) {
-            // If we get here, either the key isn't connected or it couldn't be accessed silently
-            console.warn('Security key not accessible or not connected:', error);
-
-            // Update localStorage to reflect disconnected status
-            localStorage.setItem('securityKeyConnected', 'false');
-
-            // Notify other tabs
-            try {
-                const event = new StorageEvent('storage', {
-                    key: 'securityKeyConnected',
-                    newValue: 'false',
-                    url: window.location.href
-                });
-                window.dispatchEvent(event);
-            } catch (error) {
-                console.error('Error dispatching storage event:', error);
-            }
-
-            return false;
-        }
+        console.log("Security key access granted:", device);
+        localStorage.setItem('securityKeyConnected', 'true');
+        return true;
     } catch (error) {
-        console.error('Error in checkSecurityKeyStatus:', error);
+        console.warn("User cancelled device selection or no device found:", error);
         return false;
     }
 };
@@ -239,20 +272,7 @@ export const registerSecurityKey = async (
 
         if (completeResponse.data.status === 'success') {
             // Set security key status to connected after successful registration
-            localStorage.setItem('securityKeyConnected', 'true');
-
-            // Notify other tabs
-            try {
-                const event = new StorageEvent('storage', {
-                    key: 'securityKeyConnected',
-                    newValue: 'true',
-                    url: window.location.href
-                });
-                window.dispatchEvent(event);
-            } catch (error) {
-                console.error('Error dispatching storage event:', error);
-            }
-
+            setSecurityKeyStatus(true);
             onSuccess(completeResponse.data.message || 'Security key registered successfully!');
         } else {
             onError(completeResponse.data.error || 'Registration failed');
@@ -370,20 +390,8 @@ export const authenticateWithSecurityKey = async (
             );
         }
 
-        // Update security key status
-        localStorage.setItem('securityKeyConnected', 'true');
-
-        // Notify other tabs
-        try {
-            const event = new StorageEvent('storage', {
-                key: 'securityKeyConnected',
-                newValue: 'true',
-                url: window.location.href
-            });
-            window.dispatchEvent(event);
-        } catch (error) {
-            console.error('Error dispatching storage event:', error);
-        }
+        // Set security key status to connected after successful authentication
+        setSecurityKeyStatus(true);
 
         // Return user data on success
         onSuccess(loginCompleteResponse.data);
