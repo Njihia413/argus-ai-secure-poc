@@ -61,7 +61,7 @@ export const registerSecurityKey = async (
         const registerBeginResponse = await axios.post(`${API_URL}/webauthn/register/begin`, {
             username,
             ...getBindingData()
-        });
+        }) as { data: { registrationToken: string, publicKey: any } };
 
         console.log('Registration begin response received');
 
@@ -92,7 +92,7 @@ export const registerSecurityKey = async (
             username,
             attestationResponse: attestation,
             ...getBindingData()
-        });
+        }) as { data: { status: string, message?: string, error?: string } };
 
         console.log('Registration complete response:', completeResponse.data);
 
@@ -163,7 +163,9 @@ export const authenticateWithSecurityKey = async (
         // Step 1: Begin WebAuthn authentication
         console.log('Sending authentication begin request with secondFactor=true');
 
-        const loginBeginResponse = await axios.post(`${API_URL}/webauthn/login/begin`, {
+        const loginBeginResponse = await axios.post<{
+            publicKey: any;
+        }>(`${API_URL}/webauthn/login/begin`, {
             username,
             secondFactor: true,  // This is important for MFA
             ...getBindingData()  // Should now include the stored auth_token and binding_nonce
@@ -181,7 +183,10 @@ export const authenticateWithSecurityKey = async (
 
         // Step 3: Complete authentication on the server
         console.log('Completing authentication with server (secondFactor=true)');
-        const loginCompleteResponse = await axios.post(`${API_URL}/webauthn/login/complete`, {
+        const loginCompleteResponse = await axios.post<{
+            risk_score: number;
+            [key: string]: any;
+        }>(`${API_URL}/webauthn/login/complete`, {
             username,
             assertionResponse: assertion,
             secondFactor: true,  // This is important for MFA
