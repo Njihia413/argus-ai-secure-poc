@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, Lock } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +38,11 @@ const items = [
     title: "Settings",
     url: "/dashboard/settings",
     icon: Settings,
+  },
+  {
+    title: "Locked Accounts",
+    url: "/dashboard/locked-accounts",
+    icon: Lock,
   },
 ]
 
