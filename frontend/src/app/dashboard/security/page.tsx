@@ -259,6 +259,7 @@ export default function SecurityPage() {
 
         interface AlertsResponse {
           alerts: SecurityAlert[];
+          total?: number;
         }
         const alertsData = await alertsRes.json() as AlertsResponse
 
@@ -277,7 +278,7 @@ export default function SecurityPage() {
         const statsData = await statsRes.json() as SecurityStats
 
         setAlerts(alertsData.alerts || [])
-        setStats(statsData)
+        setStats(statsData || emptyStats)
       } catch (error) {
         const e = error as Error;
         console.error('Error fetching security data:', error)
@@ -320,6 +321,13 @@ export default function SecurityPage() {
     document.body.removeChild(link);
   };
 
+  // Calculate total pages safely
+  const getTotalPages = () => {
+    // Use alerts length as fallback if stats is not available
+    const totalItems = stats?.alertStats?.total || alerts.length || 0;
+    return Math.max(1, Math.ceil(totalItems / pageSize));
+  };
+
   return (
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="flex items-center justify-between">
@@ -340,16 +348,18 @@ export default function SecurityPage() {
               <CardTitle className="text-sm font-medium">All Alerts</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.alertStats.total || alerts.length}</div>
+              <div className="text-2xl font-bold">
+                {stats?.alertStats?.total || alerts.length || 0}
+              </div>
               <div className="mt-2 flex gap-2">
                 <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
-                  {stats?.alertStats.bySeverity.High || alerts.filter(a => a.severity === "High").length} High
+                  {stats?.alertStats?.bySeverity?.High || alerts.filter(a => a.severity === "High").length || 0} High
                 </Badge>
                 <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-                  {stats?.alertStats.bySeverity.Medium || alerts.filter(a => a.severity === "Medium").length} Medium
+                  {stats?.alertStats?.bySeverity?.Medium || alerts.filter(a => a.severity === "Medium").length || 0} Medium
                 </Badge>
                 <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                  {stats?.alertStats.bySeverity.Low || alerts.filter(a => a.severity === "Low").length} Low
+                  {stats?.alertStats?.bySeverity?.Low || alerts.filter(a => a.severity === "Low").length || 0} Low
                 </Badge>
               </div>
             </CardContent>
@@ -361,9 +371,11 @@ export default function SecurityPage() {
               <Shield className="h-4 w-4 text-teal-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.securityScore.current?.toFixed(1) || '0.0'}%</div>
+              <div className="text-2xl font-bold">
+                {stats?.securityScore?.current?.toFixed(1) || '0.0'}%
+              </div>
               <div className="mt-2">
-                <Progress value={stats?.securityScore.current || 0} className="h-2" />
+                <Progress value={stats?.securityScore?.current || 0} className="h-2" />
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Based on security key adoption
@@ -376,9 +388,9 @@ export default function SecurityPage() {
               <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.activeSessions.total || 0}</div>
+              <div className="text-2xl font-bold">{stats?.activeSessions?.total || 0}</div>
               <div className="mt-2 space-y-1 max-h-20 overflow-auto">
-                {stats?.activeSessions.byDevice && Object.entries(stats.activeSessions.byDevice).map(([device, count]) => (
+                {stats?.activeSessions?.byDevice && Object.entries(stats.activeSessions.byDevice).map(([device, count]) => (
                     <div key={device} className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{device}</span>
                       <span className="font-medium">{count}</span>
@@ -386,7 +398,7 @@ export default function SecurityPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Across {stats?.activeSessions.uniqueDevices || 0} unique devices
+                Across {stats?.activeSessions?.uniqueDevices || 0} unique devices
               </p>
             </CardContent>
           </Card>
@@ -467,7 +479,7 @@ export default function SecurityPage() {
                       <div className="flex items-center justify-between py-4">
                         <div className="flex items-center space-x-2">
                     <span className="text-sm text-muted-foreground">
-                      Page {pageIndex + 1} of {Math.ceil((stats?.alertStats.total || alerts.length) / pageSize)}
+                      Page {pageIndex + 1} of {getTotalPages()}
                     </span>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -483,7 +495,7 @@ export default function SecurityPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => setPageIndex(pageIndex + 1)}
-                              disabled={(pageIndex + 1) * pageSize >= (stats?.alertStats.total || alerts.length)}
+                              disabled={(pageIndex + 1) * pageSize >= (stats?.alertStats?.total || alerts.length || 0)}
                           >
                             Next
                           </Button>
