@@ -1485,13 +1485,9 @@ def login():
     if user.is_account_locked():
         db.session.commit()  # Commit the failed attempt with high risk
 
-        # Return both a human-readable time and ISO timestamp for countdown implementation
-        locked_until_human = user.account_locked_until.strftime('%H:%M:%S')
-        locked_until_iso = user.account_locked_until.isoformat()
-
+        # Account is locked
         return jsonify({
-            'error': f'Account is temporarily locked due to too many failed attempts. Try again after {locked_until_human}',
-            'accountLockedUntil': locked_until_iso,
+            'error': 'Account is temporarily locked due to too many failed attempts. Please contact an administrator to unlock your account.',
             'accountLocked': True
         }), 401
 
