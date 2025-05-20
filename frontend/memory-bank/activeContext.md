@@ -18,7 +18,7 @@ Based on open files and recent activity, development is focused on security mana
     *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
     *   `security/page.tsx`: Security dashboard implementation
     *   `app-sidebar.tsx`: Navigation and layout structure
-    *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock**)
+    *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock. `failed_login_attempts` now persist after unlock and increment even if the account is already locked. `unlocked_by` column stores admin username.**)
 
 ## Recent Decisions
 1.  Using data tables for security information display.
@@ -31,6 +31,9 @@ Based on open files and recent activity, development is focused on security mana
 8.  Renamed the actions column header to "Action" for clarity in `locked-accounts-columns.tsx`.
 9.  Added a confirmation dialog (`shadcn/ui Dialog`) to the "Unlock Account" button in `locked-accounts-columns.tsx` to prevent accidental unlocks, styled with `font-montserrat` and `sm:max-w-[425px]`.
 10. Removed the "Successful Attempts" column from the locked accounts data table as it was deemed redundant.
+11. Backend: `failed_login_attempts` are no longer reset when an admin unlocks an account.
+12. Backend: The `unlocked_by` column in the `Users` table now stores the admin's username (string) instead of their ID (integer), and the foreign key constraint was removed. Database migration required.
+13. Backend: `failed_login_attempts` now increment for every incorrect password entry, even if the account is already locked, ensuring the admin sees the total number of attempts. Account locks at 5 failed attempts.
 
 ## Active Technical Patterns
 1.  Data Table Pattern
@@ -40,7 +43,7 @@ Based on open files and recent activity, development is focused on security mana
 
 2.  Security Patterns
     *   WebAuthn integration.
-    *   Locked account management (manual unlock by admin with confirmation).
+    *   Locked account management (manual admin unlock with confirmation, `failed_login_attempts` persist and continue to increment post-lock, `unlocked_by` stores admin username).
     *   Audit logging.
 
 3.  Layout Patterns
@@ -56,7 +59,7 @@ Based on open files and recent activity, development is focused on security mana
 
 ## Current Considerations
 1.  Security Features
-    *   Account locking mechanisms (currently manual admin unlock with confirmation).
+    *   Account locking mechanisms (manual admin unlock with confirmation, locks at 5 attempts, `failed_login_attempts` persist through unlock and increment even if account is already locked, `unlocked_by` stores admin username).
     *   Security key management.
     *   Audit trail implementation.
 

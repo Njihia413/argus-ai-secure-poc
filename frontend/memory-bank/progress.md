@@ -7,7 +7,7 @@
 - [x] Signup page implementation
 - [x] WebAuthn integration
 - [x] Authentication flows
-- [x] Backend account locking logic simplified (manual admin unlock)
+- [x] Backend account locking logic simplified (manual admin unlock, locks at 5 attempts, `failed_login_attempts` persist through unlock and increment even if account is already locked, `unlocked_by` stores admin username, migration script corrected)
 
 ### Dashboard
 - [x] Main dashboard layout
