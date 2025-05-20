@@ -91,14 +91,18 @@ class Users(db.Model):
     def increment_failed_attempts(self):
         self.failed_login_attempts += 1
         if self.failed_login_attempts >= 5:
-            self.account_locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            self.account_locked_until = datetime.now(timezone.utc)  # Just mark the time it was locked
         db.session.commit()
 
     # Check if account is locked
     def is_account_locked(self):
         """Check if account is locked and return boolean"""
-        if self.account_locked_until and self.account_locked_until > datetime.now(timezone.utc):
-            return True
+        # Add timezone info to account_locked_until if needed
+        if self.account_locked_until:
+            if not self.account_locked_until.tzinfo:
+                self.account_locked_until = self.account_locked_until.replace(tzinfo=timezone.utc)
+            if self.account_locked_until > datetime.now(timezone.utc):
+                return True
         return False
 
     def get_lock_details(self):
