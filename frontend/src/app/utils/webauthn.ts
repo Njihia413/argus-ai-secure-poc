@@ -223,17 +223,31 @@ export const requestSecurityKeyAccess = async (): Promise<boolean> => {
 };
 
 // Handle WebAuthn registration
+interface SecurityKeyDetails {
+  model: string;
+  type: string;
+  serialNumber: string;
+  pin: string;
+  keyId?: number; 
+}
+
 export const registerSecurityKey = async (
     username: string,
     onSuccess: (message: string) => void,
-    onError: (message: string) => void
+    onError: (message: string) => void,
+    keyDetails?: SecurityKeyDetails & { keyId?: number },  
+    forceRegistration?: boolean  
 ): Promise<void> => {
     try {
         console.log('Beginning security key registration for:', username);
+        console.log('Force registration:', forceRegistration ? 'Yes' : 'No');
+        console.log('Key Details:', keyDetails);
 
         // Step 1: Begin WebAuthn registration
         const registerBeginResponse = await axios.post(`${API_URL}/webauthn/register/begin`, {
             username,
+            forceRegistration,
+            keyId: keyDetails?.keyId, // Pass key ID if we're updating an existing key
             ...getBindingData()
         }) as { data: { registrationToken: string, publicKey: any } };
 
@@ -261,19 +275,28 @@ export const registerSecurityKey = async (
 
         // Step 3: Complete registration on the server
         console.log('Completing registration with server');
+        console.log('Including forceRegistration flag:', forceRegistration);
+        console.log('Including keyId:', keyDetails?.keyId);
+        
         const completeResponse = await axios.post(`${API_URL}/webauthn/register/complete`, {
             registrationToken,
             username,
             attestationResponse: attestation,
+            forceRegistration,
+            keyId: keyDetails?.keyId, // Pass key ID for existing keys
+            ...(keyDetails || {}), // Include the security key details
             ...getBindingData()
-        }) as { data: { status: string, message?: string, error?: string } };
+        }) as { data: { status: string, message?: string, error?: string, keyId?: number, keyName?: string } };
 
         console.log('Registration complete response:', completeResponse.data);
 
         if (completeResponse.data.status === 'success') {
             // Set security key status to connected after successful registration
             setSecurityKeyStatus(true);
-            onSuccess(completeResponse.data.message || 'Security key registered successfully!');
+
+            const successMessage = completeResponse.data.message || 'Security key registered successfully!';
+
+            onSuccess(successMessage);
         } else {
             onError(completeResponse.data.error || 'Registration failed');
         }
@@ -282,7 +305,12 @@ export const registerSecurityKey = async (
 
         // Be more specific about WebAuthn errors
         if (err.name === 'NotAllowedError') {
-            onError('This security key appears to be already registered to an account. Each security key can only be registered to one account for maximum security.');
+            if (forceRegistration) {
+                // For force registration, provide a different message
+                onError('Registration was not allowed. Please ensure your security key is connected and try again.');
+            } else {
+                onError('This security key appears to be already registered to an account. Each security key can only be registered to one account for maximum security.');
+            }
         } else if (err.name === 'AbortError') {
             onError('Security key registration was cancelled or timed out.');
         } else if (err.name === 'SecurityError') {
@@ -293,13 +321,15 @@ export const registerSecurityKey = async (
     }
 };
 
+
 // Handle WebAuthn login after password verification
 export const authenticateWithSecurityKey = async (
     username: string,
     authToken: string,
     bindingNonce: string,
     onSuccess: (userData: any) => void,
-    onError: (message: string) => void
+    onError: (message: string) => void,
+    setRiskScore?: (score: number) => void
 ): Promise<void> => {
     // Reset the authentication lock if it's been more than 30 seconds
     // This prevents the lock from getting stuck if a previous authentication failed to release it
@@ -354,6 +384,11 @@ export const authenticateWithSecurityKey = async (
         // Get options directly
         const options = loginBeginResponse.data.publicKey;
 
+        // Store risk score if provided and handler exists
+        if (loginBeginResponse.data.riskScore !== undefined && setRiskScore) {
+            setRiskScore(loginBeginResponse.data.riskScore);
+        }
+
         // Step 2: Call WebAuthn browser API
         console.log('Starting authentication with browser API');
         const assertion = await startAuthentication(options);
@@ -398,15 +433,32 @@ export const authenticateWithSecurityKey = async (
     } catch (err: any) {
         console.error('WebAuthn authentication error:', err);
 
-        // Handle WebAuthn-specific errors
+        // Check for axios error response first
+        if (err.response && err.response.data) {
+            // Handle specific backend error messages
+            if (err.response.data.error) {
+                const errorMessage = err.response.data.error;
+
+                // Handle specific error cases that we want to show to the user
+                if (errorMessage.includes('deactivated') || errorMessage.includes('inactive')) {
+                    onError('This security key has been deactivated. Please contact your administrator.');
+                } else if (errorMessage.includes('registered to another user')) {
+                    onError('Login failed. Key is already registered to another user.');
+                } else {
+                    // Forward other backend error messages
+                    onError(errorMessage);
+                }
+                return;
+            }
+        }
+
+        // If not a backend error, handle WebAuthn-specific errors
         if (err.name === 'AbortError') {
             onError('Authentication was cancelled or timed out. Please try again and follow your browser\'s prompts.');
         } else if (err.name === 'NotAllowedError') {
             onError('Authentication was not allowed. Did you use the correct security key?');
         } else if (err.name === 'SecurityError') {
             onError('A security error occurred. Please ensure you are using a secure connection.');
-        } else if (err.response?.data?.error) {
-            onError(err.response.data.error);
         } else {
             onError(`Security key authentication failed: ${err.message || err.name}`);
         }
