@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { SecurityKey, SecurityKeyTableMeta } from "./security-key-columns"
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -33,16 +34,18 @@ import {
 } from "@/components/ui/select"
 import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 
-interface DataTableProps<TData, TValue> {
+interface DataTableProps<TData extends SecurityKey, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
   onTableInit?: (table: any) => void
+  meta?: SecurityKeyTableMeta
 }
 
-export function SecurityDataTable<TData, TValue>({
+export function SecurityDataTable<TData extends SecurityKey, TValue>({
   columns,
   data,
   onTableInit,
+  meta
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -65,6 +68,7 @@ export function SecurityDataTable<TData, TValue>({
       columnFilters,
       globalFilter,
     },
+    meta: meta || {},
   })
 
   React.useEffect(() => {
@@ -75,19 +79,6 @@ export function SecurityDataTable<TData, TValue>({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4 py-4">
-        <div className="flex flex-1 items-center space-x-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <Input
-              placeholder="Search..."
-              value={globalFilter ?? ""}
-              onChange={(event) => setGlobalFilter(event.target.value)}
-              className="pl-9 w-full"
-            />
-          </div>
-        </div>
-      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -138,7 +129,7 @@ export function SecurityDataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-between space-x-2 py-4">
+      {/* <div className="flex items-center justify-between space-x-2 py-4">
         <div className="flex items-center space-x-2">
           <Select
             value={`${table.getState().pagination.pageSize}`}
@@ -180,7 +171,7 @@ export function SecurityDataTable<TData, TValue>({
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-      </div>
+      </div> */}
     </div>
   )
 }
