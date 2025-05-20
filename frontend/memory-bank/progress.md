@@ -14,7 +14,7 @@
 - [x] Sidebar navigation
 - [x] Security overview page
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
-- [x] Users management
+- [x] Users management (**Enhanced with client-side search and dropdown filters for role & security key status. Filters are part of the `DataTable` via a `toolbar` prop. Filter controls use `font-montserrat`. Security key filter labels updated.**)
 - [x] Audit logs view
 - [x] Settings page
 
@@ -33,7 +33,9 @@
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
     *   Real-time updates
-    *   Enhanced filtering (review if single global search is sufficient or if column-specific filters are still needed elsewhere)
+    *   Enhanced filtering (User table now has specific filters. Review if other tables need similar specific filters or if global search is sufficient).
+    *   [x] Generic `DataTable` component now supports a `toolbar` prop for custom filter controls.
+    *   [x] Generic `DataTable` component now includes pagination.
 
 2.  Locked Accounts Management
     *   Bulk actions implementation
@@ -57,7 +59,7 @@
     *   Mobile responsiveness refinements
     *   Loading state improvements (standardized spinner, loading state for dialog buttons)
     *   Error handling enhancements (standardized sonner toasts)
-    *   Ensure consistent search/filter patterns and input sizing across all data tables.
+    *   Ensure consistent search/filter patterns and input sizing across all data tables (User table filters implemented via `toolbar` prop).
     *   Ensure consistent use of confirmation dialogs (styling and behavior) for critical actions across the application.
     *   Review all data tables for column relevance.
 
@@ -66,7 +68,8 @@
     *   Optimize data table performance
     *   Enhance mobile responsiveness
     *   Implement rate limiting
-    *   Review and standardize search/filter UX and input sizing across all data tables.
+    *   Review and standardize search/filter UX and input sizing across all data tables (User table is a good example with `toolbar` prop).
+    *   [x] Add pagination to all relevant data tables (Generic `DataTable` now has pagination).
     *   Review other critical actions for potential confirmation dialogs and consistent styling.
     *   Review column selection in all data tables for relevance.
 
