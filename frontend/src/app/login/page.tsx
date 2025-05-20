@@ -340,7 +340,7 @@ export default function LoginPage() {
         e.preventDefault()
 
         if (!username || !password) {
-            toast.error("Please enter both your national ID/email and password")
+            toast.error("Please enter all required fields")
             return
         }
 
@@ -443,7 +443,7 @@ export default function LoginPage() {
 
                 toast.error("Account locked due to too many failed attempts");
             } else {
-                toast.error(apiError.response?.data?.error || "Login failed");
+                toast.error("Invalid credentials. Please try again.");
             }
         }
     }
@@ -513,7 +513,7 @@ export default function LoginPage() {
                 }
 
                 // Display the error message from the backend
-                const errorMessage = apiError.response?.data?.error || "Failed to start security key authentication";
+                const errorMessage = "Unable to authenticate with security key. Please try again.";
                 toast.error(errorMessage);
             }
 
@@ -547,7 +547,7 @@ export default function LoginPage() {
 
                 toast.error("Account locked due to too many failed attempts")
             } else {
-                toast.error(apiError.response?.data?.error || "Login failed")
+                toast.error("Invalid credentials. Please try again.")
             }
         }
     }
