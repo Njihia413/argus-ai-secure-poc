@@ -13,14 +13,14 @@
 - [x] Main dashboard layout
 - [x] Sidebar navigation
 - [x] Security overview page
-- [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog**)
+- [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
 - [x] Users management
 - [x] Audit logs view
 - [x] Settings page
 
 ### Security Features
 - [x] Security key management
-- [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal**)
+- [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal with consistent styling, "Successful Attempts" column removed**)
 - [x] Audit logging system
 - [x] User activity tracking
 
@@ -58,7 +58,8 @@
     *   Loading state improvements (standardized spinner, loading state for dialog buttons)
     *   Error handling enhancements (standardized sonner toasts)
     *   Ensure consistent search/filter patterns and input sizing across all data tables.
-    *   Ensure consistent use of confirmation dialogs for critical actions across the application.
+    *   Ensure consistent use of confirmation dialogs (styling and behavior) for critical actions across the application.
+    *   Review all data tables for column relevance.
 
 ## Next Steps
 1.  Short Term
@@ -66,7 +67,8 @@
     *   Enhance mobile responsiveness
     *   Implement rate limiting
     *   Review and standardize search/filter UX and input sizing across all data tables.
-    *   Review other critical actions for potential confirmation dialogs.
+    *   Review other critical actions for potential confirmation dialogs and consistent styling.
+    *   Review column selection in all data tables for relevance.
 
 2.  Medium Term
     *   Add advanced security analytics

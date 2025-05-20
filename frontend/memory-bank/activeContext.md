@@ -9,13 +9,13 @@ Based on open files and recent activity, development is focused on security mana
     *   Integration with WebAuthn
 
 2.  Locked Accounts Management
-    *   Data table implementation for locked accounts (**Updated styling, single global search filter with increased width, and action button styling with confirmation modal**)
+    *   Data table implementation for locked accounts (**Updated styling, single global search filter with increased width, action button styling with confirmation modal using `font-montserrat`, and removed "Successful Attempts" column**)
     *   Account status monitoring
     *   Account recovery workflows (**Simplified backend logic for account lock, frontend notifications use sonner toasts, unlock action now has a confirmation dialog**)
 
 3.  Active Components
-    *   `locked-accounts-data-table.tsx`: Main interface for locked accounts (**Refined styling, single search filter with `max-w-md`, and notification handling**)
-    *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog, uses sonner toasts for actions**)
+    *   `locked-accounts-data-table.tsx`: Main interface for locked accounts (**Refined styling, single search filter with `max-w-md`, and notification handling. "Successful Attempts" column removed from display logic.**)
+    *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
     *   `security/page.tsx`: Security dashboard implementation
     *   `app-sidebar.tsx`: Navigation and layout structure
     *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock**)
@@ -29,13 +29,14 @@ Based on open files and recent activity, development is focused on security mana
 6.  Consolidated multiple search filters in `locked-accounts-data-table.tsx` into a single global search input with increased width (`max-w-md`).
 7.  Standardized action button styling in data tables to match the "Add User" button style.
 8.  Renamed the actions column header to "Action" for clarity in `locked-accounts-columns.tsx`.
-9.  Added a confirmation dialog (`shadcn/ui Dialog`) to the "Unlock Account" button in `locked-accounts-columns.tsx` to prevent accidental unlocks.
+9.  Added a confirmation dialog (`shadcn/ui Dialog`) to the "Unlock Account" button in `locked-accounts-columns.tsx` to prevent accidental unlocks, styled with `font-montserrat` and `sm:max-w-[425px]`.
+10. Removed the "Successful Attempts" column from the locked accounts data table as it was deemed redundant.
 
 ## Active Technical Patterns
 1.  Data Table Pattern
     *   Reusable table structure with `CardContent` wrappers for consistent styling.
-    *   Customizable columns with sorting and a single global filter (e.g., `Input` with `max-w-md`).
-    *   Consistent data display and action handling (standardized button styles, confirmation dialogs for critical actions).
+    *   Customizable columns with sorting and a single global filter (e.g., `Input` with `max-w-md`). Column definitions are carefully selected to display relevant information.
+    *   Consistent data display and action handling (standardized button styles, confirmation dialogs for critical actions with consistent font and sizing).
 
 2.  Security Patterns
     *   WebAuthn integration.
@@ -51,7 +52,7 @@ Based on open files and recent activity, development is focused on security mana
     *   Using `sonner` for consistent toast notifications for user feedback (e.g., account unlock success/failure).
 
 5.  User Interaction Pattern
-    *   Confirmation dialogs for destructive or sensitive actions (e.g., unlocking an account).
+    *   Confirmation dialogs for destructive or sensitive actions (e.g., unlocking an account), styled consistently with the application's typography (`font-montserrat`).
 
 ## Current Considerations
 1.  Security Features
@@ -65,7 +66,8 @@ Based on open files and recent activity, development is focused on security mana
     *   Account recovery flows (admin-initiated unlock with confirmation step).
     *   Consistent notification patterns.
     *   Simplified search/filtering in data tables with appropriate input sizing.
-    *   Clear confirmation steps for critical actions.
+    *   Clear confirmation steps for critical actions, with consistent dialog styling.
+    *   Relevance of displayed columns in data tables.
 
 3.  Integration Points
     *   Backend API integration for account management.

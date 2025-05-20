@@ -35,7 +35,8 @@ The application follows Next.js 13+ App Router architecture with a clear separat
     -   Single global search input (e.g., "Search..." with `max-w-md`).
     -   Standardized "Action" column header for action buttons.
     -   Consistent button styling (e.g., black background for primary actions).
-    -   Confirmation dialogs (`shadcn/ui Dialog`) for critical actions within table rows (e.g., "Unlock Account").
+    -   Confirmation dialogs (`shadcn/ui Dialog`) for critical actions within table rows (e.g., "Unlock Account"), styled with application's primary font (`font-montserrat`) and consistent sizing (`sm:max-w-[425px]`).
+    -   Selective display of columns based on relevance (e.g., "Successful Attempts" column removed where not critical).
 -   Compound components for complex UI patterns.
 
 ### 2. State Management
@@ -55,19 +56,19 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 -   Chat interface for AI interactions.
 
 ### 5. User Interaction
--   Use of `shadcn/ui Dialog` components to implement confirmation modals for sensitive operations, enhancing user safety and preventing accidental actions.
+-   Use of `shadcn/ui Dialog` components to implement confirmation modals for sensitive operations, ensuring consistent styling (font, size) with the rest of the application.
 -   Clear visual feedback during asynchronous operations (e.g., "Unlocking..." button text).
 
 ## Technical Decisions
 
 1.  **UI Framework**
-    -   shadcn/ui for consistent component base, including `Dialog` for modals.
+    -   shadcn/ui for consistent component base, including `Dialog` for modals (styled with `font-montserrat`).
     -   Custom styling with Tailwind CSS.
     -   Responsive design patterns.
 
 2.  **Data Handling**
     -   Type-safe data management with TypeScript.
-    -   Data table abstractions for security records, featuring global search (e.g., `Input` with `max-w-md`) and standardized action columns/buttons with confirmation dialogs.
+    -   Data table abstractions for security records, featuring global search (e.g., `Input` with `max-w-md`), standardized action columns/buttons with confirmation dialogs, and curated column visibility.
     -   Efficient data fetching and caching.
 
 3.  **Authentication Flow**
