@@ -85,6 +85,9 @@ export default function UsersPage() {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [roleFilter, setRoleFilter] = useState("all") // 'all', 'admin', 'user'
+  const [securityKeyFilter, setSecurityKeyFilter] = useState("all") // 'all', 'none', 'active', 'inactive'
 
   // Initial load
   useEffect(() => {
@@ -209,6 +212,30 @@ export default function UsersPage() {
     }
   }
 
+  const filteredUsers = users.filter(user => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      (user.username.toLowerCase()).includes(term) ||
+      (user.firstName.toLowerCase()).includes(term) ||
+      (user.middlename ? user.middlename.toLowerCase().includes(term) : false) ||
+      (user.lastName.toLowerCase()).includes(term) ||
+      (user.email.toLowerCase()).includes(term) ||
+      (String(user.nationalId).toLowerCase()).includes(term);
+
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+
+    let matchesSecurityKey = true;
+    if (securityKeyFilter === "none") {
+      matchesSecurityKey = !user.hasSecurityKey;
+    } else if (securityKeyFilter === "active") {
+      matchesSecurityKey = user.hasSecurityKey && user.securityKeyStatus === "active";
+    } else if (securityKeyFilter === "inactive") {
+      matchesSecurityKey = user.hasSecurityKey && user.securityKeyStatus === "inactive";
+    }
+
+    return matchesSearch && matchesRole && matchesSecurityKey;
+  });
+
   return (
       <>
         <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
@@ -230,12 +257,49 @@ export default function UsersPage() {
               ) : (
                   <DataTable
                       columns={columns}
-                      data={users}
+                      data={filteredUsers}
                       meta={{
                         setSelectedUser,
                         setIsDeleteDialogOpen,
                         setIsEditUserDialogOpen,
                       }}
+                      toolbar={
+                        <div className="flex items-center space-x-4 w-full font-montserrat">
+                          <Input
+                            placeholder="Search users..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="max-w-sm"
+                          />
+                          <Select value={roleFilter} onValueChange={setRoleFilter}>
+                            <SelectTrigger className="w-[180px] border border-input">
+                              <SelectValue placeholder="Filter by role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectLabel>Role</SelectLabel>
+                                <SelectItem value="all">All Roles</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="user">User</SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <Select value={securityKeyFilter} onValueChange={setSecurityKeyFilter}>
+                            <SelectTrigger className="w-[220px] border border-input">
+                              <SelectValue placeholder="Filter by Security Key" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectLabel>Security Key</SelectLabel>
+                                <SelectItem value="all">All Security Keys</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="inactive">Inactive</SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      }
                   />
               )}
             </CardContent>
