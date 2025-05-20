@@ -1407,7 +1407,7 @@ def login():
     data = request.get_json()
 
     if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'error': 'Missing credentials or password'}), 400
+        return jsonify({'error': 'Please enter all required fields'}), 400
 
     identifier = data.get('username')
     user = None
@@ -1424,8 +1424,8 @@ def login():
     if not user:
         user_by_username = Users.query.filter_by(username=identifier).first()
         if user_by_username:
-            return jsonify({'error': 'Please login with your email or national ID'}), 400
-        return jsonify({'error': 'User not found'}), 404
+            return jsonify({'error': 'Invalid credentials. Please try again'}), 401
+        return jsonify({'error': 'Invalid credentials. Please try again'}), 401
 
     # Get location from IP
     ip_address = request.remote_addr
@@ -1470,7 +1470,7 @@ def login():
         # Increment failed login attempts
         user.increment_failed_attempts()
 
-        return jsonify({'error': 'Invalid password'}), 401
+        return jsonify({'error': 'Invalid credentials. Please try again'}), 401
 
     # Password is correct - update attempt to successful
     auth_attempt.success = True
