@@ -68,11 +68,13 @@ class Users(db.Model):
     has_security_key = db.Column(db.Boolean, nullable=False, default=False)
     total_login_attempts = db.Column(db.Integer, default=0)  # Track total successful logins
     account_locked_until = db.Column(db.DateTime)
+    security_key_status = db.Column(db.String(20), nullable=True)
 
     # WebAuthn related fields
     credential_id = db.Column(db.String(250), unique=True, nullable=True)
     public_key = db.Column(db.Text, nullable=True)
     sign_count = db.Column(db.Integer, default=0)
+
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -115,6 +117,32 @@ class Users(db.Model):
             "remainingSeconds": int(remaining_seconds)
         }
 
+    def update_security_key_status(self):
+        """Update the security key status based on the user's security keys"""
+        # Check for active keys
+        active_keys = SecurityKey.query.filter_by(
+            user_id=self.id,
+            is_active=True
+        ).count()
+
+        # Check for inactive keys
+        inactive_keys = SecurityKey.query.filter_by(
+            user_id=self.id,
+            is_active=False
+        ).count()
+
+        # Update status based on findings
+        if active_keys > 0:
+            self.security_key_status = 'active'
+            self.has_security_key = True
+        elif inactive_keys > 0:
+            self.security_key_status = 'inactive'
+            self.has_security_key = True
+        else:
+            self.security_key_status = None
+            self.has_security_key = False
+
+        return self
 
 # Update WebAuthnChallenge model to reference Users instead of User
 class WebAuthnChallenge(db.Model):
@@ -155,6 +183,46 @@ class AuthenticationAttempt(db.Model):
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
 
     user = db.relationship('Users', backref=db.backref('auth_attempts', lazy=True))
+
+
+# Audit logs for security keys
+class SecurityKeyAudit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    security_key_id = db.Column(db.Integer, db.ForeignKey('security_key.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    action = db.Column(db.String(50), nullable=False)  # register, deactivate, activate, reassign
+    details = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    performed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    previous_state = db.Column(db.JSON)
+    new_state = db.Column(db.JSON)
+
+    # Relationships
+    security_key = db.relationship('SecurityKey', backref=db.backref('audit_logs', lazy=True))
+    user = db.relationship('Users', foreign_keys=[user_id], backref=db.backref('security_key_audit_logs', lazy=True))
+    actor = db.relationship('Users', foreign_keys=[performed_by])
+
+# SecurityKey model
+class SecurityKey(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    credential_id = db.Column(db.String(250), unique=True, nullable=True)  
+    public_key = db.Column(db.Text, nullable=True)  
+    sign_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_active = db.Column(db.Boolean, default=True)
+    last_used = db.Column(db.DateTime(timezone=True), nullable=True)
+    deactivated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    deactivation_reason = db.Column(db.String(100), nullable=True)
+
+    # Security key details
+    model = db.Column(db.String(100), nullable=True)
+    type = db.Column(db.String(100), nullable=True)
+    serial_number = db.Column(db.String(100), nullable=True)
+    pin = db.Column(db.String(500), nullable=True)  
+    
+    # Relationships
+    user = db.relationship('Users', backref=db.backref('security_keys', lazy=True))
 
 
 # Configure WebAuthn
@@ -314,9 +382,17 @@ def validate_token_binding(session_token, binding_nonce, request):
 
     print(f"Found session for user_id: {auth_session.user_id}")
 
-    # Check if session is expired
-    if datetime.now(timezone.utc) > auth_session.expires_at:
-        print(f"Session expired at {auth_session.expires_at}")
+    # Check if session is expired - with proper timezone handling
+    now = datetime.now(timezone.utc)
+
+    # Make sure expires_at has timezone info
+    expires_at = auth_session.expires_at
+    if expires_at and not expires_at.tzinfo:
+        # If expires_at doesn't have timezone info, assume it's UTC
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if now > expires_at:
+        print(f"Session expired at {expires_at}")
         return False
 
     # For development purposes, use simpler binding validation
@@ -335,6 +411,13 @@ def validate_token_binding(session_token, binding_nonce, request):
         return True
 
     return True
+
+
+# Method to update last_used
+def update_last_used(self):
+    """Update the last_used timestamp to current time with timezone"""
+    self.last_used = datetime.now(timezone.utc)
+    db.session.commit()
 
 
 # Function to assess risk for risk-based authentication
@@ -602,59 +685,99 @@ def get_active_users():
 # Add a new route to get all users (admin only)
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    # Existing authentication checks...
+    try:
+        # Find the admin session
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Admin authorization required'}), 401
 
-    # Find the admin session
-    auth_token = request.headers.get('Authorization')
-    auth_token = auth_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
-    # Get the admin user
-    admin_user = Users.query.get(auth_session.user_id)
-    if not admin_user or admin_user.role != 'admin':
-        return jsonify({'error': 'Admin privileges required'}), 403
+        if not auth_session:
+            return jsonify({'error': 'Invalid admin token'}), 401
 
-    # Use the filtered query to exclude soft-deleted users
-    users = Users.query.filter_by(is_deleted=False).all()
+        # Get the admin user
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
 
-    # Now update login attempts with the current active state
-    user_list = []
+        # Use the filtered query to exclude soft-deleted users
+        users = Users.query.filter_by(is_deleted=False).all()
 
-    for user in users:
-        # Only update attempts for non-deleted users
-        failed_attempts = AuthenticationAttempt.query.filter(
-            AuthenticationAttempt.user_id == user.id,
-            AuthenticationAttempt.success == False,
-            AuthenticationAttempt.is_deleted == False,
-            AuthenticationAttempt.auth_type == 'password'
-        ).count()
+        # Now update login attempts with the current active state
+        user_list = []
 
-        successful_attempts = AuthenticationAttempt.query.filter(
-            AuthenticationAttempt.user_id == user.id,
-            AuthenticationAttempt.success == True,
-            AuthenticationAttempt.is_deleted == False,
-            AuthenticationAttempt.auth_type == 'password'
-        ).count()
+        for user in users:
+            # Only update attempts for non-deleted users
+            failed_attempts = AuthenticationAttempt.query.filter(
+                AuthenticationAttempt.user_id == user.id,
+                AuthenticationAttempt.success == False,
+                AuthenticationAttempt.is_deleted == False,
+                AuthenticationAttempt.auth_type == 'password'
+            ).count()
 
-        user_list.append({
-            'id': user.id,
-            'nationalId': user.national_id,
-            'username': user.username,
-            'firstName': user.first_name,
-            'middlename': user.middle_name,
-            'lastName': user.last_name,
-            'email': user.email,
-            'role': user.role,
-            'hasSecurityKey': user.has_security_key,
-            'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
-            'loginAttempts': successful_attempts,
-            'failedAttempts': failed_attempts,
-            'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None
-        })
+            successful_attempts = AuthenticationAttempt.query.filter(
+                AuthenticationAttempt.user_id == user.id,
+                AuthenticationAttempt.success == True,
+                AuthenticationAttempt.is_deleted == False,
+                AuthenticationAttempt.auth_type == 'password'
+            ).count()
 
-    return jsonify({'users': user_list})
+            # Count active and inactive security keys for this user
+            active_keys = SecurityKey.query.filter_by(
+                user_id=user.id,
+                is_active=True
+            ).count()
 
+            inactive_keys = SecurityKey.query.filter_by(
+                user_id=user.id,
+                is_active=False
+            ).count()
 
+            # Determine security key status
+            security_key_status = None
+            if active_keys > 0:
+                security_key_status = "active"
+            elif inactive_keys > 0:
+                security_key_status = "inactive"
+            else:
+                security_key_status = None
+
+            # Total key count (both active and inactive)
+            total_key_count = active_keys + inactive_keys
+
+            # Log user security key info for debugging
+            print(f"User {user.username}: active_keys={active_keys}, inactive_keys={inactive_keys}, "
+                  f"status={security_key_status}, total={total_key_count}")
+
+            user_list.append({
+                'id': user.id,
+                'nationalId': user.national_id,
+                'username': user.username,
+                'firstName': user.first_name,
+                'middlename': user.middle_name,
+                'lastName': user.last_name,
+                'email': user.email,
+                'role': user.role,
+                'hasSecurityKey': total_key_count > 0,  # True if user has any keys (active or inactive)
+                'securityKeyCount': total_key_count,  # Total number of keys
+                'securityKeyStatus': security_key_status,  # 'active', 'inactive', or null
+                'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
+                'loginAttempts': successful_attempts,
+                'failedAttempts': failed_attempts,
+                'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None
+            })
+
+        return jsonify({'users': user_list})
+
+    except Exception as e:
+        print(f"Error in get_users: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': 'An error occurred while retrieving users'}), 500
+
+# User details endpoint
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     # Existing authentication checks...
@@ -687,6 +810,12 @@ def get_user(user_id):
         AuthenticationAttempt.auth_type == 'password'
     ).count()
 
+    # Count active security keys for this user
+    security_key_count = SecurityKey.query.filter_by(
+        user_id=user.id,
+        is_active=True
+    ).count()
+
     return jsonify({
         'user': {
             'id': user.id,
@@ -697,7 +826,8 @@ def get_user(user_id):
             'lastName': user.last_name,
             'email': user.email,
             'role': user.role,
-            'hasSecurityKey': user.has_security_key,
+            'hasSecurityKey': security_key_count > 0,
+            'securityKeyCount': security_key_count,
             'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
             'loginAttempts': successful_attempts,
             'failedAttempts': failed_attempts,
@@ -706,8 +836,572 @@ def get_user(user_id):
     })
 
 
-# Modified portion of the login endpoint to store risk score correctly
+# Get security keys for a user
+@app.route('/api/users/<int:user_id>/security-keys', methods=['GET'])
+def get_user_security_keys(user_id):
+    # Verify admin token and authorization
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
 
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the user's security keys
+    keys = SecurityKey.query.filter_by(user_id=user_id).order_by(SecurityKey.created_at.desc()).all()
+
+    keys_list = []
+    for key in keys:
+        # Format the credential ID for display (first 6 chars)
+        display_id = key.credential_id[:6] + '...' if key.credential_id else 'Unknown'
+
+        keys_list.append({
+            'id': key.id,
+            'credentialId': key.credential_id,
+            'isActive': key.is_active,
+            'createdAt': key.created_at.isoformat(),
+            'lastUsed': key.last_used.isoformat() if key.last_used else None,
+            'model': key.model,
+            'type': key.type,
+            'serialNumber': key.serial_number
+        })
+
+    return jsonify({'securityKeys': keys_list})
+
+# Add this new route to delete a security key
+@app.route('/api/security-keys/<int:key_id>', methods=['DELETE'])
+def delete_security_key(key_id):
+    # Verify admin token and authorization (keeping your existing code)
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Find the security key
+    key = SecurityKey.query.get(key_id)
+    if not key:
+        return jsonify({'error': 'Security key not found'}), 404
+
+    # Get the user before deleting the key
+    user = Users.query.get(key.user_id)
+    if not user:
+        return jsonify({'error': 'Associated user not found'}), 404
+
+    try:
+        # First, handle the associated audit logs
+        # Option 1: Delete the audit logs
+        SecurityKeyAudit.query.filter_by(security_key_id=key_id).delete()
+        
+        # Option 2 (Alternative): Or create a special "DELETED_KEY" record to maintain audit history
+        # Uncomment the following code and comment the line above if you prefer this approach
+        '''
+        for audit in SecurityKeyAudit.query.filter_by(security_key_id=key_id).all():
+            audit.security_key_id = -1  # Use a special ID for deleted keys
+            audit.details += " (Key was subsequently deleted)"
+        '''
+        
+        # Then delete the key
+        db.session.delete(key)
+
+        # Count remaining keys after deletion
+        remaining_keys = SecurityKey.query.filter_by(user_id=user.id).count()
+        remaining_active_keys = SecurityKey.query.filter_by(
+            user_id=user.id,
+            is_active=True
+        ).count()
+
+        # Update user's security key status
+        if remaining_keys == 0:
+            # No keys left
+            user.has_security_key = False
+            user.security_key_status = None
+            # Clear the credential_id and public_key if this was the last key
+            user.credential_id = None
+            user.public_key = None
+            user.sign_count = 0
+        else:
+            # Still has keys
+            user.has_security_key = True
+            user.security_key_status = 'active' if remaining_active_keys > 0 else 'inactive'
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Security key deleted successfully',
+            'user': {
+                'id': user.id,
+                'hasSecurityKey': user.has_security_key,
+                'securityKeyStatus': user.security_key_status,
+                'remainingKeys': remaining_keys,
+                'remainingActiveKeys': remaining_active_keys
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting security key: {str(e)}")
+        return jsonify({'error': 'Failed to delete security key'}), 500
+
+
+# Activate/deactivate a security key
+@app.route('/api/security-keys/<int:key_id>/deactivate-status', methods=['POST'])
+def deactivate_security_key_status(key_id):
+    """Toggle a security key's active status with security checks.
+    
+    Security measures:
+    - Only admins can toggle other users' keys
+    - Cannot activate a previously deactivated key
+    - Only one active key allowed per user
+    """
+    # Verify admin token and authorization
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Find the security key
+    key = SecurityKey.query.get(key_id)
+    if not key:
+        return jsonify({'error': 'Security key not found'}), 404
+
+    # If trying to activate a deactivated key
+    if not key.is_active and key.last_used:
+        return jsonify({
+            'error': 'Cannot reactivate key',
+            'detail': 'Previously deactivated keys cannot be reactivated for security reasons'
+        }), 400
+
+    # If activating a key, check if user already has another active key
+    if not key.is_active:  # If we're activating the key
+        other_active_key = SecurityKey.query.filter_by(
+            user_id=key.user_id,
+            is_active=True
+        ).first()
+        if other_active_key:
+            return jsonify({
+                'error': 'Active key exists',
+                'detail': 'User already has an active security key. Deactivate existing key before activating another.'
+            }), 400
+
+    # Create an audit log entry first
+    previous_state = {
+        'is_active': key.is_active,
+        'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
+        'deactivation_reason': key.deactivation_reason
+    }
+
+    # Toggle the status and set deactivation details
+    key.is_active = not key.is_active
+    
+    # When deactivating, set deactivation details
+    if not key.is_active:
+        key.deactivated_at = datetime.now(timezone.utc)
+        key.deactivation_reason = request.json.get('reason')
+    else:
+        # Clear deactivation details when activating
+        key.deactivated_at = None
+        key.deactivation_reason = None
+
+    new_state = {
+        'is_active': key.is_active,
+        'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
+        'deactivation_reason': key.deactivation_reason
+    }
+
+    # Create audit log
+    audit_log = SecurityKeyAudit(
+        security_key_id=key.id,
+        user_id=key.user_id,
+        action='deactivate' if not key.is_active else 'activate',
+        details=f"Security key {'deactivated' if not key.is_active else 'activated'} by admin",
+        performed_by=admin_user.id,
+        previous_state=previous_state,
+        new_state=new_state
+    )
+    db.session.add(audit_log)
+
+    # Ensure created_at has timezone info
+    if key.created_at and not key.created_at.tzinfo:
+        key.created_at = key.created_at.replace(tzinfo=timezone.utc)
+
+    # Ensure last_used has timezone info if it exists
+    if key.last_used and not key.last_used.tzinfo:
+        key.last_used = key.last_used.replace(tzinfo=timezone.utc)
+
+    # Now compare the timezone-aware timestamps
+    if key.last_used and key.created_at and key.last_used < key.created_at:
+        # If last_used is before created_at, it's invalid, so reset it
+        key.last_used = None  # Reset invalid last_used time
+
+    # Get the user that owns this key
+    user = Users.query.get(key.user_id)
+
+    # Update the user's security key status
+    if user:
+        # Check for any other active keys
+        other_active_keys = SecurityKey.query.filter_by(
+            user_id=user.id,
+            is_active=True
+        ).filter(SecurityKey.id != key.id).count()
+
+        # Update user's security_key_status
+        if key.is_active or other_active_keys > 0:
+            user.security_key_status = 'active'
+            user.has_security_key = True
+        else:
+            # Check if they have any inactive keys
+            inactive_keys = SecurityKey.query.filter_by(
+                user_id=user.id,
+                is_active=False
+            ).count()
+
+            if inactive_keys > 0:
+                user.security_key_status = 'inactive'
+                user.has_security_key = True  # Users with inactive keys still have keys
+            else:
+                user.security_key_status = None
+                user.has_security_key = False
+
+    # Commit all changes
+    db.session.commit()
+
+    return jsonify({
+        'message': f"Security key {'activated' if key.is_active else 'deactivated'} successfully",
+        'key': {
+            'id': key.id,
+            'isActive': key.is_active
+        },
+        'user': {
+            'id': user.id if user else None,
+            'securityKeyStatus': user.security_key_status if user else None,
+            'hasSecurityKey': user.has_security_key if user else False
+        }
+    })
+
+# Update security key details
+@app.route('/api/security-keys/<int:key_id>', methods=['PUT'])
+def update_security_key(key_id):
+    # Verify admin token and authorization
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    # Get the request data
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request data is required'}), 400
+
+    # Check required fields
+    required_fields = ['model', 'type', 'serialNumber']
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        return jsonify({'error': f'Missing required fields: {", ".join(missing_fields)}'}), 400
+
+    # Find the security key
+    key = SecurityKey.query.get(key_id)
+    if not key:
+        return jsonify({'error': 'Security key not found'}), 404
+
+    # Update the fields
+    key.model = data['model']
+    key.type = data['type']
+    key.serial_number = data['serialNumber']
+    
+    # Only update PIN if provided and not empty
+    if 'pin' in data and data['pin']:
+        key.pin = generate_password_hash(data['pin'])
+
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Security key updated successfully',
+        'key': {
+            'id': key.id,
+            'model': key.model,
+            'type': key.type,
+            'serialNumber': key.serial_number
+        }
+    })
+
+
+@app.route('/api/security-keys/details', methods=['POST'])
+def save_security_key_details():
+    # Verify admin token and authorization
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+
+    data = request.get_json()
+    required_fields = ['userId', 'model', 'type', 'serialNumber', 'pin']
+
+    if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Store the details in the auth session instead of Flask session
+    auth_session.client_binding = json.dumps({
+        'user_id': data['userId'],
+        'model': data['model'],
+        'type': data['type'],
+        'serial_number': data['serialNumber'],
+        'pin': data['pin']
+    })
+    db.session.commit()
+
+    return jsonify({'message': 'Security key details saved successfully'}), 200
+
+@app.route('/api/security-keys/<int:key_id>/reset', methods=['POST'])
+def reset_security_key(key_id):
+    # Authentication checks (keep your existing code)
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+    
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+    
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+    
+    # Find the security key
+    key = SecurityKey.query.get(key_id)
+    if not key:
+        return jsonify({'error': 'Security key not found'}), 404
+        
+    # Check if key has already been reset
+    if not key.credential_id and key.deactivation_reason == "Reset by admin":
+        return jsonify({'error': 'Key has already been reset'}), 400
+    
+    try:
+        # Create audit log entry for reset
+        previous_state = {
+            'pin': 'REDACTED' if key.pin else None,
+            'is_active': key.is_active,
+            'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
+            'deactivation_reason': key.deactivation_reason,
+            'credential_id': key.credential_id
+        }
+
+        # Reset the database record
+        key.pin = None
+        
+        # Mark as inactive for reassignment
+        key.is_active = False
+        key.deactivated_at = datetime.now(timezone.utc)
+        key.deactivation_reason = "Reset by admin"
+        
+        # Clear credential if needed
+        key.credential_id = None
+
+        new_state = {
+            'pin': None,
+            'is_active': key.is_active,
+            'deactivated_at': key.deactivated_at.isoformat(),
+            'deactivation_reason': key.deactivation_reason,
+            'credential_id': key.credential_id
+        }
+
+        # Create audit log
+        audit_log = SecurityKeyAudit(
+            security_key_id=key.id,
+            user_id=key.user_id,
+            action='reset',
+            details=f"Security key reset by admin for reassignment",
+            performed_by=admin_user.id,
+            previous_state=previous_state,
+            new_state=new_state
+        )
+        db.session.add(audit_log)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Security key reset successfully',
+            'key': {
+                'id': key.id,
+                'isActive': key.is_active
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error resetting security key: {str(e)}")
+        return jsonify({'error': f'Failed to reset security key: {str(e)}'}), 500
+
+
+@app.route('/api/security-keys/<int:key_id>/reassign', methods=['POST'])
+def reassign_security_key(key_id):
+    # Authentication checks
+    auth_token = request.headers.get('Authorization')
+    if not auth_token:
+        return jsonify({'error': 'Admin authorization required'}), 401
+    
+    # Verify the admin token
+    auth_token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+    if not auth_session:
+        return jsonify({'error': 'Invalid admin token'}), 401
+    
+    # Get the admin user
+    admin_user = Users.query.get(auth_session.user_id)
+    if not admin_user or admin_user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
+    
+    # Find the security key
+    key = SecurityKey.query.get(key_id)
+    if not key:
+        return jsonify({'error': 'Security key not found'}), 404
+    
+    # Get new user ID from request
+    data = request.get_json()
+    new_user_id = data.get('new_user_id')
+    
+    if not new_user_id:
+        return jsonify({'error': 'New user ID is required'}), 400
+    
+    # Check if key is ready for reassignment
+    if key.is_active:
+        return jsonify({'error': 'Security key must be reset before reassignment'}), 400
+    
+    try:
+        # Get the current owner and new owner
+        current_owner = Users.query.get(key.user_id)
+        new_owner = Users.query.get(new_user_id)
+        
+        if not new_owner:
+            return jsonify({'error': 'New user not found'}), 404
+        
+        # Update the key record
+        # Create an audit log entry
+        previous_state = {
+            'user_id': key.user_id,
+            'credential_id': key.credential_id,
+            'public_key': key.public_key,
+            'sign_count': key.sign_count,
+            'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
+            'deactivation_reason': key.deactivation_reason,
+            'last_used': key.last_used.isoformat() if key.last_used else None
+        }
+
+        key.user_id = new_user_id
+        
+        # Clear credentials (will be re-registered by new user)
+        key.credential_id = None
+        key.public_key = None
+        key.sign_count = 0
+        key.pin = None
+        
+        # Update metadata
+        key.deactivated_at = None
+        key.deactivation_reason = None
+        key.last_used = None
+
+        new_state = {
+            'user_id': key.user_id,
+            'credential_id': key.credential_id,
+            'public_key': key.public_key,
+            'sign_count': key.sign_count,
+            'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
+            'deactivation_reason': key.deactivation_reason,
+            'last_used': key.last_used.isoformat() if key.last_used else None
+        }
+
+        # Create audit log
+        audit_log = SecurityKeyAudit(
+            security_key_id=key.id,
+            user_id=new_user_id,  # This will be the new user
+            action='reassign',
+            details=f"Security key reassigned from {current_owner.username if current_owner else 'unknown'} to {new_owner.username}",
+            performed_by=admin_user.id,
+            previous_state=previous_state,
+            new_state=new_state
+        )
+        db.session.add(audit_log)
+        
+        db.session.commit()
+        
+        # Update both users' security key status
+        if current_owner:
+            current_owner.update_security_key_status()
+        
+        new_owner.update_security_key_status()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Security key reassigned from {current_owner.username if current_owner else "unknown"} to {new_owner.username}',
+            'key': {
+                'id': key.id,
+                'userId': new_user_id
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error reassigning security key: {str(e)}")
+        return jsonify({'error': f'Failed to reassign security key: {str(e)}'}), 500
+
+
+# Login endpoint
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -865,6 +1559,9 @@ def webauthn_register_begin():
     username = data.get('username')
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
+    force_registration = data.get('forceRegistration', False)  # Add this parameter
+    
+    print(f"Registration begin request: username={username}, force_registration={force_registration}")
 
     if not username:
         return jsonify({'error': 'Username required'}), 400
@@ -896,20 +1593,26 @@ def webauthn_register_begin():
     # This is for the excludeCredentials parameter to prevent
     # registering the same security key multiple times
     all_credentials = []
-    users_with_credentials = Users.query.filter(Users.credential_id.isnot(None)).all()
+    
+    # Only gather exclude credentials if we're not forcing registration
+    if not force_registration:
+        print("Getting existing credentials to exclude them")
+        users_with_credentials = Users.query.filter(Users.credential_id.isnot(None)).all()
 
-    for existing_user in users_with_credentials:
-        try:
-            credential_id = websafe_decode(existing_user.credential_id)
-            all_credentials.append(
-                PublicKeyCredentialDescriptor(
-                    type=PublicKeyCredentialType.PUBLIC_KEY,
-                    id=credential_id
+        for existing_user in users_with_credentials:
+            try:
+                credential_id = websafe_decode(existing_user.credential_id)
+                all_credentials.append(
+                    PublicKeyCredentialDescriptor(
+                        type=PublicKeyCredentialType.PUBLIC_KEY,
+                        id=credential_id
+                    )
                 )
-            )
-        except Exception as e:
-            print(f"Error decoding credential ID: {e}")
-            continue
+            except Exception as e:
+                print(f"Error decoding credential ID: {e}")
+                continue
+    else:
+        print("Force registration enabled - not excluding any existing credentials")
 
     # Prepare registration options
     user_entity = PublicKeyCredentialUserEntity(
@@ -918,11 +1621,10 @@ def webauthn_register_begin():
         display_name=f"{user.first_name} {user.last_name}"  # Use full name for display_name
     )
 
-    # Get registration data from the server, now including all existing credentials
-    # to exclude them from being registered again
+    # Get registration data from the server
     registration_data, state = server.register_begin(
         user_entity,
-        credentials=all_credentials,  # Exclude existing credentials
+        credentials=all_credentials,  # This will be empty if force_registration is true
         user_verification=UserVerificationRequirement.PREFERRED,
         authenticator_attachment=AuthenticatorAttachment.CROSS_PLATFORM
     )
@@ -939,10 +1641,11 @@ def webauthn_register_begin():
         challenge_bytes = bytes(challenge_bytes) if hasattr(challenge_bytes, '__bytes__') else str(
             challenge_bytes).encode('utf-8')
 
-    # Print information about the challenge
-    print(f"Challenge type: {type(challenge_bytes).__name__}")
-    print(f"Challenge length: {len(challenge_bytes)} bytes")
-    print(f"Challenge first 10 bytes: {challenge_bytes[:10].hex()}")
+    # Print information about the challenge (using ASCII-safe characters only)
+    print("Challenge details:")
+    print(f"- Type: {type(challenge_bytes).__name__}")
+    print(f"- Length: {len(challenge_bytes)} bytes")
+    print(f"- Preview: {challenge_bytes[:10].hex()}")
 
     # Clear any existing challenges for this user
     WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
@@ -969,11 +1672,12 @@ def webauthn_register_begin():
 
     # Prepare exclude credentials list for client
     exclude_credentials = []
-    for cred in all_credentials:
-        exclude_credentials.append({
-            'type': 'public-key',
-            'id': websafe_encode(cred.id)
-        })
+    if not force_registration:
+        for cred in all_credentials:
+            exclude_credentials.append({
+                'type': 'public-key',
+                'id': websafe_encode(cred.id)
+            })
 
     # Return the publicKey options as expected by the WebAuthn API
     return jsonify({
@@ -993,7 +1697,7 @@ def webauthn_register_begin():
                 {'type': 'public-key', 'alg': -257}  # RS256
             ],
             'timeout': 60000,
-            'excludeCredentials': exclude_credentials,  # Add this to prevent reregistration
+            'excludeCredentials': exclude_credentials,  # Will be empty if force_registration is true
             'authenticatorSelection': {
                 'authenticatorAttachment': 'cross-platform',
                 'userVerification': 'preferred',
@@ -1001,7 +1705,8 @@ def webauthn_register_begin():
             },
             'attestation': 'none'
         },
-        'registrationToken': new_challenge.id  # Send the challenge ID as a token
+        'registrationToken': new_challenge.id,  # Send the challenge ID as a token
+        'forceRegistration': force_registration  # Include in response for debugging
     })
 
 
@@ -1009,16 +1714,22 @@ def webauthn_register_begin():
 def webauthn_register_complete():
     print("\n=================== REGISTER COMPLETE REQUEST ===================")
 
-    def update_security_key_status(user):
-        user.has_security_key = True
-        db.session.commit()
-
     data = request.get_json()
     print("Request data:", data)
 
     username = data.get('username')
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
+    force_registration = data.get('forceRegistration', False)
+    keyId = data.get('keyId')  # Get the key ID if provided
+    
+    print(f"Registration complete request: username={username}, force_registration={force_registration}, keyId={keyId}")
+
+    # Get security key details
+    model = data.get('model')
+    type_ = data.get('type')
+    serial_number = data.get('serialNumber')
+    pin = data.get('pin')
 
     if not username:
         return jsonify({'error': 'Username required'}), 400
@@ -1052,10 +1763,10 @@ def webauthn_register_complete():
         if not attestation_response:
             return jsonify({'error': 'No attestation response provided'}), 400
 
-        print("\nAttestation response structure:")
-        print(f"Keys in response: {list(attestation_response.keys())}")
-        print(f"Type: {attestation_response.get('type')}")
-        print(f"ID: {attestation_response.get('id')}")
+        print("\nProcessing attestation response:")
+        print(f"Response contains: {list(attestation_response.keys())}")
+        print(f"Response type: {attestation_response.get('type')}")
+        print(f"Credential ID: {attestation_response.get('id')}")
 
         response_section = attestation_response.get('response', {})
         print(f"Response section keys: {list(response_section.keys())}")
@@ -1067,9 +1778,9 @@ def webauthn_register_complete():
         if isinstance(client_data_obj['challenge'], bytes):
             client_data_obj['challenge'] = base64.urlsafe_b64encode(client_data_obj['challenge']).decode().rstrip('=')
         elif not isinstance(client_data_obj['challenge'], str):
-            raise ValueError(f"🚨 Challenge is NOT a string! Instead got: {type(client_data_obj['challenge'])}")
+            raise ValueError(f"Invalid challenge format: expected string, got {type(client_data_obj['challenge'])}")
 
-        print(f"✅ Fixed Challenge Format: {client_data_obj['challenge']}")
+        print("Challenge format verified successfully")
 
         client_challenge_base64url = client_data_obj.get('challenge', '')
         client_challenge_bytes = base64url_to_bytes(client_challenge_base64url)
@@ -1093,7 +1804,7 @@ def webauthn_register_complete():
         try:
             attestation_obj = AttestationObject(attestation_object_bytes)
         except Exception as e:
-            raise ValueError(f"🚨 Failed to parse AttestationObject: {str(e)}")
+            raise ValueError(f"Failed to parse AttestationObject: {str(e)}")
 
         client_data_obj['challenge'] = client_data_obj['challenge'].decode() if isinstance(client_data_obj['challenge'],
                                                                                            bytes) else client_data_obj[
@@ -1127,246 +1838,444 @@ def webauthn_register_complete():
             # Extract the credential ID from the auth_data
             credential_id = websafe_encode(auth_data.credential_data.credential_id)
 
-            # Check if this credential ID is already registered to another user
-            existing_user = Users.query.filter(Users.credential_id == credential_id).first()
-            if existing_user:
-                return jsonify({
-                    'error': 'Security key already registered',
-                    'detail': 'This security key is already registered to another account.'
-                }), 400
+            # Prepare the key details and public key data
+            public_key = cbor.encode(auth_data.credential_data.public_key)
+            sign_count = auth_data.counter
+            
+            # Create key details dictionary from the provided data
+            key_details = {
+                'model': model,
+                'type': type_,
+                'serial_number': serial_number,
+                'pin': pin
+            }
 
-            # Update user's security key information
+            # If this is a force registration (reassigned key)
+            if force_registration:
+                # If forcing registration and keyId is provided, look up that specific key
+                target_key = None
+                if keyId:
+                    print(f"Looking up specific key ID: {keyId}")
+                    target_key = SecurityKey.query.get(keyId)
+                
+                # If no key found by ID but we're forcing registration, try by credential ID
+                if not target_key:
+                    print(f"Looking up key by credential ID: {credential_id[:10]}...")
+                    target_key = SecurityKey.query.filter_by(credential_id=credential_id).first()
+                    
+                if target_key:
+                    print(f"Force registration: Updating existing key {target_key.id} for user {user.id}")
+                    
+                    # Update the existing key
+                    target_key.user_id = user.id
+                    target_key.is_active = True
+                    target_key.deactivated_at = None
+                    target_key.deactivation_reason = None
+                    target_key.credential_id = credential_id  # Update with new credential ID
+                    target_key.public_key = base64.b64encode(public_key).decode('utf-8')
+                    target_key.sign_count = sign_count
+                    # Update created_at to current time for reassigned keys
+                    target_key.created_at = datetime.now(timezone.utc)
+                    target_key.last_used = None
+                    
+                    # Update with new key details if provided
+                    if key_details:
+                        target_key.model = key_details.get('model')
+                        target_key.type = key_details.get('type')
+                        target_key.serial_number = key_details.get('serial_number')
+                        if key_details.get('pin'):
+                            target_key.pin = generate_password_hash(key_details.get('pin'))
+                    
+                    db.session.commit()
+                    
+                    # Update user's security key fields
+                    user.has_security_key = True
+                    user.credential_id = credential_id
+                    user.public_key = base64.b64encode(public_key).decode('utf-8')
+                    user.sign_count = sign_count
+                    
+                    # Update user's security key status
+                    user.update_security_key_status()
+                    db.session.commit()
+                    
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'Security key re-registered successfully',
+                        'keyId': target_key.id
+                    })
+                else:
+                    print(f"Warning: Force registration requested but no existing key found with ID {keyId}")
+                    # If we're using keyId but couldn't find the key, return error
+                    if keyId:
+                        return jsonify({
+                            'error': 'Key not found',
+                            'detail': f'No security key found with ID {keyId} for reassignment'
+                        }), 404
+            
+            # Check if this credential ID is already registered (only if not forcing registration)
+            if not force_registration:
+                existing_key = SecurityKey.query.filter_by(credential_id=credential_id).first()
+                if existing_key:
+                    # If key exists but is inactive, prevent reuse
+                    if not existing_key.is_active:
+                        return jsonify({
+                            'error': 'Security key previously deactivated',
+                            'detail': 'This security key has been deactivated and cannot be reused for security reasons.'
+                        }), 400
+                    return jsonify({
+                        'error': 'Security key already registered',
+                        'detail': 'This security key is already registered to another account.'
+                    }), 400
+
+            # Check if user already has an active security key
+            active_key = SecurityKey.query.filter_by(user_id=user.id, is_active=True).first()
+            if active_key:
+                # For admin-initiated registration (key replacement for lost/stolen keys)
+                if auth_token:
+                    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+                    if auth_session and auth_session.user_id != user.id:  # Check if admin is registering
+                        # Deactivate the existing key
+                        active_key.is_active = False
+                        db.session.flush()
+                    else:
+                        return jsonify({
+                            'error': 'Active key exists',
+                            'detail': 'User already has an active security key. Deactivate existing key before registering a new one.'
+                        }), 400
+                else:
+                    return jsonify({
+                        'error': 'Active key exists',
+                        'detail': 'User already has an active security key. Deactivate existing key before registering a new one.'
+                    }), 400
+
+            # Create a new SecurityKey entry
             with db.session.begin_nested():  # Create savepoint
-                public_key = cbor.encode(auth_data.credential_data.public_key)
-                sign_count = auth_data.counter
+                # Get the security key details from auth session or direct request data
+                session_key_details = None
+                try:
+                    # Get authentication session if auth token provided
+                    auth_session = None
+                    if auth_token:
+                        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        
+                    if auth_session and auth_session.client_binding:
+                        try:
+                            session_key_details = json.loads(auth_session.client_binding)
+                            # Hash the PIN if it exists
+                            if session_key_details.get('pin'):
+                                session_key_details['pin'] = generate_password_hash(session_key_details.get('pin'))
+                        except (json.JSONDecodeError, TypeError):
+                            print("Error parsing client_binding from session")
+                    
+                    # If we couldn't get details from session, use the ones from the request
+                    if not session_key_details:
+                        session_key_details = {
+                            'model': model,
+                            'type': type_,
+                            'serial_number': serial_number,
+                            'pin': generate_password_hash(pin) if pin else None
+                        }
+                except Exception as e:
+                    print(f"Error processing key details: {str(e)}")
+                    session_key_details = {
+                        'model': model,
+                        'type': type_,
+                        'serial_number': serial_number,
+                        'pin': generate_password_hash(pin) if pin else None
+                    }
+            
+                # Create a new security key record with details
+                new_key = SecurityKey(
+                    user_id=user.id,
+                    credential_id=credential_id,
+                    public_key=base64.b64encode(public_key).decode('utf-8'),
+                    sign_count=sign_count,
+                    is_active=True,
+                    created_at=datetime.now(timezone.utc),
+                    model=session_key_details.get('model'),
+                    type=session_key_details.get('type'),
+                    serial_number=session_key_details.get('serial_number'),
+                    pin=session_key_details.get('pin')
+                )
+                db.session.add(new_key)
+                db.session.flush()  # This ensures new_key has an ID
 
+                # Create audit log with appropriate action type
+                action = 're-register' if force_registration else 'initial-register'
+                details = (
+                    f"Security key re-registered after reassignment for user {user.username}"
+                    if force_registration
+                    else f"New security key registered for user {user.username}"
+                )
+                audit_log = SecurityKeyAudit(
+                    security_key_id=new_key.id,
+                    user_id=user.id,
+                    action=action,
+                    details=details,
+                    performed_by=auth_session.user_id if auth_session else user.id,
+                    previous_state=None,
+                    new_state={
+                        'user_id': user.id,
+                        'credential_id': credential_id,
+                        'model': session_key_details.get('model'),
+                        'type': session_key_details.get('type'),
+                        'serial_number': session_key_details.get('serial_number'),
+                        'is_active': True,
+                        'created_at': new_key.created_at.isoformat()
+                    }
+                )
+                db.session.add(audit_log)
+
+                # Update user's has_security_key field
+                user.has_security_key = True
+
+                # Update the credential_id and public_key fields in the Users table
                 user.credential_id = credential_id
                 user.public_key = base64.b64encode(public_key).decode('utf-8')
                 user.sign_count = sign_count
-                user.has_security_key = True
 
                 db.session.flush()  # Ensure changes are visible within transaction
 
+            # Update user's security key status
+            user.update_security_key_status()
             db.session.commit()  # Commit the entire transaction
 
-            return jsonify({'status': 'success', 'message': 'Security key registered successfully'})
+            return jsonify({
+                'status': 'success',
+                'message': 'Security key registered successfully',
+                'keyId': new_key.id
+            })
         except ValueError as ve:
             print(f"ValueError during register_complete: {str(ve)}")
-
             return jsonify({'error': str(ve), 'detail': 'Challenge verification failed'}), 400
 
     except Exception as e:
         print(f"\nRegistration error: {str(e)}")
         import traceback
         print(traceback.format_exc())
-
         return jsonify({'error': str(e)}), 400
 
 
 # WebAuthn authentication endpoints
 @app.route('/api/webauthn/login/begin', methods=['POST'])
 def webauthn_login_begin():
-    data = request.get_json()
-    identifier = data.get('username')
-    second_factor = data.get('secondFactor', False)
-    auth_token = data.get('auth_token')
-    binding_nonce = data.get('binding_nonce')
-    direct_security_key_auth = data.get('directSecurityKeyAuth', False)  # Add this line
-
-    if not identifier:
-        return jsonify({'error': 'Username, email, or national ID required'}), 400
-
-    # Find user by different identifier types
-    user = None
-
-    # Try to find user by national ID if it's a number
     try:
-        national_id = int(identifier)
-        user = Users.query.filter_by(national_id=national_id).first()
-    except ValueError:
-        # If not a number, try email
-        user = Users.query.filter_by(email=identifier).first()
+        data = request.get_json()
+        identifier = data.get('username')
+        second_factor = data.get('secondFactor', False)
+        auth_token = data.get('auth_token')
+        binding_nonce = data.get('binding_nonce')
+        direct_security_key_auth = data.get('directSecurityKeyAuth', False)
 
-    # If no user found by national ID or email, check by username
-    if not user:
-        user = Users.query.filter_by(username=identifier).first()
+        if not identifier:
+            return jsonify({'error': 'Username, email, or national ID required'}), 400
 
-    # Final check for user existence and security key
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
+        # Find user by different identifier types
+        user = None
 
-    if not user.credential_id:
-        return jsonify({'error': 'No security key registered for this user'}), 404
+        # Try to find user by national ID if it's a number
+        try:
+            national_id = int(identifier)
+            user = Users.query.filter_by(national_id=national_id).first()
+        except ValueError:
+            # If not a number, try email
+            user = Users.query.filter_by(email=identifier).first()
 
-    # For direct security key auth, skip session verification
-    auth_session = None
-    if not direct_security_key_auth:
-        # If this is meant to be a second factor, verify that password auth happened first
-        if second_factor:
-            # Validate the token binding if provided
-            if auth_token and binding_nonce:
-                # Validate binding
-                if not validate_token_binding(auth_token, binding_nonce, request):
-                    return jsonify({'error': 'Invalid session or connection'}), 400
+        # If no user found by national ID or email, check by username
+        if not user:
+            user = Users.query.filter_by(username=identifier).first()
 
-                # Find the session using the provided token
-                auth_session = AuthenticationSession.query.filter_by(
-                    session_token=auth_token,
-                    user_id=user.id,
-                    password_verified=True,
-                    security_key_verified=False
-                ).first()
+        # Final check for user existence
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
 
-                if not auth_session:
-                    return jsonify({'error': 'Invalid or expired session'}), 400
+        # Check for any security keys first (active or inactive)
+        all_security_keys = SecurityKey.query.filter_by(user_id=user.id).all()
 
-                # Update session last used timestamp
-                auth_session.last_used = datetime.now(timezone.utc)
-                db.session.commit()
-            else:
-                # Find an active authentication session for this user
-                auth_session = AuthenticationSession.query.filter(
-                    AuthenticationSession.user_id == user.id,
-                    AuthenticationSession.password_verified == True,
-                    AuthenticationSession.security_key_verified == False,
-                    AuthenticationSession.expires_at > datetime.now(timezone.utc)
-                ).order_by(AuthenticationSession.created_at.desc()).first()
+        if not all_security_keys:
+            return jsonify({'error': 'No security keys registered for this user'}), 404
 
-                if not auth_session:
-                    return jsonify({'error': 'Password authentication required first'}), 400
+        # Get user's active security keys for authentication
+        active_security_keys = SecurityKey.query.filter_by(user_id=user.id, is_active=True).all()
 
-    # Decode credential_id properly
-    try:
-        credential_id = websafe_decode(user.credential_id)
-    except Exception as e:
-        print(f"❌ Error decoding credential_id: {e}")
+        # Check if any keys are active
+        if not active_security_keys:
+            # User has keys, but none are active
+            inactive_keys = SecurityKey.query.filter_by(user_id=user.id, is_active=False).all()
+            if inactive_keys:
+                return jsonify({
+                    'error': 'Your security key is inactive. Please contact your administrator to activate your security key.',
+                    'status': 'inactive_key'
+                }), 403
 
-        # Record this error
-        auth_attempt = AuthenticationAttempt(
-            user_id=user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get('User-Agent', ''),
-            auth_type='security_key_auth',
-            success=False
-        )
-        db.session.add(auth_attempt)
+            # Shouldn't reach here, but just in case
+            return jsonify({'error': 'No active security keys found for this user'}), 404
+
+        # For direct security key auth, skip session verification
+        auth_session = None
+        if not direct_security_key_auth:
+            # If this is meant to be a second factor, verify that password auth happened first
+            if second_factor:
+                # Validate the token binding if provided
+                if auth_token and binding_nonce:
+                    # Validate binding
+                    if not validate_token_binding(auth_token, binding_nonce, request):
+                        return jsonify({'error': 'Invalid session or connection'}), 400
+
+                    # Find the session using the provided token
+                    auth_session = AuthenticationSession.query.filter_by(
+                        session_token=auth_token,
+                        user_id=user.id,
+                        password_verified=True,
+                        security_key_verified=False
+                    ).first()
+
+                    if not auth_session:
+                        return jsonify({'error': 'Invalid or expired session'}), 400
+
+                    # Update session last used timestamp
+                    auth_session.last_used = datetime.now(timezone.utc)
+                    db.session.commit()
+                else:
+                    # Find an active authentication session for this user
+                    auth_session = AuthenticationSession.query.filter(
+                        AuthenticationSession.user_id == user.id,
+                        AuthenticationSession.password_verified == True,
+                        AuthenticationSession.security_key_verified == False,
+                        AuthenticationSession.expires_at > datetime.now(timezone.utc)
+                    ).order_by(AuthenticationSession.created_at.desc()).first()
+
+                    if not auth_session:
+                        return jsonify({'error': 'Password authentication required first'}), 400
+
+        # Prepare credentials for all active security keys
+        credentials = []
+        for key in active_security_keys:
+            try:
+                credential_id = websafe_decode(key.credential_id)
+                credentials.append(
+                    PublicKeyCredentialDescriptor(
+                        type=PublicKeyCredentialType.PUBLIC_KEY,
+                        id=credential_id
+                    )
+                )
+            except Exception as e:
+                print(f"❌ Error decoding credential_id for key {key.id}: {e}")
+                continue
+
+        if not credentials:
+            return jsonify({'error': 'No valid credentials found for user'}), 500
+
+        # Prepare authentication options
+        try:
+            # Set user verification requirement based on risk score for MFA
+            verification_requirement = UserVerificationRequirement.PREFERRED
+
+            # If second factor and risk score is high, require stronger verification
+            if auth_session and auth_session.risk_score > 50:
+                verification_requirement = UserVerificationRequirement.REQUIRED
+                print(f"High risk score ({auth_session.risk_score}): Requiring stronger verification")
+
+            auth_data, state = server.authenticate_begin(
+                credentials=credentials,
+                user_verification=verification_requirement
+            )
+        except Exception as e:
+            print(f"❌ Error in authenticate_begin: {e}")
+
+            # Record this error
+            auth_attempt = AuthenticationAttempt(
+                user_id=user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent', ''),
+                auth_type='security_key_auth',
+                success=False
+            )
+            db.session.add(auth_attempt)
+            db.session.commit()
+
+            return jsonify({'error': 'Failed to generate authentication options'}), 500
+
+        # Extract challenge from state
+        if isinstance(state, dict) and 'challenge' in state:
+            challenge_bytes = state['challenge']
+            if isinstance(challenge_bytes, str):
+                challenge_bytes = base64url_to_bytes(challenge_bytes)
+        else:
+            challenge_bytes = state  # In some versions, state is the challenge itself
+
+        # Store challenge in database
+        # Clear any existing challenges for this user
+        WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
         db.session.commit()
 
-        return jsonify({'error': 'Invalid stored credential'}), 500
+        # Create new challenge record with base64 string
+        challenge_base64 = base64.b64encode(challenge_bytes).decode('utf-8')
 
-    # Create credential descriptor
-    credential = PublicKeyCredentialDescriptor(
-        type=PublicKeyCredentialType.PUBLIC_KEY,
-        id=credential_id
-    )
+        # Updated: Mark if this is part of a multi-factor flow
+        is_second_factor = second_factor and not direct_security_key_auth
 
-    # Prepare authentication options
-    try:
-        # Set user verification requirement based on risk score for MFA
-        verification_requirement = UserVerificationRequirement.PREFERRED
-
-        # If second factor and risk score is high, require stronger verification
-        if auth_session and auth_session.risk_score > 50:
-            verification_requirement = UserVerificationRequirement.REQUIRED
-            print(f"High risk score ({auth_session.risk_score}): Requiring stronger verification")
-
-        auth_data, state = server.authenticate_begin(
-            credentials=[credential],
-            user_verification=verification_requirement
-        )
-    except Exception as e:
-        print(f"❌ Error in authenticate_begin: {e}")
-
-        # Record this error
-        auth_attempt = AuthenticationAttempt(
+        new_challenge = WebAuthnChallenge(
             user_id=user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get('User-Agent', ''),
-            auth_type='security_key_auth',
-            success=False
+            challenge=challenge_base64,
+            is_second_factor=is_second_factor
         )
-        db.session.add(auth_attempt)
+        db.session.add(new_challenge)
         db.session.commit()
 
-        return jsonify({'error': 'Failed to generate authentication options'}), 500
+        # Generate base64url-encoded strings for client
+        challenge_base64url = bytes_to_base64url(challenge_bytes)
 
-    # Debugging logs
-    print("\n=== Debug: WebAuthn Login Begin ===")
-    print(f"auth_data: {auth_data}")
-    print(f"state: {state}")
-    print("===================================\n")
-
-    # Extract challenge from state
-    if isinstance(state, dict) and 'challenge' in state:
-        challenge_bytes = state['challenge']
-        if isinstance(challenge_bytes, str):
-            challenge_bytes = base64url_to_bytes(challenge_bytes)
-    else:
-        challenge_bytes = state  # In some versions, state is the challenge itself
-
-    # Store challenge in database
-    # Clear any existing challenges for this user
-    WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
-    db.session.commit()
-
-    # Create new challenge record with base64 string
-    challenge_base64 = base64.b64encode(challenge_bytes).decode('utf-8')
-
-    # Updated: Mark if this is part of a multi-factor flow
-    is_second_factor = second_factor and not direct_security_key_auth
-
-    new_challenge = WebAuthnChallenge(
-        user_id=user.id,
-        challenge=challenge_base64,
-        is_second_factor=is_second_factor  # Store whether this is a second factor
-    )
-    db.session.add(new_challenge)
-    db.session.commit()
-
-    # Generate base64url-encoded strings for client
-    challenge_base64url = bytes_to_base64url(challenge_bytes)
-    credential_id_base64url = websafe_encode(credential_id)
-
-    # Set timeout based on risk
-    timeout = 60000  # Default 1 minute
-    verification = 'preferred'
-
-    # If high risk, reduce timeout and require stronger verification
-    risk_score = 0
-    if direct_security_key_auth:
-        # Calculate risk for direct auth
-        risk_score = assess_risk(user.id, request)
-        if risk_score > 50:
-            timeout = 30000  # 30 seconds for high-risk scenarios
-            verification = 'required'  # Require stronger verification
-    elif auth_session:
-        # Use session risk score for 2FA
-        risk_score = auth_session.risk_score
-        if risk_score > 50:
-            timeout = 30000  # 30 seconds for high-risk scenarios
-            verification = 'required'  # Require stronger verification
-
-    # Return formatted options for client
-    return jsonify({
-        'publicKey': {
-            'rpId': rp.id,
-            'challenge': challenge_base64url,
-            'allowCredentials': [{
+        # Build the allowCredentials array for all security keys
+        allow_credentials = []
+        for cred in credentials:
+            allow_credentials.append({
                 'type': 'public-key',
-                'id': credential_id_base64url
-            }],
-            'timeout': timeout,
-            'userVerification': verification
-        },
-        'riskScore': risk_score,
-        'requiresAdditionalVerification': risk_score > 50
-    })
+                'id': websafe_encode(cred.id)
+            })
+
+        # Set timeout based on risk
+        timeout = 60000  # Default 1 minute
+        verification = 'preferred'
+
+        # If high risk, reduce timeout and require stronger verification
+        risk_score = 0
+        if direct_security_key_auth:
+            # Calculate risk for direct auth
+            risk_score = assess_risk(user.id, request)
+            if risk_score > 50:
+                timeout = 30000  # 30 seconds for high-risk scenarios
+                verification = 'required'  # Require stronger verification
+        elif auth_session:
+            # Use session risk score for 2FA
+            risk_score = auth_session.risk_score
+            if risk_score > 50:
+                timeout = 30000  # 30 seconds for high-risk scenarios
+                verification = 'required'  # Require stronger verification
+
+        # Return formatted options for client
+        return jsonify({
+            'publicKey': {
+                'rpId': rp.id,
+                'challenge': challenge_base64url,
+                'allowCredentials': allow_credentials,
+                'timeout': timeout,
+                'userVerification': verification
+            },
+            'riskScore': risk_score,
+            'requiresAdditionalVerification': risk_score > 50
+        })
+    except Exception as e:
+        print(f"❌ Unexpected error in webauthn_login_begin: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': 'An unexpected error occurred during security key authentication'}), 500
 
 
 @app.route('/api/webauthn/login/complete', methods=['POST'])
 def webauthn_login_complete():
     data = request.get_json()
-    identifier = data.get('username')  # Change variable name to match login/begin
+    identifier = data.get('username')
     print(f"WebAuthn login/complete with identifier: {identifier}")
     second_factor = data.get('secondFactor', False)
     auth_token = data.get('auth_token')
@@ -1431,6 +2340,43 @@ def webauthn_login_complete():
         # Get the assertion response from frontend
         assertion_response = data.get('assertionResponse')
 
+        # Get credential ID from the assertion
+        credential_id = assertion_response.get('id')
+
+        # Find which security key was used
+        security_key = None
+        if credential_id:
+            security_key = SecurityKey.query.filter_by(
+                credential_id=credential_id,
+                user_id=user.id
+            ).first()
+
+            if not security_key:
+                # Check if this key belongs to another user
+                other_user_key = SecurityKey.query.filter_by(credential_id=credential_id).first()
+                if other_user_key:
+                    print(f"Security key {credential_id[:8]}... is registered to another user")
+                    db.session.commit()  # Commit the failed attempt
+                    return jsonify({'error': 'Login failed. Key is already registered to another user'}), 400
+
+                # Try with credentialId encoded differently
+                security_key = SecurityKey.query.filter(
+                    SecurityKey.user_id == user.id,
+                    func.substring(SecurityKey.credential_id, 1, 10) == func.substring(credential_id, 1, 10)
+                ).first()
+
+        # Check if the key exists and is active
+        if not security_key:
+            print("Could not determine which security key was used")
+            db.session.commit()  # Commit the failed attempt
+            return jsonify({'error': 'Invalid or unregistered security key'}), 400
+
+        # Check if the key is active
+        if not security_key.is_active:
+            print(f"Security key {security_key.id} is inactive")
+            db.session.commit()  # Commit the failed attempt
+            return jsonify({'error': 'This security key has been deactivated'}), 400
+
         # Extract data for counter check
         response_data = assertion_response.get('response', {})
         auth_data_bytes = base64url_to_bytes(response_data.get('authenticatorData'))
@@ -1473,13 +2419,13 @@ def webauthn_login_complete():
         # Mark challenge as expired
         challenge_record.expired = True
 
-        # Update sign count if needed
-        if auth_data.counter > user.sign_count:
-            user.sign_count = auth_data.counter
-        elif auth_data.counter < user.sign_count:
+        # Update sign count for the specific security key
+        if auth_data.counter > security_key.sign_count:
+            security_key.sign_count = auth_data.counter
+        elif auth_data.counter < security_key.sign_count:
             # This could indicate a cloned security key - potential security issue!
             print(
-                f"⚠️ SECURITY ALERT: Counter regression detected! Stored: {user.sign_count}, Received: {auth_data.counter}")
+                f"⚠️ SECURITY ALERT: Counter regression detected! Stored: {security_key.sign_count}, Received: {auth_data.counter}")
             auth_attempt.risk_score = 100
             db.session.commit()
             return jsonify({
@@ -1507,6 +2453,9 @@ def webauthn_login_complete():
             user.last_login_time = datetime.now(timezone.utc)
             user.last_login_ip = request.remote_addr
 
+            # Update security key's last used timestamp
+            security_key.last_used = datetime.now(timezone.utc)
+
             # Mark the authentication attempt as successful
             auth_attempt.success = True
             auth_attempt.risk_score = risk_score
@@ -1516,7 +2465,7 @@ def webauthn_login_complete():
             # Return success with the session token
             return jsonify({
                 'status': 'success',
-                'message': 'Authentication successful with security key',
+                'message': f"Authentication successful with security key '{security_key.name}'",
                 'user_id': user.id,
                 'firstName': user.first_name,
                 'lastName': user.last_name,
@@ -1525,7 +2474,11 @@ def webauthn_login_complete():
                 'fully_authenticated': True,
                 'auth_token': new_session.session_token,
                 'binding_nonce': new_binding_nonce,
-                'risk_score': risk_score
+                'risk_score': risk_score,
+                'securityKey': {
+                    'id': security_key.id,
+                    'name': security_key.name
+                }
             })
         elif second_factor:
             # Find the authentication session if we haven't already
@@ -1548,6 +2501,9 @@ def webauthn_login_complete():
                 user.last_login_time = datetime.now(timezone.utc)
                 user.last_login_ip = request.remote_addr
 
+                # Update security key's last used timestamp
+                security_key.last_used = datetime.now(timezone.utc)
+
                 # Mark the authentication attempt as successful
                 auth_attempt.success = True
                 auth_attempt.risk_score = risk_score
@@ -1557,16 +2513,20 @@ def webauthn_login_complete():
                 # This is a second factor after password authentication
                 return jsonify({
                     'status': 'success',
-                    'message': 'Authentication successful with both password and security key',
+                    'message': f"Authentication successful with security key '{security_key.name}'",
                     'user_id': user.id,
                     'firstName': user.first_name,
                     'lastName': user.last_name,
-                    'role': user.role,  # Include user role in the response
+                    'role': user.role,
                     'has_security_key': True,
                     'fully_authenticated': True,
                     'auth_token': auth_session.session_token,
                     'risk_score': risk_score,
-                    'requires_additional_verification': risk_score > 50
+                    'requires_additional_verification': risk_score > 50,
+                    'securityKey': {
+                        'id': security_key.id,
+                        'name': security_key.name
+                    }
                 })
             else:
                 db.session.commit()  # Commit the failed attempt
@@ -1615,6 +2575,7 @@ def webauthn_login_complete():
             }), 400
         else:
             return jsonify({'error': str(e)}), 400
+
 
 
 @app.route('/api/webauthn/check-status', methods=['POST'])
@@ -2114,23 +3075,67 @@ def get_security_metrics():
         if not auth_session:
             return jsonify({'error': 'Invalid auth token'}), 401
 
-        # Query user counts
-        total_users = Users.query.count()
-        users_with_keys = Users.query.filter(Users.credential_id.isnot(None)).count()
-        users_without_keys = total_users - users_with_keys
+        # Get total non-deleted users
+        total_users = Users.query.filter_by(is_deleted=False).count()
 
-        # Format data for the pie chart
+        # Count directly from the SecurityKey table instead of relying on security_key_status
+        # Get users with active keys - query directly from SecurityKey table
+        users_with_active_keys_query = db.session.query(Users.id).join(
+            SecurityKey, Users.id == SecurityKey.user_id
+        ).filter(
+            SecurityKey.is_active == True,
+            Users.is_deleted == False
+        ).distinct()
+
+        users_with_active_keys = users_with_active_keys_query.count()
+        users_with_active_keys_ids = [user_id[0] for user_id in users_with_active_keys_query.all()]
+
+        # Get users with only inactive keys - users who have keys but none are active
+        users_with_inactive_keys_query = db.session.query(Users.id).join(
+            SecurityKey, Users.id == SecurityKey.user_id
+        ).filter(
+            SecurityKey.is_active == False,
+            Users.is_deleted == False,
+            ~Users.id.in_(users_with_active_keys_ids)
+        ).distinct()
+
+        users_with_inactive_keys = users_with_inactive_keys_query.count()
+        users_with_inactive_keys_ids = [user_id[0] for user_id in users_with_inactive_keys_query.all()]
+
+        # Combine users with keys
+        users_with_keys_ids = users_with_active_keys_ids + users_with_inactive_keys_ids
+
+        # Users without keys = all users who aren't in either active or inactive list
+        users_without_keys = db.session.query(Users).filter(
+            Users.is_deleted == False,
+            ~Users.id.in_(users_with_keys_ids)
+        ).count()
+
+        # Log counts for debugging
+        print(
+            f"Security metrics: Active={users_with_active_keys}, Inactive={users_with_inactive_keys}, None={users_without_keys}")
+
+        # Create metrics data with colors
         metrics_data = [
-            {'name': 'With Security Key', 'value': users_with_keys},
-            {'name': 'Without Security Key', 'value': users_without_keys}
+            {'name': 'Active Security Keys', 'value': users_with_active_keys, 'color': '#16A34A'},  # Green
+            {'name': 'Inactive Security Keys', 'value': users_with_inactive_keys, 'color': '#F59E0B'},  # Amber
+            {'name': 'No Security Keys', 'value': users_without_keys, 'color': '#DC2626'}  # Red
         ]
 
-        return jsonify({'metrics': metrics_data})
+        # Return the data
+        return jsonify({
+            'metrics': metrics_data,
+            'activeKeys': users_with_active_keys,
+            'inactiveKeys': users_with_inactive_keys,
+            'withoutKeys': users_without_keys,
+            'totalUsers': total_users
+        })
 
     except Exception as e:
         print(f"Error getting security metrics: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
-
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to fetch security metrics'}), 500
 
 # Add route for device distribution statistics
 @app.route('/api/device-stats', methods=['GET'])
@@ -2282,6 +3287,8 @@ def update_user(user_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+
     # Get the admin's auth token for authorization
     admin_token = request.headers.get('Authorization')
     if not admin_token:
@@ -2852,6 +3859,59 @@ def get_security_alerts():
         return jsonify({'error': 'Failed to fetch security alerts'}), 500
 
 
+# Add route to get security key audit logs
+@app.route('/api/security-keys/audit-logs', methods=['GET'])
+def get_security_key_audit_logs():
+    try:
+        # Get auth token
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+
+        # Query audit logs with relationships
+        audit_logs = SecurityKeyAudit.query.order_by(
+            SecurityKeyAudit.timestamp.desc()
+        ).paginate(page=page, per_page=per_page)
+
+        # Format the audit logs
+        logs = []
+        for log in audit_logs.items:
+            logs.append({
+                'id': log.id,
+                'securityKeyId': log.security_key_id,
+                'userId': log.user_id,
+                'username': log.user.username,
+                'action': log.action,
+                'details': log.details,
+                'timestamp': log.timestamp.isoformat(),
+                'performedBy': {
+                    'id': log.actor.id,
+                    'username': log.actor.username
+                },
+                'previousState': log.previous_state,
+                'newState': log.new_state
+            })
+
+        return jsonify({
+            'logs': logs,
+            'total': audit_logs.total,
+            'pages': audit_logs.pages,
+            'currentPage': page
+        })
+
+    except Exception as e:
+        print(f"Error fetching security key audit logs: {str(e)}")
+        return jsonify({'error': 'Failed to fetch audit logs'}), 500
+
 @app.route('/api/security/stats', methods=['GET'])
 def get_security_stats():
     try:
@@ -2931,12 +3991,10 @@ def get_security_stats():
         return jsonify({'error': 'Failed to fetch security stats'}), 500
 
 
-# At the bottom of your app.py file, before `if __name__ == '__main__':`
 with app.app_context():
     db.create_all()
     # Create admin user if it doesn't exist
     create_admin_user()
-    db.session.commit()
     db.session.commit()
 
 if __name__ == '__main__':
@@ -2946,3 +4004,9 @@ if __name__ == '__main__':
         create_admin_user()
     app.run(debug=True)
 
+
+
+# Change error notifcation toasts on login to be more general e.g Invalid credentials
+# change admin to unlock locked accounts
+# Add a security keys menu item on sidebar
+# Use normal usb scurity keys for plugging and unplugging 
