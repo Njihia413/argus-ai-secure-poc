@@ -31,11 +31,12 @@
   - Tooltip
 - Class Variance Authority & Tailwind Merge for styling utilities
 - Lucide React for icons
-- Sonner for toast notifications
+- Sonner for toast notifications (**Standardized for user feedback**)
 
 ### Authentication & Security
 - SimpleWebAuthn Browser SDK (v13.1.0)
 - Axios for HTTP requests
+- Backend: Flask (Python) for API endpoints including authentication and account management.
 
 ### Data Management & Display
 - Zustand for state management
@@ -60,22 +61,25 @@
 - `postcss.config.mjs`: PostCSS setup for Tailwind
 
 ## Development Patterns
-1. **Type Safety**
-   - Strong TypeScript typing
-   - Type-safe API requests
-   - Component prop validation
+1.  **Type Safety**
+    - Strong TypeScript typing
+    - Type-safe API requests
+    - Component prop validation
 
-2. **Styling**
-   - Tailwind CSS for utility-first styling
-   - Component-level style composition
-   - CSS animation utilities
+2.  **Styling**
+    - Tailwind CSS for utility-first styling
+    - Component-level style composition using `Card` and `CardContent` for consistent table layouts.
+    - CSS animation utilities
 
-3. **Performance**
-   - Turbopack for fast development
-   - Optimized production builds
-   - Component-level code splitting
+3.  **Performance**
+    - Turbopack for fast development
+    - Optimized production builds
+    - Component-level code splitting
 
-4. **Code Quality**
-   - ESLint configuration
-   - TypeScript strict mode
-   - Consistent code formatting
+4.  **Code Quality**
+    - ESLint configuration
+    - TypeScript strict mode
+    - Consistent code formatting
+
+5.  **User Feedback**
+    - Standardized use of `sonner` for toast notifications for actions like account unlock, user creation, etc.
