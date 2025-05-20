@@ -4007,10 +4007,3 @@ if __name__ == '__main__':
         # Create admin user if it doesn't exist
         create_admin_user()
     app.run(debug=True)
-
-
-
-# Change error notifcation toasts on login to be more general e.g Invalid credentials
-# change admin to unlock locked accounts
-# Add a security keys menu item on sidebar
-# Use normal usb scurity keys for plugging and unplugging 
