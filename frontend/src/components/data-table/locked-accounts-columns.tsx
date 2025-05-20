@@ -78,17 +78,6 @@ export const columns: ColumnDef<LockedAccount>[] = [
     }
   },
   {
-    accessorKey: "successful_attempts",
-    header: "Successful Attempts",
-    cell: ({ row }) => {
-      return (
-        <div className="font-medium text-green-600">
-          {row.getValue("successful_attempts")}
-        </div>
-      )
-    }
-  },
-  {
     accessorKey: "locked_time",
     header: "Locked At",
     cell: ({ row }) => {
@@ -149,7 +138,7 @@ export const columns: ColumnDef<LockedAccount>[] = [
               Unlock Account
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="font-montserrat sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Confirm Unlock</DialogTitle>
               <DialogDescription>
