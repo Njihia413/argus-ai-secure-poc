@@ -1,8 +1,19 @@
 "use client"
 
+import React, { useState } from "react" // Import useState
 import { ColumnDef } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { ArrowUpDown } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose, // Import DialogClose
+} from "@/components/ui/dialog"
 import { API_URL } from "@/app/utils/constants"
 import { toast } from "sonner"
 
@@ -87,46 +98,78 @@ export const columns: ColumnDef<LockedAccount>[] = [
   },
   {
     id: "actions",
+    header: "Action",
     cell: ({ row }) => {
       const account = row.original
+      const [isDialogOpen, setIsDialogOpen] = useState(false)
+      const [isLoading, setIsLoading] = useState(false)
+
+      const handleUnlockAccount = async () => {
+        setIsLoading(true)
+        try {
+          const userStr = sessionStorage.getItem('user')
+          if (!userStr) {
+            throw new Error('User not authenticated')
+          }
+          
+          const user = JSON.parse(userStr)
+          const authToken = user.authToken
+
+          const response = await fetch(`${API_URL}/users/${account.id}/unlock`, {
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json'
+            },
+            method: 'POST',
+          })
+          
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error || 'Failed to unlock account')
+          }
+          
+          toast.success("Account unlocked successfully")
+          setIsDialogOpen(false) // Close dialog on success
+          window.location.reload() // Or update table data state
+        } catch (error) {
+          console.error('Error unlocking account:', error)
+          toast.error((error as Error).message || "Failed to unlock account. Please try again.")
+        } finally {
+          setIsLoading(false)
+        }
+      }
       
       return (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            try {
-              // Get auth token
-              const userStr = sessionStorage.getItem('user')
-              if (!userStr) {
-                throw new Error('User not authenticated')
-              }
-              
-              const user = JSON.parse(userStr)
-              const authToken = user.authToken
-
-              const response = await fetch(`${API_URL}/users/${account.id}/unlock`, {
-                headers: {
-                  'Authorization': `Bearer ${authToken}`,
-                  'Content-Type': 'application/json'
-                },
-                method: 'POST',
-              })
-              
-              if (!response.ok) {
-                throw new Error('Failed to unlock account')
-              }
-              
-              toast.success("Account unlocked successfully")
-              window.location.reload()
-            } catch (error) {
-              console.error('Error unlocking account:', error)
-              toast.error("Failed to unlock account. Please try again.")
-            }
-          }}
-        >
-          Unlock Account
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button
+              className="bg-black hover:bg-black/90 text-white"
+              size="sm"
+            >
+              Unlock Account
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Unlock</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to unlock the account for {account.username} ({account.firstName} {account.lastName})?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={isLoading}>Cancel</Button>
+              </DialogClose>
+              <Button
+                onClick={handleUnlockAccount}
+                className="bg-black hover:bg-black/90 text-white"
+                disabled={isLoading}
+              >
+                {isLoading ? "Unlocking..." : "Confirm Unlock"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )
     }
   }
