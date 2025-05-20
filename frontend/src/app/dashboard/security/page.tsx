@@ -18,7 +18,7 @@ import { API_URL } from "@/app/utils/constants"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { SecurityDataTable } from "@/components/data-table/security-data-table"
+import { DataTable } from "@/components/data-table/data-table"
 import { ColumnDef, Table } from "@tanstack/react-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
@@ -100,15 +100,16 @@ export default function SecurityPage() {
   const [table, setTable] = useState<Table<SecurityAlert> | null>(null)
 
   // Column definitions with appropriate icons for each alert type
-  const columns: ColumnDef<SecurityAlert, unknown>[] = [
+  const columns: ColumnDef<SecurityAlert>[] = [
     {
       accessorKey: "type",
       header: "Type",
-      filterFn: (row, id, value) => {
+      filterFn: (row, id, filterValue) => {
+        if (typeof filterValue !== 'string') return true;
         // Adjust filter logic for "all" value
-        return value === "all" || row.getValue(id) === value
+        return filterValue === "all" || row.getValue(id) === filterValue
       },
-      cell: ({ row }: { row: { original: SecurityAlert } }) => {
+      cell: ({ row }) => {
         const alert = row.original
 
         // Select the appropriate icon based on the alert type
@@ -162,7 +163,7 @@ export default function SecurityPage() {
       header: "Time",
       cell: ({ row }) => {
         // Format the timestamp for better readability
-        const isoTime = row.getValue("time") as string;
+        const isoTime = row.getValue<string>("time");
         try {
           const date = new Date(isoTime);
           return date.toLocaleString();
@@ -174,11 +175,12 @@ export default function SecurityPage() {
     {
       accessorKey: "severity",
       header: "Severity",
-      filterFn: (row, id, value) => {
+      filterFn: (row, id, filterValue) => {
+        if (typeof filterValue !== 'string') return true;
         // Adjust filter logic for "all" value
-        return value === "all" || row.getValue(id) === value
+        return filterValue === "all" || row.getValue(id) === filterValue
       },
-      cell: ({ row }: { row: { original: SecurityAlert } }) => {
+      cell: ({ row }) => {
         const alert = row.original
         return (
             <Badge
@@ -221,6 +223,7 @@ export default function SecurityPage() {
 
   // Handle table reference
   const handleTableInit = (tableInstance: Table<SecurityAlert>) => {
+    if (!tableInstance) return;
     setTable(tableInstance)
   }
 
@@ -234,7 +237,12 @@ export default function SecurityPage() {
         if (!userStr) {
           throw new Error('User not authenticated')
         }
-        const user = JSON.parse(userStr)
+        
+        interface UserData {
+          authToken: string;
+        }
+        
+        const user = JSON.parse(userStr) as UserData
         const authToken = user.authToken
 
         // Fetch alerts with pagination
@@ -249,7 +257,10 @@ export default function SecurityPage() {
           throw new Error(alertsError.error || 'Failed to fetch alerts')
         }
 
-        const alertsData = await alertsRes.json()
+        interface AlertsResponse {
+          alerts: SecurityAlert[];
+        }
+        const alertsData = await alertsRes.json() as AlertsResponse
 
         // Fetch stats
         const statsRes = await fetch(`${API_URL}/security/stats`, {
@@ -263,13 +274,14 @@ export default function SecurityPage() {
           throw new Error(statsError.error || 'Failed to fetch security stats')
         }
 
-        const statsData = await statsRes.json()
+        const statsData = await statsRes.json() as SecurityStats
 
         setAlerts(alertsData.alerts || [])
         setStats(statsData)
-      } catch (error: any) {
+      } catch (error) {
+        const e = error as Error;
         console.error('Error fetching security data:', error)
-        setError(error.message || 'Failed to fetch security data')
+        setError(e.message || 'Failed to fetch security data')
       } finally {
         setLoading(false)
       }
@@ -313,8 +325,9 @@ export default function SecurityPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">Security Overview</h2>
           <Button
+              variant="default"
               onClick={exportAlerts}
-              className="bg-black hover:bg-black/90 text-white"
+              className="bg-black hover:bg-black/90 text-white dark:bg-black/90"
               disabled={alerts.length === 0 || loading}
           >
             Export Report
@@ -394,10 +407,13 @@ export default function SecurityPage() {
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div className="flex flex-wrap space-x-2 gap-y-2">
                       <Select
-                          value={table ? (table.getColumn("severity")?.getFilterValue() as string || "all") : "all"}
+                          value={(table?.getColumn("severity")?.getFilterValue() as string) ?? "all"}
                           onValueChange={(value) => {
                             // Adjust filter logic to handle "all" value
-                            table?.getColumn("severity")?.setFilterValue(value === "all" ? undefined : value)
+                            const column = table?.getColumn("severity");
+                            if (column) {
+                              column.setFilterValue(value === "all" ? undefined : value);
+                            }
                           }}
                       >
                         <SelectTrigger className="w-[180px]">
@@ -412,10 +428,13 @@ export default function SecurityPage() {
                       </Select>
 
                       <Select
-                          value={table ? (table.getColumn("type")?.getFilterValue() as string || "all") : "all"}
+                          value={(table?.getColumn("type")?.getFilterValue() as string) ?? "all"}
                           onValueChange={(value) => {
                             // Adjust filter logic to handle "all" value
-                            table?.getColumn("type")?.setFilterValue(value === "all" ? undefined : value)
+                            const column = table?.getColumn("type");
+                            if (column) {
+                              column.setFilterValue(value === "all" ? undefined : value);
+                            }
                           }}
                       >
                         <SelectTrigger className="w-[180px]">
@@ -437,7 +456,7 @@ export default function SecurityPage() {
                   </div>
 
                   {/* DataTable */}
-                  <SecurityDataTable
+                  <DataTable<SecurityAlert, unknown>
                       columns={columns}
                       data={alerts}
                       onTableInit={handleTableInit}
