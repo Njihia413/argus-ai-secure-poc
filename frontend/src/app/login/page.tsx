@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -226,42 +226,6 @@ export default function LoginPage() {
 
     // Account locked state
     const [accountLocked, setAccountLocked] = useState(false)
-    const [accountLockedUntil, setAccountLockedUntil] = useState("")
-    const [accountUnlockTimestamp, setAccountUnlockTimestamp] = useState<Date | null>(null)
-    const [timeRemaining, setTimeRemaining] = useState("")
-
-    // Countdown timer for account locked state
-    useEffect(() => {
-        let countdownInterval: NodeJS.Timeout;
-
-        // Only start countdown if account is locked and we have a timestamp
-        if (accountLocked && accountUnlockTimestamp) {
-            countdownInterval = setInterval(() => {
-                const now = new Date();
-                const timeDiff = accountUnlockTimestamp.getTime() - now.getTime();
-
-                if (timeDiff <= 0) {
-                    // Account is now unlocked
-                    setAccountLocked(false);
-                    setTimeRemaining("");
-                    clearInterval(countdownInterval);
-                    toast.success("Account unlocked. You can now try logging in again.");
-                } else {
-                    // Calculate minutes and seconds
-                    const minutes = Math.floor(timeDiff / (1000 * 60));
-                    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
-                    setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-                }
-            }, 1000);
-        }
-
-        // Cleanup function to clear interval when component unmounts or account becomes unlocked
-        return () => {
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-            }
-        };
-    }, [accountLocked, accountUnlockTimestamp]);
 
     // Clear any existing authentication data
     // Clear binding data on component mount
@@ -419,29 +383,9 @@ export default function LoginPage() {
             setIsLoading(false)
 
             // Check for account locked message
-            if (apiError.response?.data?.accountLocked ||
-                (apiError.response?.data?.error && apiError.response.data.error.includes('Account is temporarily locked'))) {
-
+            if (apiError.response?.data?.accountLocked) {
                 setAccountLocked(true)
-
-                // If we have the ISO timestamp from the backend
-                if (apiError.response?.data?.accountLockedUntil) {
-                    setAccountUnlockTimestamp(new Date(apiError.response.data.accountLockedUntil))
-                } else {
-                    // Try to extract time from error message as fallback
-                    const timeMatch = apiError.response?.data?.error?.match(/after (\d{2}:\d{2}:\d{2})/);
-                    if (timeMatch && timeMatch[1]) {
-                        setAccountLockedUntil(timeMatch[1]);
-
-                        // Create approximate timestamp based on HH:MM:SS
-                        const [hours, minutes, seconds] = timeMatch[1].split(':').map(Number);
-                        const unlockTime = new Date();
-                        unlockTime.setHours(hours, minutes, seconds);
-                        setAccountUnlockTimestamp(unlockTime);
-                    }
-                }
-
-                toast.error("Account locked due to too many failed attempts");
+                toast.error("Account locked due to too many failed attempts. Please contact your administrator.");
             } else {
                 toast.error("Invalid credentials. Please try again.");
             }
@@ -523,29 +467,9 @@ export default function LoginPage() {
             console.error("Login error:", error)
 
             // Check for account locked message
-            if (apiError.response?.data?.accountLocked ||
-                (apiError.response?.data?.error && apiError.response.data.error.includes('Account is temporarily locked'))) {
-
+            if (apiError.response?.data?.accountLocked) {
                 setAccountLocked(true)
-
-                // If we have the ISO timestamp from the backend
-                if (apiError.response?.data?.accountLockedUntil) {
-                    setAccountUnlockTimestamp(new Date(apiError.response.data.accountLockedUntil))
-                } else {
-                    // Try to extract time from error message as fallback
-                    const timeMatch = apiError.response?.data?.error?.match(/after (\d{2}:\d{2}:\d{2})/)
-                    if (timeMatch && timeMatch[1]) {
-                        setAccountLockedUntil(timeMatch[1])
-
-                        // Create approximate timestamp based on HH:MM:SS
-                        const [hours, minutes, seconds] = timeMatch[1].split(':').map(Number)
-                        const unlockTime = new Date()
-                        unlockTime.setHours(hours, minutes, seconds)
-                        setAccountUnlockTimestamp(unlockTime)
-                    }
-                }
-
-                toast.error("Account locked due to too many failed attempts")
+                toast.error("Account locked due to too many failed attempts. Please contact your administrator.")
             } else {
                 toast.error("Invalid credentials. Please try again.")
             }
@@ -711,15 +635,10 @@ export default function LoginPage() {
 
                         {accountLocked && (
                             <div className="p-3 bg-red-50 border-l-4 border-red-500 text-sm">
-                                <p className="font-medium text-red-800">Account Temporarily Locked</p>
+                                <p className="font-medium text-red-800">Account Locked</p>
                                 <p className="text-red-700">
-                                    For your security, this account has been temporarily locked due to multiple failed
-                                    login attempts.
-                                    {timeRemaining ? (
-                                        <span className="font-bold"> Time remaining: {timeRemaining}</span>
-                                    ) : (
-                                        accountLockedUntil && <span> Please try again after {accountLockedUntil}.</span>
-                                    )}
+                                    For your security, this account has been locked due to multiple failed login attempts.
+                                    Please contact your administrator to unlock your account.
                                 </p>
                             </div>
                         )}
