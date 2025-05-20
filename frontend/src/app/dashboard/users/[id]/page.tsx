@@ -1,25 +1,49 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
+import Link from "next/link"
+import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
+import { Eye, EyeOff, ShieldCheck, Key, AlertTriangle, Plus, Power, Trash, Edit, ChevronRight, ArrowLeft } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
-import { API_URL } from "@/app/utils/constants"
-import { registerSecurityKey } from "@/app/utils/webauthn"
-import { ArrowLeft, ChevronRight, Key, KeyRound } from "lucide-react"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { SecurityDataTable } from "@/components/data-table/security-data-table"
+import { securityKeyColumns } from "@/components/data-table/security-key-columns"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+
+import { registerSecurityKey } from "@/app/utils/webauthn"
+import { API_URL } from "@/app/utils/constants"
+import {Textarea} from "../../../../components/textarea";
 
 interface User {
   id: number
@@ -31,18 +55,109 @@ interface User {
   email: string
   role: string
   hasSecurityKey: boolean
+  securityKeyCount: number
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
 }
 
+interface SecurityKey {
+  id: number
+  credentialId: string
+  isActive: boolean
+  createdAt: string
+  lastUsed: string | null
+  deactivatedAt: string | null
+  deactivationReason: string | null
+  model?: string
+  type?: string
+  serialNumber?: string
+  public_key?: string
+  sign_count?: number
+}
+
+interface SecurityKeyDetails {
+  model: string
+  type: string
+  serialNumber: string
+  pin: string
+}
+
 export default function UserDetailsPage() {
   const router = useRouter()
   const params = useParams()
+  const [showAuditLog, setShowAuditLog] = useState(false)
   const [user, setUser] = useState<User | null>(null)
+  const [securityKeys, setSecurityKeys] = useState<SecurityKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false)
+  const [deactivationReason, setDeactivationReason] = useState('')
+  const [isDeactivating, setIsDeactivating] = useState(false)
   const [showRegistrationModal, setShowRegistrationModal] = useState(false)
+  const [showKeyDetailsModal, setShowKeyDetailsModal] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [selectedKey, setSelectedKey] = useState<SecurityKey | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [keyIdToReset, setKeyIdToReset] = useState<number | null>(null);
+  const [showReassignDialog, setShowReassignDialog] = useState(false);
+
+  // Fetch users when reassign dialog opens
+  useEffect(() => {
+    if (showReassignDialog) {
+      fetchAvailableUsers();
+    }
+  }, [showReassignDialog]);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [keyIdForReassignment, setKeyIdForReassignment] = useState<number | null>(null);
+  const [isKeyReassigned, setIsKeyReassigned] = useState<boolean>(false);
+  const [keyDetails, setKeyDetails] = useState<SecurityKeyDetails>({
+    model: '',
+    type: '',
+    serialNumber: '',
+    pin: ''
+  })
+
+  const securityKeyModels = {
+    'YubiKey': [
+      'YubiKey 5 NFC',
+      'YubiKey 5C',
+      'YubiKey 5 Nano',
+      'YubiKey Bio',
+      'YubiKey 5Ci',
+      'YubiKey FIPS'
+    ],
+    'Google Titan': [
+      'Titan Security Key USB-C',
+      'Titan Security Key USB-A',
+      'Titan Security Key NFC',
+      'Titan Security Key Bluetooth'
+    ],
+    'Feitian': [
+      'ePass FIDO2',
+      'MultiPass FIDO',
+      'BioPass FIDO2',
+      'AllinPass FIDO2',
+      'K40 FIDO2'
+    ],
+    'Thetis': [
+      'Thetis FIDO2',
+      'Thetis Bio',
+      'Thetis PRO',
+      'Thetis Forte'
+    ],
+    'SoloKeys': [
+      'Solo V2',
+      'SoloKey',
+      'Solo Tap',
+      'Solo Hacker'
+    ]
+  }
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -65,11 +180,8 @@ export default function UserDetailsPage() {
   const fetchUserDetails = async (authToken: string) => {
     try {
       setIsLoading(true)
-      interface UserResponse {
-        user: User;
-      }
-
-      const response = await axios.get<UserResponse>(`${API_URL}/users/${params.id}`, {
+      // Fetch user details
+      const response = await axios.get<{ user: User }>(`${API_URL}/users/${params.id}`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -77,6 +189,7 @@ export default function UserDetailsPage() {
 
       if (response.data && response.data.user) {
         setUser(response.data.user)
+        await fetchSecurityKeys(authToken)
       } else {
         toast.error("User not found")
         router.push("/dashboard/users")
@@ -90,11 +203,375 @@ export default function UserDetailsPage() {
     }
   }
 
+
+  const fetchSecurityKeys = async (authToken: string) => {
+    try {
+      const response = await axios.get<{ securityKeys: SecurityKey[] }>(`${API_URL}/users/${params.id}/security-keys`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      })
+
+      if (response.data && response.data.securityKeys) {
+        setSecurityKeys(response.data.securityKeys)
+      }
+    } catch (error: any) {
+      console.error("Error fetching security keys:", error)
+      toast.error(error.response?.data?.error || "Failed to load security keys")
+    }
+  }
+
+
+const handleKeyDetailsSubmit = async () => {
+  const isUpdate = selectedKey !== null && !isKeyReassigned;
+  const isReassignedKey = selectedKey !== null && isKeyReassigned;
+  
+  if (isUpdate) {
+    setIsUpdating(true);
+  }
+  
+  if (!keyDetails.model || !keyDetails.type || !keyDetails.serialNumber) {
+    toast.error("Please fill in the required fields");
+    return;
+  }
+  
+  // For reassigned keys, PIN is required
+  if (isReassignedKey && !keyDetails.pin) {
+    toast.error("Please provide a PIN for the security key");
+    return;
+  }
+
+  try {
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+
+    // If this is a reassigned key being prepared for registration
+    if (isReassignedKey) {
+      setIsUpdating(true);
+      // Just close the details modal and open the registration modal
+      // The key details are already set in the state
+      setShowKeyDetailsModal(false);
+      setShowRegistrationModal(true);
+      
+      // Store in session for the actual registration process
+      sessionStorage.setItem('pendingKeyDetails', JSON.stringify({
+        ...keyDetails,
+        keyId: selectedKey.id // Include the key ID to ensure we update, not create
+      }));
+      
+      setIsUpdating(false);
+      return;
+    }
+
+    // Normal flow for updates or new keys
+    const endpoint = isUpdate
+      ? `${API_URL}/security-keys/${selectedKey.id}`
+      : `${API_URL}/security-keys/details`;
+    const method = isUpdate ? 'put' : 'post';
+
+    const response = await axios({
+      method,
+      url: endpoint,
+      data: {
+        userId: params.id,
+        ...keyDetails
+      },
+      headers: {
+        Authorization: `Bearer ${userInfo.authToken}`,
+      },
+    });
+
+    if (response.data) {
+      if (isUpdate) {
+        // For updates, just close the modal and refresh the security keys
+        setShowKeyDetailsModal(false);
+        fetchSecurityKeys(userInfo.authToken);
+        toast.success("Security Key details updated successfully");
+      } else {
+        // For new keys, proceed with WebAuthn registration
+        setShowKeyDetailsModal(false);
+        setShowRegistrationModal(true);
+        sessionStorage.setItem('pendingKeyDetails', JSON.stringify(keyDetails));
+      }
+    }
+  } catch (error: any) {
+    console.error("Error saving key details:", error);
+    toast.error(error.response?.data?.error || "Failed to save key details");
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
+
+  const handleDeactivate = async () => {
+    if (!selectedKey || !deactivationReason.trim()) {
+      toast.error("Please provide a reason for deactivation")
+      return
+    }
+
+    // Don't allow reactivating an already deactivated key
+    if (!selectedKey.isActive) {
+      toast.error("Cannot reactivate a deactivated key")
+      return
+    }
+
+    try {
+      setIsDeactivating(true)
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+      if (!userInfo.authToken) {
+        toast.error("Authentication required")
+        return
+      }
+
+      const response = await axios.post<{ message: string }>(
+        `${API_URL}/security-keys/${selectedKey.id}/deactivate-status`,
+        { reason: deactivationReason },
+        {
+          headers: {
+            Authorization: `Bearer ${userInfo.authToken}`,
+          },
+        }
+      )
+
+      if (response.data) {
+        toast.success("Security key deactivated successfully")
+        setShowDeactivateDialog(false)
+        setDeactivationReason('')
+        await fetchSecurityKeys(userInfo.authToken)
+        await fetchUserDetails(userInfo.authToken)
+      }
+    } catch (error: any) {
+      console.error("Error deactivating security key:", error)
+      toast.error(error.response?.data?.error || "Failed to deactivate security key")
+    } finally {
+      setIsDeactivating(false)
+    }
+  }
+
+
+const initiateKeyReset = (keyId: number, key: SecurityKey | undefined) => {
+  if (!key) return;
+  // Check if the key was already reset
+  if (!key.credentialId && key.deactivationReason === "Reset by admin") {
+    // If already reset, go straight to reassignment
+    setKeyIdForReassignment(keyId);
+    setShowReassignDialog(true);
+  } else {
+    // Otherwise show reset confirmation
+    setKeyIdToReset(keyId);
+    setKeyIdForReassignment(keyId);
+    setShowResetConfirm(true);
+  }
+};
+
+
+const handleResetKey = async () => {
+  if (!keyIdToReset) return;
+  
+  try {
+    setIsResetting(true);
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+    if (!userInfo.authToken) {
+      toast.error("Authentication required");
+      return;
+    }
+    
+    const response = await axios.post(
+      `${API_URL}/security-keys/${keyIdToReset}/reset`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      }
+    );
+    
+    toast.success("Security key reset successfully");
+    setIsKeyReassigned(true); // Mark as reassigned
+    setKeyIdForReassignment(keyIdToReset);
+    
+    // Refresh data
+    await fetchSecurityKeys(userInfo.authToken);
+    await fetchUserDetails(userInfo.authToken);
+    
+  } catch (error: any) {
+    console.error("Error resetting security key:", error);
+    toast.error(error.response?.data?.error || "Failed to reset security key");
+  } finally {
+    setIsResetting(false);
+    setShowResetConfirm(false);
+  }
+};
+
+
+const beginRegistration = async () => {
+  if (!user) {
+    toast.error("User information not available");
+    return;
+  }
+  try {
+    setIsRegistering(true);
+    
+    // Get stored key details (may include keyId for reassigned keys)
+    const storedKeyDetails = JSON.parse(sessionStorage.getItem('pendingKeyDetails') || '{}');
+    
+    await registerSecurityKey(
+      user.username,
+      async (message) => {
+        // Success handler
+        toast.success(message);
+        setShowRegistrationModal(false);
+        
+        // Refresh data
+        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+        await fetchUserDetails(userInfo.authToken);
+        await fetchSecurityKeys(userInfo.authToken);
+        
+        // Reset the reassigned flag
+        setIsKeyReassigned(false);
+        
+        // Clean up
+        sessionStorage.removeItem('pendingKeyDetails');
+        setSelectedKey(null);
+      },
+      (error) => {
+        // Error handler
+        toast.error(error);
+      },
+      storedKeyDetails,
+      isKeyReassigned // Pass the flag
+    );
+  } catch (error) {
+    console.error("Error during registration:", error);
+    toast.error("Failed to register security key");
+  } finally {
+    setIsRegistering(false);
+  }
+};
+
+  const handleDeleteKey = async () => {
+    if (!selectedKey) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+      if (!userInfo.authToken) {
+        toast.error("Authentication required")
+        return
+      }
+
+      const response = await axios.delete<{ message: string }>(`${API_URL}/security-keys/${selectedKey.id}`, {
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      })
+
+      if (response.data) {
+        toast.success(response.data.message)
+        setShowDeleteConfirm(false)
+        setSelectedKey(null)
+        fetchSecurityKeys(userInfo.authToken)
+        fetchUserDetails(userInfo.authToken)
+      }
+    } catch (error: any) {
+      console.error("Error deleting security key:", error)
+      toast.error(error.response?.data?.error || "Failed to delete security key")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const fetchAvailableUsers = async () => {
+  try {
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+    if (!userInfo.authToken) {
+      toast.error("Authentication required");
+      return;
+    }
+    
+    // Use the /all endpoint to get all users from the database
+    const response = await axios.get(`${API_URL}/users`, {
+      headers: {
+        Authorization: `Bearer ${userInfo.authToken}`,
+      },
+    });
+    
+    interface UsersResponse {
+      users: User[];
+    }
+    
+    const responseData = response.data as UsersResponse;
+    if (responseData.users) {
+      console.log('All users fetched:', responseData.users); // Debug log
+      setUsersList(responseData.users);
+    }
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    toast.error("Failed to load available users");
+  }
+};
+
+// Add function to handle reassignment
+const handleReassignKey = async () => {
+  console.log("Key ID for reassignment:", keyIdForReassignment);
+  
+  if (!keyIdForReassignment) {
+    toast.error("No key selected for reassignment");
+    return;
+  }
+  
+  if (!selectedUserId) {
+    toast.error("Please select a user to reassign the key to");
+    return;
+  }
+  
+  try {
+    setIsReassigning(true);
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+    if (!userInfo.authToken) {
+      toast.error("Authentication required");
+      return;
+    }
+    
+    const response = await axios.post(
+      `${API_URL}/security-keys/${keyIdForReassignment}/reassign`,
+      { new_user_id: selectedUserId },
+      {
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      }
+    );
+    
+    interface ReassignResponse {
+      message: string;
+    }
+    
+    const responseData = response.data as ReassignResponse;
+    toast.success(responseData.message || "Security key reassigned successfully");
+    
+    // Refresh data
+    await fetchSecurityKeys(userInfo.authToken);
+    await fetchUserDetails(userInfo.authToken);
+    
+  } catch (error: any) {
+    console.error("Error reassigning key:", error);
+    toast.error(error.response?.data?.error || "Failed to reassign security key");
+  } finally {
+    setIsReassigning(false);
+    setShowReassignDialog(false);
+    setSelectedUserId(null);
+    // Also reset the reassignment key ID
+    setKeyIdForReassignment(null);
+  }
+};
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-      </div>
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+        </div>
     )
   }
 
@@ -103,180 +580,584 @@ export default function UserDetailsPage() {
   }
 
   return (
-    <div className="grid gap-6 w-full font-montserrat">
-      <div className="flex justify-between items-center bg-white p-4">
-        <div className="flex items-center text-sm text-gray-500">
-          <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard")}>Dashboard</span>
-          <ChevronRight className="h-4 w-4 mx-1" />
-          <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard/users")}>Users</span>
-          <ChevronRight className="h-4 w-4 mx-1" />
-          <span className="text-gray-800">{user.firstName} {user.lastName}</span>
+      <div className="grid gap-6 w-full font-montserrat">
+        <div className="flex justify-between items-center bg-white p-4">
+          <div className="flex items-center text-sm text-gray-500">
+            <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard")}>Dashboard</span>
+            <ChevronRight className="h-4 w-4 mx-1" />
+            <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard/users")}>Users</span>
+            <ChevronRight className="h-4 w-4 mx-1" />
+            <span className="text-gray-800">{user.firstName} {user.lastName}</span>
+          </div>
+          <Button
+              onClick={() => router.push("/dashboard/users")}
+              className="bg-black hover:bg-black/90 text-white"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Users
+          </Button>
         </div>
-        <Button
-          onClick={() => router.push("/dashboard/users")}
-          className="bg-black hover:bg-black/90 text-white"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Users
-        </Button>
-      </div>
 
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>{user.firstName} {user.lastName}'s Information</CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid gap-8">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>First Name</Label>
-                <Input value={user.firstName} disabled />
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>{user.firstName} {user.lastName}'s Information</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid gap-8">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input value={user.firstName} disabled/>
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input value={user.lastName} disabled/>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Last Name</Label>
-                <Input value={user.lastName} disabled />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Middle Name</Label>
+                  <Input value={user.middlename || 'N/A'} disabled/>
+                </div>
+                <div className="space-y-2">
+                  <Label>National ID</Label>
+                  <Input value={user.nationalId} disabled/>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={user.email} disabled/>
+                </div>
+                <div className="space-y-2">
+                  <Label>Username</Label>
+                  <Input value={user.username} disabled/>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Input value={user.role} disabled/>
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Login</Label>
+                  <Input
+                      value={user.lastLogin
+                          ? new Date(user.lastLogin).toLocaleString('en-US', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short'
+                          })
+                          : 'Not available'
+                      }
+                      disabled
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Successful Login Attempts</Label>
+                  <Input value={user.loginAttempts} disabled/>
+                </div>
+                <div className="space-y-2">
+                  <Label>Failed Login Attempts</Label>
+                  <Input value={user.failedAttempts} disabled/>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <Label className="text-lg font-semibold">Security Keys</Label>
+                </div>
+
+                {securityKeys.length > 0 ? (
+                    <SecurityDataTable
+                      columns={securityKeyColumns}
+                      data={securityKeys}
+                      meta={{
+                        setSelectedKey,
+                        setShowKeyDetailsModal,
+                        setKeyDetails,
+                        setShowDeactivateDialog,
+                        setShowDeleteConfirm,
+                        handleResetKey: async (keyId: number) => {
+                          initiateKeyReset(keyId, securityKeys.find(k => k.id === keyId)!);
+                        },
+                        setIsKeyReassigned,
+                        setShowRegistrationModal
+                      }}
+                    />
+                ) : (
+                    <div className="text-center p-4 border rounded-md bg-gray-50">
+                      <p className="text-gray-500">No security keys registered yet</p>
+                      <Button
+                          onClick={() => setShowKeyDetailsModal(true)}
+                          className="mt-2 bg-black hover:bg-black/90 text-white"
+                      >
+                        <Key className="h-4 w-4 mr-1"/>
+                        Register Security Key
+                      </Button>
+                    </div>
+                )}
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Middle Name</Label>
-                <Input value={user.middlename || 'N/A'} disabled />
-              </div>
-              <div className="space-y-2">
-                <Label>National ID</Label>
-                <Input value={user.nationalId} disabled />
-              </div>
-            </div>
+        {/* Security Key Details Modal */}
+        <Dialog open={showKeyDetailsModal} onOpenChange={setShowKeyDetailsModal}>
+          <DialogContent className="sm:max-w-md font-montserrat">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedKey 
+                  ? isKeyReassigned 
+                    ? 'Prepare Security Key for Registration' 
+                    : 'Edit Security Key'
+                  : 'Security Key Details'
+                }
+              </DialogTitle>
+              <DialogDescription>
+                {selectedKey 
+                  ? isKeyReassigned
+                    ? 'Confirm the details of the security key before registering it for the new user'
+                    : 'Update the details of the security key'
+                  : 'Enter the details of the security key before registration'
+                }
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input value={user.email} disabled />
-              </div>
-              <div className="space-y-2">
-                <Label>Username</Label>
-                <Input value={user.username} disabled />
-              </div>
-            </div>
+            <div className="space-y-4 py-4">
+              {isKeyReassigned && (
+                <div className="bg-blue-50 p-3 rounded-sm border-l-4 border-blue-400 mb-4">
+                  <h4 className="text-blue-800 font-medium">Reassigned Security Key</h4>
+                  <p className="text-blue-700 text-sm mt-1">
+                    This key has been reset and is ready to be registered for this user. Review the details below.
+                  </p>
+                </div>
+              )}
 
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Role</Label>
-                <Input value={user.role} disabled />
+                <Label htmlFor="model">Security Key Model</Label>
+                <Select
+                  value={keyDetails.model}
+                  onValueChange={(value) => {
+                    setKeyDetails({
+                      ...keyDetails,
+                      model: value,
+                      type: '' // Reset type when model changes
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full border border-input">
+                    <SelectValue placeholder="Select Model" />
+                  </SelectTrigger>
+                  <SelectContent className="w-full min-w-[300px]">
+                    <SelectGroup>
+                      {Object.keys(securityKeyModels).map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
+
               <div className="space-y-2">
-                <Label>Last Login</Label>
+                <Label htmlFor="type">Key Type</Label>
+                <Select
+                  value={keyDetails.type}
+                  onValueChange={(value) => setKeyDetails({ ...keyDetails, type: value })}
+                  disabled={!keyDetails.model}
+                >
+                  <SelectTrigger className="w-full border border-input">
+                    <SelectValue placeholder="Select Type" />
+                  </SelectTrigger>
+                  <SelectContent className="w-full min-w-[300px]">
+                    <SelectGroup>
+                      {keyDetails.model && securityKeyModels[keyDetails.model as keyof typeof securityKeyModels].map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="serialNumber">Serial Number</Label>
                 <Input
-                  value={user.lastLogin
-                    ? new Date(user.lastLogin).toLocaleString('en-US', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      })
-                    : 'Not available'
-                  }
-                  disabled
+                    id="serialNumber"
+                    type="number"
+                    placeholder="Enter serial number"
+                    value={keyDetails.serialNumber}
+                    onChange={(e) => setKeyDetails({ ...keyDetails, serialNumber: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pin">
+                  Security Key PIN
+                  {!selectedKey && <span className="text-red-500 ml-1">*</span>}
+                  {selectedKey && !isKeyReassigned && <span className="text-gray-400 ml-2 text-sm">(Leave blank to keep current PIN)</span>}
+                  {isKeyReassigned && <span className="text-red-500 ml-1">*</span>}
+                </Label>
+                <Input
+                    id="pin"
+                    type="password"
+                    placeholder={selectedKey && !isKeyReassigned ? "Enter new PIN (optional)" : "Enter security key PIN"}
+                    value={keyDetails.pin}
+                    onChange={(e) => setKeyDetails({ ...keyDetails, pin: e.target.value })}
+                    required={!selectedKey || isKeyReassigned}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Successful Login Attempts</Label>
-                <Input value={user.loginAttempts} disabled />
+            <DialogFooter>
+              <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowKeyDetailsModal(false);
+                    setKeyDetails({
+                      model: '',
+                      type: '',
+                      serialNumber: '',
+                      pin: ''
+                    });
+                    setSelectedKey(null);
+                    setIsKeyReassigned(false); // Reset this flag
+                  }}
+                  className="border-black bg-white hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                  onClick={handleKeyDetailsSubmit}
+                  className="bg-black hover:bg-black/90 text-white"
+                  disabled={isUpdating}
+              >
+                  {selectedKey ? (
+                    isKeyReassigned ? (
+                      isUpdating ? (
+                        <>
+                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                          Preparing...
+                        </>
+                      ) : "Continue to Registration"
+                    ) : (
+                      isUpdating ? (
+                        <>
+                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                          Updating...
+                        </>
+                      ) : "Update"
+                    )
+                  ) : "Save and Continue"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Security Key Registration Modal */}
+        <Dialog open={showRegistrationModal} onOpenChange={setShowRegistrationModal}>
+          <DialogContent className="sm:max-w-md font-montserrat">
+            <DialogHeader>
+              <DialogTitle>{isKeyReassigned ? 'Register Reassigned Security Key' : 'Register Security Key'}</DialogTitle>
+              <DialogDescription>
+                Connect your security key to protect {user?.firstName} {user?.lastName}'s account against unauthorized access
+                and phishing attacks.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="bg-yellow-50 p-3 rounded-sm border-l-4 border-yellow-400">
+                <h4 className="text-yellow-800 font-medium">Important Instructions</h4>
+                <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 space-y-1">
+                  <li>Ensure the security key is connected to your device</li>
+                  <li>When prompted, tap the button on your security key</li>
+                  <li>Keep the key connected until registration is complete</li>
+                </ul>
               </div>
+              
+              {isKeyReassigned && (
+                <div className="bg-blue-50 p-3 rounded-sm border-l-4 border-blue-400 mt-3">
+                  <h4 className="text-blue-800 font-medium">Reassigned Security Key</h4>
+                  <p className="text-blue-700 text-sm mt-1">
+                    This security key was reassigned from another user. It needs to be registered with this account before it can be used.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowRegistrationModal(false);
+                    setIsKeyReassigned(false); // Reset the flag when canceling
+                  }}
+                  disabled={isRegistering}
+                  className="border-black bg-white hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                  onClick={beginRegistration}
+                  disabled={isRegistering}
+                  className="bg-black hover:bg-black/90 text-white"
+              >
+                {isRegistering ? (
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                      Registering...
+                    </>
+                ) : (
+                    "Begin Registration"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Deactivate Security Key Dialog */}
+        <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
+          <DialogContent className="sm:max-w-md font-montserrat">
+            <DialogHeader>
+              <DialogTitle>Deactivate Security Key</DialogTitle>
+              <DialogDescription>
+                Please provide a reason for deactivating this security key. This will be stored for audit purposes.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {selectedKey && (
+                <div className="bg-gray-50 p-3 rounded border mb-4">
+                  <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
+                  <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
+                  <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>Failed Login Attempts</Label>
-                <Input value={user.failedAttempts} disabled />
+                <Label htmlFor="deactivationReason">Deactivation Reason</Label>
+                <Input
+                  aria-placeholder="Enter the reason for deactivation"
+                  value={deactivationReason}
+                  onChange={(e) => setDeactivationReason(e.target.value)}
+                  className="min-h-[100px]"
+                />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Security Key Status</Label>
-              <div className="space-y-2">
-                <div>
-                  {user.hasSecurityKey ? (
-                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                      Registered
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                      Not Registered
-                    </Badge>
-                  )}
-                </div>
-                {!user.hasSecurityKey && (
-                  <Button
-                    className="bg-black hover:bg-black/90 text-white"
-                    onClick={() => setShowRegistrationModal(true)}
-                  >
-                    <KeyRound className="h-4 w-4 mr-1" />
-                    Register Security Key
-                  </Button>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeactivateDialog(false)
+                  setDeactivationReason('')
+                  setSelectedKey(null)
+                }}
+                className="border-black bg-white hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeactivate}
+                className="bg-black hover:bg-black/90 text-white"
+                disabled={isDeactivating || !deactivationReason.trim()}
+              >
+                {isDeactivating ? (
+                  <>
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                    Deactivating...
+                  </>
+                ) : (
+                  "Deactivate"
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialogContent className="font-montserrat">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Security Key</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this security key? This action cannot be undone and the user
+                will no longer be able to use this key for authentication.
+                {selectedKey && (
+                    <div className="bg-gray-50 p-3 mt-2 rounded border">
+                      <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
+                      <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
+                      <p><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</p>
+                    </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setShowDeleteConfirm(false);
+                setSelectedKey(null);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                  onClick={handleDeleteKey}
+                  disabled={isDeleting}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeleting ? (
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                      Deleting...
+                    </>
+                ) : (
+                    "Delete Key"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent className="font-montserrat">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Security Key</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-4">
+                <p>Are you sure you want to reset this security key for reassignment to another user?</p>
+                
+                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                  <h3 className="font-semibold text-yellow-800">This will:</h3>
+                  <ul className="list-disc pl-5 text-sm text-yellow-700 space-y-1">
+                    <li>Deactivate the key for the current user</li>
+                    <li>Clear the security key's PIN in the database</li>
+                    <li>Mark the key as available for reassignment</li>
+                  </ul>
+                </div>
+                
+                <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+                  <h3 className="font-semibold text-blue-800">Note:</h3>
+                  <p className="text-sm text-blue-700">
+                    For security reasons, after resetting, a new user will need to register 
+                    the security key before they can use it.
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      {/* Security Key Registration Modal */}
-      <Dialog open={showRegistrationModal} onOpenChange={setShowRegistrationModal}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => {
+                setShowResetConfirm(false);
+                setKeyIdToReset(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleResetKey().then(() => {
+                  setShowReassignDialog(true);
+                });
+              }}
+              disabled={isResetting}
+              className="bg-black text-white"
+            >
+              {isResetting ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  Resetting...
+                </>
+              ) : (
+                "Reset Key"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
+      <Dialog open={showReassignDialog} onOpenChange={setShowReassignDialog}>
         <DialogContent className="sm:max-w-md font-montserrat">
           <DialogHeader>
-            <DialogTitle>Enhance Account Security</DialogTitle>
+            <DialogTitle>Reassign Security Key</DialogTitle>
             <DialogDescription>
-              Add a security key to protect {user.firstName} {user.lastName}'s account against unauthorized access
-              and phishing attacks.
+              Select a user to reassign this security key to.
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="flex justify-end space-x-4">
+
+          <div className="space-y-4 py-4">
+            {selectedKey && (
+              <div className="bg-gray-50 p-3 rounded border mb-4">
+                <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
+                <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
+                <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
+                {/* <p className="mt-2 text-amber-600">
+                  {selectedKey.isActive 
+                    ? "This key is currently active. You must reset it before reassigning." 
+                    : "This key is ready for reassignment."}
+                </p> */}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="newUser">Assign to User</Label>
+              <Select 
+                value={selectedUserId?.toString() || ""}
+                onValueChange={(value) => setSelectedUserId(parseInt(value))}
+              >
+                <SelectTrigger className="w-full border border-input">
+                  <SelectValue placeholder="Select a user" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {usersList.map((user) => (
+                      <SelectItem key={user.id} value={user.id.toString()}>
+                        {user.firstName} {user.lastName} ({user.username})
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setShowRegistrationModal(false)}
-              disabled={isRegistering}
+              onClick={() => {
+                setShowReassignDialog(false);
+                setSelectedUserId(null);
+              }}
               className="border-black bg-white hover:bg-gray-50"
             >
               Cancel
             </Button>
             <Button
-              onClick={async () => {
-                setIsRegistering(true)
-                try {
-                  await registerSecurityKey(
-                    user.username,
-                    async (message) => {
-                      toast.success(message)
-                      setShowRegistrationModal(false)
-                      // Refresh user details to update security key status
-                      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-                      await fetchUserDetails(userInfo.authToken)
-                    },
-                    (error) => {
-                      toast.error(error)
-                    }
-                  )
-                } finally {
-                  setIsRegistering(false)
-                }
-              }}
-              disabled={isRegistering}
+              onClick={handleReassignKey}
               className="bg-black hover:bg-black/90 text-white"
+              disabled={isReassigning || !selectedUserId}
             >
-              {isRegistering ? (
+              {isReassigning ? (
                 <>
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                  Registering...
+                  Reassigning...
                 </>
-              ) : (
-                <>
-                  Start Registration
-                </>
-              )}
+              ) : "Reassign Key"}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
   )
 }
+
+
+
