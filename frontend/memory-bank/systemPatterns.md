@@ -5,68 +5,77 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 
 ### Core Patterns
 
-1. **Route Structure**
-```
-app/
-├── login/         # Authentication routes
-├── signup/
-└── dashboard/     # Protected routes
-    ├── security/
-    ├── locked-accounts/
-    ├── audit-logs/
-    ├── users/
-    └── settings/
-```
+1.  **Route Structure**
+    ```
+    app/
+    ├── login/         # Authentication routes
+    ├── signup/
+    └── dashboard/     # Protected routes
+        ├── security/
+        ├── locked-accounts/
+        ├── audit-logs/
+        ├── users/
+        └── settings/
+    ```
 
-2. **Component Organization**
-```
-components/
-├── ui/           # Base UI components
-├── data-table/   # Data display components
-└── [feature]/    # Feature-specific components
-```
+2.  **Component Organization**
+    ```
+    components/
+    ├── ui/           # Base UI components (including Dialog for confirmations)
+    ├── data-table/   # Data display components (e.g., locked-accounts-data-table.tsx)
+    └── [feature]/    # Feature-specific components
+    ```
 
 ## Design Patterns
 
 ### 1. Component Architecture
-- Atomic design principles with shared UI components
-- Data table abstraction for consistent data display
-- Compound components for complex UI patterns
+-   Atomic design principles with shared UI components.
+-   Data table abstraction for consistent data display:
+    -   Wrapped in `CardContent` for layout.
+    -   Single global search input (e.g., "Search..." with `max-w-md`).
+    -   Standardized "Action" column header for action buttons.
+    -   Consistent button styling (e.g., black background for primary actions).
+    -   Confirmation dialogs (`shadcn/ui Dialog`) for critical actions within table rows (e.g., "Unlock Account").
+-   Compound components for complex UI patterns.
 
 ### 2. State Management
-- Custom store implementation for global state
-- React hooks for local state management
-- Server-side data fetching using Next.js patterns
+-   React `useState` for local component state (e.g., dialog open/closed, loading states for actions).
+-   Custom store implementation for global state.
+-   Server-side data fetching using Next.js patterns.
 
 ### 3. Security Implementation
-- WebAuthn integration for passwordless authentication
-- Role-based access control
-- Audit logging for security events
-- Locked account management system
+-   WebAuthn integration for passwordless authentication.
+-   Role-based access control.
+-   Audit logging for security events.
+-   Locked account management system (manual admin unlock with confirmation step).
 
 ### 4. AI Integration
-- Provider-based AI service architecture
-- Tool-based AI capabilities
-- Chat interface for AI interactions
+-   Provider-based AI service architecture.
+-   Tool-based AI capabilities.
+-   Chat interface for AI interactions.
+
+### 5. User Interaction
+-   Use of `shadcn/ui Dialog` components to implement confirmation modals for sensitive operations, enhancing user safety and preventing accidental actions.
+-   Clear visual feedback during asynchronous operations (e.g., "Unlocking..." button text).
 
 ## Technical Decisions
 
-1. **UI Framework**
-- shadcn/ui for consistent component base
-- Custom styling with Tailwind CSS
-- Responsive design patterns
+1.  **UI Framework**
+    -   shadcn/ui for consistent component base, including `Dialog` for modals.
+    -   Custom styling with Tailwind CSS.
+    -   Responsive design patterns.
 
-2. **Data Handling**
-- Type-safe data management with TypeScript
-- Data table abstractions for security records
-- Efficient data fetching and caching
+2.  **Data Handling**
+    -   Type-safe data management with TypeScript.
+    -   Data table abstractions for security records, featuring global search (e.g., `Input` with `max-w-md`) and standardized action columns/buttons with confirmation dialogs.
+    -   Efficient data fetching and caching.
 
-3. **Authentication Flow**
-- WebAuthn for primary authentication
-- Session management
-- Security key registration and verification
+3.  **Authentication Flow**
+    -   WebAuthn for primary authentication.
+    -   Session management.
+    -   Security key registration and verification.
 
-4. **Performance Patterns**
-- Component-level code splitting
-- Optimized data fetching
-- Efficient state management
+4.  **Performance Patterns**
+    -   Component-level code splitting.
+    -   Optimized data fetching.
+    -   Efficient state management.

@@ -13,14 +13,14 @@
 - [x] Main dashboard layout
 - [x] Sidebar navigation
 - [x] Security overview page
-- [x] Locked accounts view (**UI refined, styling aligned with other tables, sonner toasts for notifications**)
+- [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog**)
 - [x] Users management
 - [x] Audit logs view
 - [x] Settings page
 
 ### Security Features
 - [x] Security key management
-- [x] Locked accounts monitoring (**Improved data table UI and functionality**)
+- [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal**)
 - [x] Audit logging system
 - [x] User activity tracking
 
@@ -33,12 +33,11 @@
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
     *   Real-time updates
-    *   Enhanced filtering
+    *   Enhanced filtering (review if single global search is sufficient or if column-specific filters are still needed elsewhere)
 
 2.  Locked Accounts Management
     *   Bulk actions implementation
-    *   Advanced search features
-    *   Review recovery workflow based on manual admin unlock
+    *   Review recovery workflow based on manual admin unlock with confirmation.
 
 3.  AI Features
     *   Enhanced security insights
@@ -56,14 +55,18 @@
 
 3.  UX Improvements
     *   Mobile responsiveness refinements
-    *   Loading state improvements (standardized spinner)
+    *   Loading state improvements (standardized spinner, loading state for dialog buttons)
     *   Error handling enhancements (standardized sonner toasts)
+    *   Ensure consistent search/filter patterns and input sizing across all data tables.
+    *   Ensure consistent use of confirmation dialogs for critical actions across the application.
 
 ## Next Steps
 1.  Short Term
     *   Optimize data table performance
     *   Enhance mobile responsiveness
     *   Implement rate limiting
+    *   Review and standardize search/filter UX and input sizing across all data tables.
+    *   Review other critical actions for potential confirmation dialogs.
 
 2.  Medium Term
     *   Add advanced security analytics
