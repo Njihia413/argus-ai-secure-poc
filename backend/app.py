@@ -62,12 +62,18 @@ class Users(db.Model):
     timezone = db.Column(db.String(50), default='UTC')
     last_login_time = db.Column(db.DateTime)
     last_login_ip = db.Column(db.String(45))
-    failed_login_attempts = db.Column(db.Integer, default=0)
+    successful_login_attempts = db.Column(db.Integer, default=0)  # Track successful logins
+    failed_login_attempts = db.Column(db.Integer, default=0)  # Track failed logins
+    total_login_attempts = db.Column(db.Integer, default=0,
+        info={'computed': 'successful_login_attempts + failed_login_attempts'})  # Total of both
 
     # Security key related fields
     has_security_key = db.Column(db.Boolean, nullable=False, default=False)
     total_login_attempts = db.Column(db.Integer, default=0)  # Track total successful logins
-    account_locked_until = db.Column(db.DateTime)
+    account_locked = db.Column(db.Boolean, nullable=False, default=False)  # Track if account is locked
+    locked_time = db.Column(db.DateTime(timezone=True), nullable=True)  # When the account was locked
+    unlocked_by = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_users_unlocked_by'), nullable=True)  # Admin who unlocked
+    unlocked_time = db.Column(db.DateTime(timezone=True), nullable=True)  # When account was unlocked
     security_key_status = db.Column(db.String(20), nullable=True)
 
     # WebAuthn related fields
@@ -87,39 +93,62 @@ class Users(db.Model):
         self.failed_login_attempts = 0
         db.session.commit()
 
+    def increment_successful_attempts(self):
+        """Increment successful login attempts and update total"""
+        self.successful_login_attempts += 1
+        self.total_login_attempts = self.successful_login_attempts + self.failed_login_attempts
+        db.session.commit()
+
+    def unlock_account(self, admin_user_id):
+        """Unlock a locked account and record who unlocked it"""
+        self.account_locked = False
+        self.failed_login_attempts = 0
+        self.unlocked_by = admin_user_id
+        self.unlocked_time = datetime.now(timezone.utc)
+        db.session.commit()
+
     # Increment failed login attempts
     def increment_failed_attempts(self):
+        """Increment failed login attempts and update total"""
         self.failed_login_attempts += 1
+        self.total_login_attempts = self.successful_login_attempts + self.failed_login_attempts
+        
         if self.failed_login_attempts >= 5:
-            self.account_locked_until = datetime.now(timezone.utc)  # Just mark the time it was locked
+            self.account_locked = True
+            self.locked_time = datetime.now(timezone.utc)
+            self.unlocked_by = None
+            self.unlocked_time = None
         db.session.commit()
 
     # Check if account is locked
     def is_account_locked(self):
         """Check if account is locked and return boolean"""
-        # Add timezone info to account_locked_until if needed
-        if self.account_locked_until:
-            if not self.account_locked_until.tzinfo:
-                self.account_locked_until = self.account_locked_until.replace(tzinfo=timezone.utc)
-            if self.account_locked_until > datetime.now(timezone.utc):
-                return True
-        return False
+        return self.account_locked
 
     def get_lock_details(self):
         """Get detailed information about account lock status"""
-        if not self.is_account_locked():
+        if not self.account_locked:
             return {
                 "locked": False
             }
 
-        now = datetime.now(timezone.utc)
-        remaining_seconds = (self.account_locked_until - now).total_seconds()
-
-        return {
+        details = {
             "locked": True,
-            "lockedUntil": self.account_locked_until.isoformat(),
-            "remainingSeconds": int(remaining_seconds)
+            "lockedTime": self.locked_time.isoformat() if self.locked_time else None,
+            "failedAttempts": self.failed_login_attempts
         }
+
+        if self.unlocked_by:
+            unlocked_by_user = Users.query.get(self.unlocked_by)
+            details.update({
+                "unlockedBy": {
+                    "id": unlocked_by_user.id,
+                    "username": unlocked_by_user.username
+                },
+                "unlockedTime": self.unlocked_time.isoformat() if self.unlocked_time else None
+            })
+
+        return details
 
     def update_security_key_status(self):
         """Update the security key status based on the user's security keys"""
@@ -1479,8 +1508,8 @@ def login():
     # Password is correct - update attempt to successful
     auth_attempt.success = True
 
-    # Increment total successful logins
-    user.total_login_attempts += 1
+    # Increment successful and total login attempts
+    user.increment_successful_attempts()
 
     # Update login history
     user.last_login_time = datetime.now(timezone.utc)
