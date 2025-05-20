@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, ShieldCheck, Key } from 'lucide-react'
+import { Eye, EyeOff, ShieldCheck, Key, AlertTriangle } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 
@@ -38,7 +38,8 @@ const SecurityKeyPrompt = ({
                                riskScore,
                                onSuccess,
                                onCancel,
-                               setLoadingStatus
+                               setLoadingStatus,
+                               setIsLoading  // Add this prop to reset the parent component's loading state
                            }: {
     username: string,
     authToken: string,
@@ -46,7 +47,8 @@ const SecurityKeyPrompt = ({
     riskScore: number,
     onSuccess: (userData: any) => void,
     onCancel: () => void,
-    setLoadingStatus: (status: string) => void
+    setLoadingStatus: (status: string) => void,
+    setIsLoading: (isLoading: boolean) => void  // Add type definition
 }) => {
     const [isVerifying, setIsVerifying] = useState(false)
     const [securityKeyError, setSecurityKeyError] = useState("")
@@ -71,15 +73,24 @@ const SecurityKeyPrompt = ({
                     onSuccess(userData)
                 },
                 (errorMessage) => {
-                    setSecurityKeyError(errorMessage)
-                    setIsVerifying(false)
-                    setLoadingStatus("Logging in...")
+                    console.log("Security key error:", errorMessage);
+                    setSecurityKeyError(errorMessage);
+                    setIsVerifying(false);
+                    setLoadingStatus("Logging in...");
+                    setIsLoading(false); // Reset parent loading state
+
+                    // Display the error as a toast notification
+                    toast.error(errorMessage);
                 }
             )
-        } catch (err) {
-            setSecurityKeyError("An unexpected error occurred")
-            setIsVerifying(false)
-            setLoadingStatus("Logging in...")
+        } catch (err: any) {
+            console.error("Unhandled error in security key verification:", err);
+            const errorMsg = err?.message || "An unexpected error occurred";
+            setSecurityKeyError(errorMsg);
+            setIsVerifying(false);
+            setLoadingStatus("Logging in...");
+            setIsLoading(false);
+            toast.error(errorMsg);
         }
     }
 
@@ -152,6 +163,50 @@ const SecurityKeyPrompt = ({
     )
 }
 
+// New component for displaying inactive security key error
+const InactiveKeyDialog = ({
+                               open,
+                               onClose
+                           }: {
+    open: boolean,
+    onClose: () => void
+}) => {
+    return (
+        <AlertDialog open={open} onOpenChange={onClose}>
+            <AlertDialogContent className="w-[90%] max-w-md p-6">
+                <AlertDialogHeader className="font-montserrat">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        <AlertDialogTitle>Inactive Security Key</AlertDialogTitle>
+                    </div>
+                    <AlertDialogDescription className="space-y-4">
+                        <p>
+                            Your security key is currently inactive and cannot be used for authentication.
+                        </p>
+
+                        <div className="bg-amber-50 p-3 rounded-sm border-l-4 border-amber-400 text-sm">
+                            <h4 className="text-amber-800 font-medium">What this means:</h4>
+                            <p className="text-amber-700 mt-1">
+                                Your security key has been registered but is currently disabled. This may be due to
+                                administrative policy or the key was deactivated for security reasons.
+                            </p>
+                        </div>
+
+                        <p className="text-sm">
+                            Please contact your system administrator to activate your security key or try logging in with your password only.
+                        </p>
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="font-montserrat">
+                    <AlertDialogAction onClick={onClose} className="w-full">
+                        OK, I Understand
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    )
+}
+
 export default function LoginPage() {
     const router = useRouter()
 
@@ -163,6 +218,7 @@ export default function LoginPage() {
 
     // States for second-factor authentication
     const [securityKeyDialogOpen, setSecurityKeyDialogOpen] = useState(false)
+    const [inactiveKeyDialogOpen, setInactiveKeyDialogOpen] = useState(false)
     const [authMethod, setAuthMethod] = useState<'password' | 'security_key'>('password')
     const [authToken, setAuthToken] = useState("")
     const [bindingNonce, setBindingNonce] = useState("")
@@ -176,9 +232,11 @@ export default function LoginPage() {
 
     // Countdown timer for account locked state
     useEffect(() => {
+        let countdownInterval: NodeJS.Timeout;
+
         // Only start countdown if account is locked and we have a timestamp
         if (accountLocked && accountUnlockTimestamp) {
-            const countdownInterval = setInterval(() => {
+            countdownInterval = setInterval(() => {
                 const now = new Date();
                 const timeDiff = accountUnlockTimestamp.getTime() - now.getTime();
 
@@ -195,16 +253,78 @@ export default function LoginPage() {
                     setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
                 }
             }, 1000);
-
-            // Clean up the interval when component unmounts or account becomes unlocked
-            return () => clearInterval(countdownInterval);
         }
+
+        // Cleanup function to clear interval when component unmounts or account becomes unlocked
+        return () => {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+        };
     }, [accountLocked, accountUnlockTimestamp]);
 
     // Clear any existing authentication data
+    // Clear binding data on component mount
     React.useEffect(() => {
-        clearBindingData()
-    }, [])
+        clearBindingData();
+    }, []);
+
+    // Function to reset the database
+    // API Response Types
+    interface ResetDatabaseResponse {
+        admin_created?: {
+            username: string;
+        };
+    }
+
+    interface LoginResponse {
+        user_id: string;
+        has_security_key: boolean;
+        firstName: string;
+        lastName: string;
+        role: string;
+        auth_token: string;
+        binding_nonce: string;
+        risk_score?: number;
+    }
+
+    interface WebAuthnResponse {
+        publicKey: {
+            challenge: string;
+        };
+        riskScore?: number;
+    }
+
+    // Error Response Type
+    interface ApiError {
+        response?: {
+            data?: {
+                error?: string;
+                accountLocked?: boolean;
+                accountLockedUntil?: string;
+                status?: string;
+            };
+        };
+    }
+
+    const handleResetDatabase = async () => {
+        try {
+            setIsLoading(true);
+            const response = await axios.post<ResetDatabaseResponse>(`${API_URL}/reset-db`);
+            setIsLoading(false);
+
+            // Show a single success toast with relevant information
+            if (response.data.admin_created) {
+                toast.success(`Database reset successful! Admin created: ${response.data.admin_created.username}`);
+            } else {
+                toast.success("Database reset successful!");
+            }
+        } catch (error: any) {
+            setIsLoading(false)
+            toast.error(error.response?.data?.error || "Failed to reset database")
+            console.error("Database reset error:", error)
+        }
+    }
 
     // Function to redirect based on user role
     const redirectBasedOnRole = (role: string) => {
@@ -235,6 +355,7 @@ export default function LoginPage() {
                 lastName: string;
                 role: string;
                 auth_token: string;
+                binding_nonce: string;
             }>(`${API_URL}/login`, {
                 username,
                 password
@@ -293,21 +414,126 @@ export default function LoginPage() {
             // Redirect based on role
             redirectBasedOnRole(response.data.role)
 
-        } catch (err: any) {
+        } catch (err) {
+            const apiError = err as ApiError;
             setIsLoading(false)
 
             // Check for account locked message
-            if (err.response?.data?.accountLocked ||
-                (err.response?.data?.error && err.response.data.error.includes('Account is temporarily locked'))) {
+            if (apiError.response?.data?.accountLocked ||
+                (apiError.response?.data?.error && apiError.response.data.error.includes('Account is temporarily locked'))) {
 
                 setAccountLocked(true)
 
                 // If we have the ISO timestamp from the backend
-                if (err.response?.data?.accountLockedUntil) {
-                    setAccountUnlockTimestamp(new Date(err.response.data.accountLockedUntil))
+                if (apiError.response?.data?.accountLockedUntil) {
+                    setAccountUnlockTimestamp(new Date(apiError.response.data.accountLockedUntil))
                 } else {
                     // Try to extract time from error message as fallback
-                    const timeMatch = err.response?.data?.error?.match(/after (\d{2}:\d{2}:\d{2})/)
+                    const timeMatch = apiError.response?.data?.error?.match(/after (\d{2}:\d{2}:\d{2})/);
+                    if (timeMatch && timeMatch[1]) {
+                        setAccountLockedUntil(timeMatch[1]);
+
+                        // Create approximate timestamp based on HH:MM:SS
+                        const [hours, minutes, seconds] = timeMatch[1].split(':').map(Number);
+                        const unlockTime = new Date();
+                        unlockTime.setHours(hours, minutes, seconds);
+                        setAccountUnlockTimestamp(unlockTime);
+                    }
+                }
+
+                toast.error("Account locked due to too many failed attempts");
+            } else {
+                toast.error(apiError.response?.data?.error || "Login failed");
+            }
+        }
+    }
+
+    // Handle security key login - UPDATED VERSION
+    const handleSecurityKeyLogin = async () => {
+        if (!username || !password) {
+            toast.error("Please enter both your national ID/email and password")
+            return
+        }
+
+        setIsLoading(true)
+        setAuthMethod('security_key')
+
+        try {
+            // First authenticate with password
+            const passwordResponse = await axios.post<LoginResponse>(`${API_URL}/login`, {
+                username,
+                password
+            });
+
+            // Store tokens and risk score
+            setAuthToken(passwordResponse.data.auth_token || "");
+            setBindingNonce(passwordResponse.data.binding_nonce || "");
+            if (passwordResponse.data.risk_score !== undefined) {
+                setRiskScore(passwordResponse.data.risk_score);
+            }
+
+            // Begin WebAuthn authentication flow
+            try {
+                const authResponse = await axios.post<WebAuthnResponse>(`${API_URL}/webauthn/login/begin`, {
+                    username,
+                    secondFactor: true,
+                    auth_token: authToken,
+                    binding_nonce: bindingNonce,
+                    directSecurityKeyAuth: false // Using two-step flow
+                })
+
+                // Extract the challenge and tokens for WebAuthn
+                const webauthnChallenge = authResponse.data.publicKey.challenge
+
+                // Update risk score if available
+                if (authResponse.data.riskScore !== undefined) {
+                    setRiskScore(authResponse.data.riskScore)
+                }
+
+                // Store auth tokens
+                setAuthToken(authToken)
+                setBindingNonce(bindingNonce)
+
+                // Store for WebAuthn utility
+                sessionStorage.setItem('auth_token', authToken)
+                sessionStorage.setItem('binding_nonce', bindingNonce)
+
+                // Open security key dialog
+                setSecurityKeyDialogOpen(true)
+            } catch (error) {
+                const apiError = error as ApiError;
+                console.error("WebAuthn begin error:", apiError);
+                setIsLoading(false);
+
+                // Special handling for inactive key status
+                if (apiError.response?.data?.status === 'inactive_key') {
+                    // Show inactive key dialog instead of security key dialog
+                    setInactiveKeyDialogOpen(true);
+                    return;
+                }
+
+                // Display the error message from the backend
+                const errorMessage = apiError.response?.data?.error || "Failed to start security key authentication";
+                toast.error(errorMessage);
+            }
+
+        } catch (error) {
+            const apiError = error as ApiError;
+            setIsLoading(false)
+            console.error("Login error:", error)
+
+            // Check for account locked message
+            if (apiError.response?.data?.accountLocked ||
+                (apiError.response?.data?.error && apiError.response.data.error.includes('Account is temporarily locked'))) {
+
+                setAccountLocked(true)
+
+                // If we have the ISO timestamp from the backend
+                if (apiError.response?.data?.accountLockedUntil) {
+                    setAccountUnlockTimestamp(new Date(apiError.response.data.accountLockedUntil))
+                } else {
+                    // Try to extract time from error message as fallback
+                    const timeMatch = apiError.response?.data?.error?.match(/after (\d{2}:\d{2}:\d{2})/)
                     if (timeMatch && timeMatch[1]) {
                         setAccountLockedUntil(timeMatch[1])
 
@@ -321,78 +547,23 @@ export default function LoginPage() {
 
                 toast.error("Account locked due to too many failed attempts")
             } else {
-                toast.error(err.response?.data?.error || "Login failed")
-            }
-        }
-    }
-
-    // Handle security key login
-    const handleSecurityKeyLogin = async () => {
-        if (!username) {
-            toast.error("Please enter your national ID/email first")
-            return
-        }
-
-        setIsLoading(true)
-        setAuthMethod('security_key')
-
-        try {
-            // Define the expected response type
-            interface WebAuthnResponse {
-                publicKey: {
-                    challenge: string;
-                };
-                riskScore?: number;
-            }
-
-            // Direct security key authentication with type assertion
-            const authResponse = await axios.post<WebAuthnResponse>(`${API_URL}/webauthn/login/begin`, {
-                username,
-                secondFactor: true,
-                directSecurityKeyAuth: true
-            });
-
-            console.log('Got WebAuthn challenge');
-
-            // Extract the challenge for WebAuthn
-            const webauthnChallenge = authResponse.data.publicKey.challenge;
-
-            // Store risk score if provided
-            if (authResponse.data.riskScore !== undefined) {
-                setRiskScore(authResponse.data.riskScore);
-            }
-
-            // Use challenge as temporary tokens
-            setAuthToken(webauthnChallenge);
-            setBindingNonce(webauthnChallenge);
-
-            // Store for WebAuthn utility
-            sessionStorage.setItem('auth_token', webauthnChallenge);
-            sessionStorage.setItem('binding_nonce', webauthnChallenge);
-
-            // Open security key dialog
-            setSecurityKeyDialogOpen(true);
-        } catch (error: unknown) {
-            setIsLoading(false);
-            console.error("Security key login error:", error);
-            
-            // Type guard to check if error is an axios error response
-            const isAxiosError = (err: unknown): err is { response?: { data?: { error?: string } } } => {
-                return typeof err === 'object' && err !== null && 'response' in err;
-            };
-            
-            // Handle the error with proper type checking
-            if (isAxiosError(error) && error.response?.data?.error) {
-                toast.error(error.response.data.error);
-            } else {
-                toast.error("Failed to initiate security key login");
+                toast.error(apiError.response?.data?.error || "Login failed")
             }
         }
     }
 
     // Handle successful second factor authentication
-    const handleSecondFactorSuccess = (userData: any) => {
+    interface SecurityKeyUserData {
+        user_id: string;
+        firstName: string;
+        lastName: string;
+        role: string;
+        auth_token: string;
+    }
+
+    const handleSecondFactorSuccess = (userData: SecurityKeyUserData) => {
         setSecurityKeyDialogOpen(false)
+        setIsLoading(false)
         toast.success("Login successful with security key!")
 
         // Store user data in session storage
@@ -426,6 +597,11 @@ export default function LoginPage() {
         setIsLoading(false)
     }
 
+    // Handle inactive key dialog close
+    const handleInactiveKeyClose = () => {
+        setInactiveKeyDialogOpen(false)
+    }
+
     return (
         <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
             <div className="hidden bg-muted lg:block">
@@ -444,7 +620,7 @@ export default function LoginPage() {
                     <div className="space-y-2 text-center">
                         <div className="flex justify-center">
                             <div className="rounded-full bg-primary/10 p-3">
-                                <ShieldCheck className="h-8 w-8 text-primary" />
+                                <ShieldCheck className="h-8 w-8 text-primary"/>
                             </div>
                         </div>
                         <h1 className="text-3xl font-bold">Welcome back</h1>
@@ -516,17 +692,29 @@ export default function LoginPage() {
                         >
                             {isLoading && authMethod === 'security_key' ? "Logging in..." : (
                                 <>
-                                    <Key className="h-4 w-4 mr-2" />
+                                    <Key className="h-4 w-4 mr-2"/>
                                     Login with Security Key
                                 </>
                             )}
                         </Button>
 
+                        {/* Reset Database Button - for development/testing only */}
+                        {/* <Button*/}
+                        {/*    type="button"*/}
+                        {/*    variant="outline"*/}
+                        {/*    className="w-full border-red-500 text-red-500 hover:bg-red-50 mt-4"*/}
+                        {/*    onClick={handleResetDatabase}*/}
+                        {/*    disabled={isLoading}*/}
+                        {/*>*/}
+                        {/*    Reset Database*/}
+                        {/*</Button> */}
+
                         {accountLocked && (
                             <div className="p-3 bg-red-50 border-l-4 border-red-500 text-sm">
                                 <p className="font-medium text-red-800">Account Temporarily Locked</p>
                                 <p className="text-red-700">
-                                    For your security, this account has been temporarily locked due to multiple failed login attempts.
+                                    For your security, this account has been temporarily locked due to multiple failed
+                                    login attempts.
                                     {timeRemaining ? (
                                         <span className="font-bold"> Time remaining: {timeRemaining}</span>
                                     ) : (
@@ -550,9 +738,16 @@ export default function LoginPage() {
                         onSuccess={handleSecondFactorSuccess}
                         onCancel={handleSecondFactorCancel}
                         setLoadingStatus={setLoadingStatus}
+                        setIsLoading={setIsLoading}
                     />
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Inactive Key Dialog */}
+            <InactiveKeyDialog
+                open={inactiveKeyDialogOpen}
+                onClose={handleInactiveKeyClose}
+            />
         </div>
     )
-}
+    }
