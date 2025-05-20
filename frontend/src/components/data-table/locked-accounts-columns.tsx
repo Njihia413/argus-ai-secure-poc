@@ -3,14 +3,19 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { ArrowUpDown } from "lucide-react"
+import { API_URL } from "@/app/utils/constants"
+import { toast } from "sonner"
 
 export type LockedAccount = {
-  id: string
+  id: number
   username: string
   email: string
-  lastLoginAttempt: string
-  failedAttempts: number
-  lockedAt: string
+  firstName: string
+  lastName: string
+  locked_time: string  
+  failed_attempts: number  
+  successful_attempts: number  
+  total_attempts: number 
 }
 
 export const columns: ColumnDef<LockedAccount>[] = [
@@ -29,20 +34,56 @@ export const columns: ColumnDef<LockedAccount>[] = [
     }
   },
   {
+    accessorKey: "firstName",
+    header: "First Name"
+  },
+  {
+    accessorKey: "lastName",
+    header: "Last Name"
+  },
+  {
     accessorKey: "email",
-    header: "Email"
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Email
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    }
   },
   {
-    accessorKey: "lastLoginAttempt",
-    header: "Last Login Attempt"
+    accessorKey: "failed_attempts",
+    header: "Failed Attempts",
+    cell: ({ row }) => {
+      return (
+        <div className="font-medium text-red-600">
+          {row.getValue("failed_attempts")}
+        </div>
+      )
+    }
   },
   {
-    accessorKey: "failedAttempts",
-    header: "Failed Attempts"
+    accessorKey: "successful_attempts",
+    header: "Successful Attempts",
+    cell: ({ row }) => {
+      return (
+        <div className="font-medium text-green-600">
+          {row.getValue("successful_attempts")}
+        </div>
+      )
+    }
   },
   {
-    accessorKey: "lockedAt",
-    header: "Locked At"
+    accessorKey: "locked_time",
+    header: "Locked At",
+    cell: ({ row }) => {
+      const timestamp = row.getValue("locked_time") as string
+      return timestamp ? new Date(timestamp).toLocaleString() : "N/A"
+    }
   },
   {
     id: "actions",
@@ -55,21 +96,32 @@ export const columns: ColumnDef<LockedAccount>[] = [
           size="sm"
           onClick={async () => {
             try {
-              const response = await fetch(`/api/accounts/${account.id}/unlock`, {
-                method: 'POST',
+              // Get auth token
+              const userStr = sessionStorage.getItem('user')
+              if (!userStr) {
+                throw new Error('User not authenticated')
+              }
+              
+              const user = JSON.parse(userStr)
+              const authToken = user.authToken
+
+              const response = await fetch(`${API_URL}/users/${account.id}/unlock`, {
                 headers: {
+                  'Authorization': `Bearer ${authToken}`,
                   'Content-Type': 'application/json'
-                }
+                },
+                method: 'POST',
               })
               
               if (!response.ok) {
                 throw new Error('Failed to unlock account')
               }
               
-              // Refresh data after unlock
+              toast.success("Account unlocked successfully")
               window.location.reload()
             } catch (error) {
               console.error('Error unlocking account:', error)
+              toast.error("Failed to unlock account. Please try again.")
             }
           }}
         >
