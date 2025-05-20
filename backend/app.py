@@ -72,7 +72,7 @@ class Users(db.Model):
     total_login_attempts = db.Column(db.Integer, default=0)  # Track total successful logins
     account_locked = db.Column(db.Boolean, nullable=False, default=False)  # Track if account is locked
     locked_time = db.Column(db.DateTime(timezone=True), nullable=True)  # When the account was locked
-    unlocked_by = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_users_unlocked_by'), nullable=True)  # Admin who unlocked
+    unlocked_by = db.Column(db.String(100), nullable=True)  # Admin username who unlocked
     unlocked_time = db.Column(db.DateTime(timezone=True), nullable=True)  # When account was unlocked
     security_key_status = db.Column(db.String(20), nullable=True)
 
@@ -99,11 +99,11 @@ class Users(db.Model):
         self.total_login_attempts = self.successful_login_attempts + self.failed_login_attempts
         db.session.commit()
 
-    def unlock_account(self, admin_user_id):
+    def unlock_account(self, admin_username):
         """Unlock a locked account and record who unlocked it"""
         self.account_locked = False
-        self.failed_login_attempts = 0
-        self.unlocked_by = admin_user_id
+        # self.failed_login_attempts = 0 # This line is removed as per request
+        self.unlocked_by = admin_username
         self.unlocked_time = datetime.now(timezone.utc)
         db.session.commit()
 
@@ -113,7 +113,7 @@ class Users(db.Model):
         self.failed_login_attempts += 1
         self.total_login_attempts = self.successful_login_attempts + self.failed_login_attempts
         
-        if self.failed_login_attempts >= 5:
+        if self.failed_login_attempts >= 5: # Lock on the 5th failed attempt
             self.account_locked = True
             self.locked_time = datetime.now(timezone.utc)
             self.unlocked_by = None
@@ -139,11 +139,10 @@ class Users(db.Model):
         }
 
         if self.unlocked_by:
-            unlocked_by_user = Users.query.get(self.unlocked_by)
+            # unlocked_by now stores the username directly
             details.update({
                 "unlockedBy": {
-                    "id": unlocked_by_user.id,
-                    "username": unlocked_by_user.username
+                    "username": self.unlocked_by
                 },
                 "unlockedTime": self.unlocked_time.isoformat() if self.unlocked_time else None
             })
@@ -1481,28 +1480,29 @@ def login():
     )
     db.session.add(auth_attempt)
 
-    # Check if account is locked
-    if user.is_account_locked():
-        db.session.commit()  # Commit the failed attempt with high risk
-
-        # Account is locked
-        return jsonify({
-            'error': 'Account is temporarily locked due to too many failed attempts. Please contact an administrator to unlock your account.',
-            'accountLocked': True
-        }), 401
-
     # Verify password
     if not user.check_password(data['password']):
-        auth_attempt.success = False
-        db.session.commit()
-
-        # Increment failed login attempts
-        user.increment_failed_attempts()
-
-        return jsonify({'error': 'Invalid credentials. Please try again'}), 401
+        # Password failed. auth_attempt.success is already False by default.
+        # Increment failed attempts. This method also handles locking if the threshold is met and commits changes.
+        user.increment_failed_attempts() # This commits the user object and auth_attempt via its own commit.
+        
+        # After incrementing and potentially locking, check the lock status.
+        if user.is_account_locked():
+            # db.session.commit() # Not needed here, increment_failed_attempts handles its commit.
+            return jsonify({
+                'error': 'Account is temporarily locked due to too many failed attempts. Please contact an administrator to unlock your account.',
+                'accountLocked': True,
+                'failedAttempts': user.failed_login_attempts # Include current failed attempts count
+            }), 401
+        else:
+            # Account is not locked, but password was wrong.
+            # db.session.commit() # Not needed here, increment_failed_attempts handles its commit.
+            return jsonify({'error': 'Invalid credentials. Please try again'}), 401
 
     # Password is correct - update attempt to successful
     auth_attempt.success = True
+    # Commit the successful auth_attempt here, as increment_failed_attempts was not called.
+    db.session.commit()
 
     # Increment successful and total login attempts
     user.increment_successful_attempts()
@@ -4020,14 +4020,14 @@ def unlock_user_account(user_id):
             return jsonify({'error': 'Account is not locked'}), 400
             
         # Unlock the account
-        user.unlock_account(admin_user.id)
+        user.unlock_account(admin_user.username) # Pass username instead of id
         
         return jsonify({
             'message': f'Account unlocked successfully',
             'user': {
                 'id': user.id,
                 'username': user.username,
-                'unlocked_by': admin_user.username,
+                'unlocked_by': admin_user.username, # This is now directly the username
                 'unlocked_time': user.unlocked_time.isoformat()
             }
         })
