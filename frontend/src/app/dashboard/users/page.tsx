@@ -59,6 +59,7 @@ interface User {
   email: string
   role: string
   hasSecurityKey: boolean
+  securityKeyStatus: string | null // Add this field
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
@@ -209,296 +210,134 @@ export default function UsersPage() {
   }
 
   return (
-    <>
-      <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
-        <h2 className="text-2xl font-bold tracking-tight">Users</h2>
-        <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-black hover:bg-black/90 text-white">
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add User
-        </Button>
-      </div>
+      <>
+        <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
+          <h2 className="text-2xl font-bold tracking-tight">Users</h2>
+          <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-black hover:bg-black/90 text-white">
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add User
+          </Button>
+        </div>
 
-      <div className="px-4 py-4">
-        <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardContent>
-            {isLoading ? (
-              <div className="flex flex-col items-center space-y-2 text-slate-500 py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-                <span>Loading users...</span>
-              </div>
-            ) : (
-              <DataTable
-                columns={columns}
-                data={users}
-                meta={{
-                  setSelectedUser,
-                  setIsDeleteDialogOpen,
-                  setIsEditUserDialogOpen
-                }}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] font-montserrat">
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-            <DialogDescription>Create a new user account with defined permissions.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreateUser}>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  value={newUserForm.firstName}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="middlename">Middle Name</Label>
-                <Input
-                  id="middlename"
-                  name="middlename"
-                  value={newUserForm.middlename}
-                  onChange={handleNewUserInputChange}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input
-                  id="lastName"
-                  name="lastName"
-                  value={newUserForm.lastName}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nationalId">National ID</Label>
-                <Input
-                  id="nationalId"
-                  name="nationalId"
-                  type="number"
-                  value={newUserForm.nationalId}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  name="username"
-                  value={newUserForm.username}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={newUserForm.email}
-                  onChange={handleNewUserInputChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    value={newUserForm.password}
-                    onChange={handleNewUserInputChange}
-                    required
+        <div className="px-4 py-4">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardContent>
+              {isLoading ? (
+                  <div className="flex flex-col items-center space-y-2 text-slate-500 py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                    <span>Loading users...</span>
+                  </div>
+              ) : (
+                  <DataTable
+                      columns={columns}
+                      data={users}
+                      meta={{
+                        setSelectedUser,
+                        setIsDeleteDialogOpen,
+                        setIsEditUserDialogOpen,
+                      }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-500" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-500" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2 w-full">
-                <Label htmlFor="role">Role</Label>
-                <Select value={newUserForm.role} onValueChange={handleRoleChange}>
-                  <SelectTrigger className="w-full border border-input">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Available Roles</SelectLabel>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="user">User</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setIsAddUserDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-black hover:bg-black/90 text-white" disabled={isLoading}>
-                {isLoading ? "Creating..." : "Create User"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-      <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] font-montserrat">
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>Update user account details.</DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <form onSubmit={async (e) => {
-              e.preventDefault()
-              setIsLoading(true)
-
-              try {
-                const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-                if (!userInfo.authToken) {
-                  toast.error("Authentication required")
-                  setIsLoading(false)
-                  return
-                }
-
-                // Update user via API
-                const response = await axios.put(
-                  `${API_URL}/users/${selectedUser.id}`,
-                  {
-                    firstName: selectedUser.firstName,
-                    middlename: selectedUser.middlename,
-                    lastName: selectedUser.lastName,
-                    nationalId: selectedUser.nationalId,
-                    username: selectedUser.username,
-                    email: selectedUser.email,
-                    role: selectedUser.role,
-                  },
-                  {
-                    headers: {
-                      Authorization: `Bearer ${userInfo.authToken}`,
-                    },
-                  }
-                )
-
-                toast.success("User details updated successfully")
-                setIsEditUserDialogOpen(false)
-                fetchUsers(userInfo.authToken)
-              } catch (error: any) {
-                console.error("Error updating user:", error)
-                toast.error(error.response?.data?.error || "Failed to update user")
-              } finally {
-                setIsLoading(false)
-              }
-            }}>
+        <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
+          <DialogContent className="sm:max-w-[500px] font-montserrat">
+            <DialogHeader>
+              <DialogTitle>Add New User</DialogTitle>
+              <DialogDescription>Create a new user account with defined permissions.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreateUser}>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-firstName">First Name</Label>
+                  <Label htmlFor="firstName">First Name</Label>
                   <Input
-                    id="edit-firstName"
-                    name="firstName"
-                    value={selectedUser.firstName}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      firstName: e.target.value
-                    })}
-                    required
+                      id="firstName"
+                      name="firstName"
+                      value={newUserForm.firstName}
+                      onChange={handleNewUserInputChange}
+                      required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-middlename">Middle Name</Label>
+                  <Label htmlFor="middlename">Middle Name</Label>
                   <Input
-                    id="edit-middlename"
-                    name="middlename"
-                    value={selectedUser.middlename || ""}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      middlename: e.target.value
-                    })}
+                      id="middlename"
+                      name="middlename"
+                      value={newUserForm.middlename}
+                      onChange={handleNewUserInputChange}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-lastName">Last Name</Label>
+                  <Label htmlFor="lastName">Last Name</Label>
                   <Input
-                    id="edit-lastName"
-                    name="lastName"
-                    value={selectedUser.lastName}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      lastName: e.target.value
-                    })}
-                    required
+                      id="lastName"
+                      name="lastName"
+                      value={newUserForm.lastName}
+                      onChange={handleNewUserInputChange}
+                      required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-nationalId">National ID</Label>
+                  <Label htmlFor="nationalId">National ID</Label>
                   <Input
-                    id="edit-nationalId"
-                    name="nationalId"
-                    type="number"
-                    value={selectedUser.nationalId}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      nationalId: e.target.value
-                    })}
-                    required
+                      id="nationalId"
+                      name="nationalId"
+                      type="number"
+                      value={newUserForm.nationalId}
+                      onChange={handleNewUserInputChange}
+                      required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-username">Username</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input
-                    id="edit-username"
-                    name="username"
-                    value={selectedUser.username}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      username: e.target.value
-                    })}
-                    required
+                      id="username"
+                      name="username"
+                      value={newUserForm.username}
+                      onChange={handleNewUserInputChange}
+                      required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-email">Email</Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input
-                    id="edit-email"
-                    name="email"
-                    type="email"
-                    value={selectedUser.email}
-                    onChange={(e) => setSelectedUser({
-                      ...selectedUser,
-                      email: e.target.value
-                    })}
-                    required
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={newUserForm.email}
+                      onChange={handleNewUserInputChange}
+                      required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-role">Role</Label>
-                  <Select
-                    value={selectedUser.role}
-                    onValueChange={(value) => setSelectedUser({
-                      ...selectedUser,
-                      role: value
-                    })}
-                  >
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        value={newUserForm.password}
+                        onChange={handleNewUserInputChange}
+                        required
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                    >
+                      {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-gray-500" />
+                      ) : (
+                          <Eye className="h-4 w-4 text-gray-500" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2 w-full">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={newUserForm.role} onValueChange={handleRoleChange}>
                     <SelectTrigger className="w-full border border-input">
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
@@ -513,96 +352,258 @@ export default function UsersPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => setIsEditUserDialogOpen(false)}
-                >
+                <Button variant="outline" type="button" onClick={() => setIsAddUserDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  className="bg-black hover:bg-black/90 text-white"
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Updating..." : "Update User"}
+                <Button type="submit" className="bg-black hover:bg-black/90 text-white" disabled={isLoading}>
+                  {isLoading ? "Creating..." : "Create User"}
                 </Button>
               </DialogFooter>
             </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px] font-montserrat">
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div>
-              <div className="py-4">
-                <p className="text-sm text-gray-500">
-                  You are about to delete the following user:
-                </p>
-                <p className="mt-2 font-medium">
-                  {selectedUser.firstName} {selectedUser.lastName}
-                </p>
-                <p className="text-sm text-gray-500">
-                  Username: {selectedUser.username}
-                </p>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDeleteDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                  onClick={async () => {
-                    setIsLoading(true)
-                    try {
-                      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-                      if (!userInfo.authToken) {
-                        toast.error("Authentication required")
-                        setIsLoading(false)
-                        return
-                      }
+        <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
+          <DialogContent className="sm:max-w-[500px] font-montserrat">
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>Update user account details.</DialogDescription>
+            </DialogHeader>
+            {selectedUser && (
+                <form onSubmit={async (e) => {
+                  e.preventDefault()
+                  setIsLoading(true)
 
-                      // Delete user via API
-                      await axios.delete(
-                        `${API_URL}/delete-user/${selectedUser.id}`,
+                  try {
+                    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+                    if (!userInfo.authToken) {
+                      toast.error("Authentication required")
+                      setIsLoading(false)
+                      return
+                    }
+
+                    // Update user via API
+                    const response = await axios.put(
+                        `${API_URL}/users/${selectedUser.id}`,
+                        {
+                          firstName: selectedUser.firstName,
+                          middlename: selectedUser.middlename,
+                          lastName: selectedUser.lastName,
+                          nationalId: selectedUser.nationalId,
+                          username: selectedUser.username,
+                          email: selectedUser.email,
+                          role: selectedUser.role,
+                        },
                         {
                           headers: {
                             Authorization: `Bearer ${userInfo.authToken}`,
                           },
                         }
-                      )
+                    )
 
-                      toast.success("User deleted successfully")
-                      setIsDeleteDialogOpen(false)
-                      fetchUsers(userInfo.authToken)
-                    } catch (error: any) {
-                      console.error("Error deleting user:", error)
-                      toast.error(error.response?.data?.error || "Failed to delete user")
-                    } finally {
-                      setIsLoading(false)
-                    }
-                  }}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Deleting..." : "Delete User"}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+                    toast.success("User details updated successfully")
+                    setIsEditUserDialogOpen(false)
+                    fetchUsers(userInfo.authToken)
+                  } catch (error: any) {
+                    console.error("Error updating user:", error)
+                    toast.error(error.response?.data?.error || "Failed to update user")
+                  } finally {
+                    setIsLoading(false)
+                  }
+                }}>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-firstName">First Name</Label>
+                      <Input
+                          id="edit-firstName"
+                          name="firstName"
+                          value={selectedUser.firstName}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            firstName: e.target.value
+                          })}
+                          required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-middlename">Middle Name</Label>
+                      <Input
+                          id="edit-middlename"
+                          name="middlename"
+                          value={selectedUser.middlename || ""}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            middlename: e.target.value
+                          })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lastName">Last Name</Label>
+                      <Input
+                          id="edit-lastName"
+                          name="lastName"
+                          value={selectedUser.lastName}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            lastName: e.target.value
+                          })}
+                          required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-nationalId">National ID</Label>
+                      <Input
+                          id="edit-nationalId"
+                          name="nationalId"
+                          type="number"
+                          value={selectedUser.nationalId}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            nationalId: e.target.value
+                          })}
+                          required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-username">Username</Label>
+                      <Input
+                          id="edit-username"
+                          name="username"
+                          value={selectedUser.username}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            username: e.target.value
+                          })}
+                          required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-email">Email</Label>
+                      <Input
+                          id="edit-email"
+                          name="email"
+                          type="email"
+                          value={selectedUser.email}
+                          onChange={(e) => setSelectedUser({
+                            ...selectedUser,
+                            email: e.target.value
+                          })}
+                          required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-role">Role</Label>
+                      <Select
+                          value={selectedUser.role}
+                          onValueChange={(value) => setSelectedUser({
+                            ...selectedUser,
+                            role: value
+                          })}
+                      >
+                        <SelectTrigger className="w-full border border-input">
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectLabel>Available Roles</SelectLabel>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="user">User</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                        variant="outline"
+                        type="button"
+                        onClick={() => setIsEditUserDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                        type="submit"
+                        className="bg-black hover:bg-black/90 text-white"
+                        disabled={isLoading}
+                    >
+                      {isLoading ? "Updating..." : "Update User"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[400px] font-montserrat">
+            <DialogHeader>
+              <DialogTitle>Delete User</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this user? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedUser && (
+                <div>
+                  <div className="py-4">
+                    <p className="text-sm text-gray-500">
+                      You are about to delete the following user:
+                    </p>
+                    <p className="mt-2 font-medium">
+                      {selectedUser.firstName} {selectedUser.lastName}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Username: {selectedUser.username}
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsDeleteDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={async () => {
+                          setIsLoading(true)
+                          try {
+                            const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+                            if (!userInfo.authToken) {
+                              toast.error("Authentication required")
+                              setIsLoading(false)
+                              return
+                            }
+
+                            // Delete user via API
+                            await axios.delete(
+                                `${API_URL}/delete-user/${selectedUser.id}`,
+                                {
+                                  headers: {
+                                    Authorization: `Bearer ${userInfo.authToken}`,
+                                  },
+                                }
+                            )
+
+                            toast.success("User deleted successfully")
+                            setIsDeleteDialogOpen(false)
+                            fetchUsers(userInfo.authToken)
+                          } catch (error: any) {
+                            console.error("Error deleting user:", error)
+                            toast.error(error.response?.data?.error || "Failed to delete user")
+                          } finally {
+                            setIsLoading(false)
+                          }
+                        }}
+                        disabled={isLoading}
+                    >
+                      {isLoading ? "Deleting..." : "Delete User"}
+                    </Button>
+                  </DialogFooter>
+                </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </>
   )
 }
