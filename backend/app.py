@@ -3948,6 +3948,7 @@ def get_security_key_audit_logs():
 @app.route('/api/security/stats', methods=['GET'])
 def get_security_stats():
     try:
+        # Verify auth token
         auth_token = request.headers.get('Authorization')
         if not auth_token or not auth_token.startswith('Bearer '):
             return jsonify({'error': 'Authorization required'}), 401
@@ -3965,39 +3966,13 @@ def get_security_stats():
         medium_count = sum(1 for a in attempts if 40 < a.risk_score <= 75)
         low_count = total_alerts - (high_count + medium_count)
 
-        # Calculate security score based on security keys and successful logins
-        total_users = Users.query.count()
-        users_with_security_key = Users.query.filter_by(has_security_key=True).count()
+        # Calculate security score based on security keys
+        total_users = Users.query.filter_by(is_deleted=False).count()
+        users_with_security_key = Users.query.filter_by(has_security_key=True, is_deleted=False).count()
         security_score = (users_with_security_key / total_users * 100) if total_users > 0 else 0
 
-        # Get active sessions grouped by device type directly from the database
-        now = datetime.now(timezone.utc)
-        active_sessions_query = (
-            db.session.query(
-                AuthenticationAttempt.device_type,
-                func.count(AuthenticationSession.id).label('count')
-            )
-            .join(
-                AuthenticationSession,
-                AuthenticationSession.user_id == AuthenticationAttempt.user_id
-            )
-            .filter(
-                AuthenticationSession.expires_at > now,
-                AuthenticationAttempt.device_type.isnot(None)
-            )
-            .group_by(AuthenticationAttempt.device_type)
-        )
-
-        # Build device stats dictionary and count total sessions
-        device_stats = {}
-        total_active_sessions = 0
-        for device_type, count in active_sessions_query:
-            device_type = device_type or 'Unknown'
-            device_stats[device_type] = count
-            total_active_sessions += count
-
-        # Get unique devices count
-        unique_devices = len(device_stats)
+        # Get locked accounts count
+        locked_accounts_count = Users.query.filter_by(account_locked=True, is_deleted=False).count()
 
         return jsonify({
             'alertStats': {
@@ -4010,29 +3985,152 @@ def get_security_stats():
             },
             'securityScore': {
                 'current': security_score,
-                'change': 0  # You can implement change calculation logic if needed
+                'totalUsers': total_users,
+                'usersWithKeys': users_with_security_key
             },
-            'activeSessions': {
-                'total': total_active_sessions,
-                'byDevice': device_stats,
-                'uniqueDevices': unique_devices
+            'accountLocks': {
+                'totalLocked': locked_accounts_count
             }
         })
 
     except Exception as e:
-        print(f"Error fetching security stats: {str(e)}")
-        return jsonify({'error': 'Failed to fetch security stats'}), 500
+        print(f"Error getting security stats: {str(e)}")
+        return jsonify({'error': 'Failed to get security stats'}), 500
+
+# Endpoint to unlock a specific account
+@app.route('/api/users/<int:user_id>/unlock', methods=['POST'])
+def unlock_user_account(user_id):
+    try:
+        # Verify admin authorization
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Admin authorization required'}), 401
+            
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+            
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        # Find and unlock the user account
+        user = Users.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+            
+        if not user.account_locked:
+            return jsonify({'error': 'Account is not locked'}), 400
+            
+        # Unlock the account
+        user.unlock_account(admin_user.id)
+        
+        return jsonify({
+            'message': f'Account unlocked successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'unlocked_by': admin_user.username,
+                'unlocked_time': user.unlocked_time.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error unlocking account: {str(e)}")
+        return jsonify({'error': 'Failed to unlock account'}), 500
 
 
+# Account Locking Management Endpoints
+@app.route('/api/accounts/locked', methods=['GET'])
+def get_locked_accounts():
+    try:
+        # Verify admin authorization
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Admin authorization required'}), 401
+            
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+            
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        # Get all locked accounts that aren't deleted
+        locked_accounts = Users.query.filter_by(account_locked=True, is_deleted=False).all()
+        
+        accounts_data = [{
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'locked_time': user.locked_time.isoformat() if user.locked_time else None,
+            'failed_attempts': user.failed_login_attempts,
+            'successful_attempts': user.successful_login_attempts,
+            'total_attempts': user.total_login_attempts
+        } for user in locked_accounts]
+        
+        return jsonify({
+            'locked_accounts': accounts_data,
+            'total_locked': len(accounts_data)
+        })
+        
+    except Exception as e:
+        print(f"Error getting locked accounts: {str(e)}")
+        return jsonify({'error': 'Failed to retrieve locked accounts'}), 500
+
+@app.route('/api/accounts/<int:user_id>/unlock', methods=['POST'])
+def unlock_user_account(user_id):
+    try:
+        # Verify admin authorization
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Admin authorization required'}), 401
+            
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+            
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        # Find and unlock the user account
+        user = Users.query.filter_by(id=user_id, is_deleted=False).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+            
+        if not user.account_locked:
+            return jsonify({'error': 'Account is not locked'}), 400
+            
+        # Unlock the account
+        user.unlock_account(admin_user.id)
+        
+        return jsonify({
+            'message': 'Account unlocked successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'unlocked_by': admin_user.username,
+                'unlocked_time': user.unlocked_time.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error unlocking account: {str(e)}")
+        return jsonify({'error': 'Failed to unlock account'}), 500
+
+
+# Initialize database and create admin user
 with app.app_context():
     db.create_all()
-    # Create admin user if it doesn't exist
     create_admin_user()
     db.session.commit()
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        # Create admin user if it doesn't exist
-        create_admin_user()
     app.run(debug=True)
