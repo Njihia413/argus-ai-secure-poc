@@ -33,42 +33,92 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 
-class ChartErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false }
+interface ChartErrorState {
+  hasError: boolean;
+}
+
+interface ChartErrorProps {
+  children: React.ReactNode;
+}
+
+class ChartErrorBoundary extends React.Component<ChartErrorProps, ChartErrorState> {
+  constructor(props: ChartErrorProps) {
+    super(props);
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(_) {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error): ChartErrorState {
+    return { hasError: true };
   }
 
-  componentDidCatch(error, errorInfo) {
-    console.error('Chart Error:', error, errorInfo)
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error('Chart Error:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-          <div className="h-full flex items-center justify-center text-muted-foreground">
-            Error loading chart. Please try again.
-          </div>
-      )
+        <div className="h-full flex items-center justify-center text-muted-foreground">
+          Error loading chart. Please try again.
+        </div>
+      );
     }
 
-    return this.props.children
+    return this.props.children;
   }
 }
 
+interface Stats {
+  totalLogins: number;
+  loginChange?: number;
+  securityScore?: number;
+  successRate?: number;
+  failedAttempts: number;
+  failedChange?: number;
+}
+
+interface LoginAttempt {
+  name: string;
+  successful: number;
+  failed: number;
+}
+
+interface SecurityMetric {
+  name: string;
+  value: number;
+  color?: string;
+}
+
+interface LocationStat {
+  name: string;
+  value: number;
+  severity: 'high' | 'medium' | 'low';
+}
+
+interface DeviceStat {
+  name: string;
+  value: number;
+}
+
+interface RiskTrendItem {
+  name: string;
+  riskScore: number;
+  attemptCount?: number;
+}
+
+interface StoredUser {
+  authToken: string;
+}
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState(null)
-  const [loginAttempts, setLoginAttempts] = useState([])
-  const [securityMetrics, setSecurityMetrics] = useState([])
-  const [locationStats, setLocationStats] = useState([])
-  const [deviceStats, setDeviceStats] = useState([])
-  const [riskTrend, setRiskTrend] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
+  const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([]);
+  const [locationStats, setLocationStats] = useState<LocationStat[]>([]);
+  const [deviceStats, setDeviceStats] = useState<DeviceStat[]>([]);
+  const [riskTrend, setRiskTrend] = useState<RiskTrendItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   // Add refresh trigger state for dashboard updates
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
@@ -79,15 +129,15 @@ export default function DashboardPage() {
   }, [])
 
   // Function to toggle security key status
-  const toggleKeyStatus = async (keyId) => {
+  const toggleKeyStatus = async (keyId: string) => {
     try {
       setIsLoading(true)
       const userStr = sessionStorage.getItem('user')
       if (!userStr) {
         throw new Error('User not authenticated')
       }
-      const user = JSON.parse(userStr)
-      const authToken = user.authToken
+      const user = JSON.parse(userStr) as StoredUser;
+      const authToken = user.authToken;
 
       const response = await fetch(`${API_URL}/security-keys/${keyId}/toggle-status`, {
         method: 'POST',
@@ -109,25 +159,25 @@ export default function DashboardPage() {
       triggerRefresh()
 
       return result
-    } catch (error) {
-      console.error('Error toggling key status:', error)
-      setError(error.message)
-      throw error
+    } catch (error: any) {
+      console.error('Error toggling key status:', error);
+      setError(error.message);
+      throw error;
     } finally {
       setIsLoading(false)
     }
   }
 
   // Function to delete a security key
-  const deleteSecurityKey = async (keyId) => {
+  const deleteSecurityKey = async (keyId: string) => {
     try {
       setIsLoading(true)
       const userStr = sessionStorage.getItem('user')
       if (!userStr) {
         throw new Error('User not authenticated')
       }
-      const user = JSON.parse(userStr)
-      const authToken = user.authToken
+      const user = JSON.parse(userStr) as StoredUser;
+      const authToken = user.authToken;
 
       const response = await fetch(`${API_URL}/security-keys/${keyId}`, {
         method: 'DELETE',
@@ -148,10 +198,10 @@ export default function DashboardPage() {
       triggerRefresh()
 
       return result
-    } catch (error) {
-      console.error('Error deleting security key:', error)
-      setError(error.message)
-      throw error
+    } catch (error: any) {
+      console.error('Error deleting security key:', error);
+      setError(error.message);
+      throw error;
     } finally {
       setIsLoading(false)
     }
@@ -167,8 +217,8 @@ export default function DashboardPage() {
         if (!userStr) {
           throw new Error('User not authenticated')
         }
-        const user = JSON.parse(userStr)
-        const authToken = user.authToken
+        const user = JSON.parse(userStr) as StoredUser;
+        const authToken = user.authToken;
         const headers = {
           'Authorization': `Bearer ${authToken}`
         }
@@ -236,9 +286,9 @@ export default function DashboardPage() {
         const riskTrendData = await riskTrendResponse.json()
         setRiskTrend(riskTrendData.riskTrend)
 
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error)
-        // setError(error instanceof Error ? error.message : 'An error occurred') // Allow rendering other charts even if one fetch fails
+      } catch (error: any) {
+        console.error('Error fetching dashboard data:', error);
+        setError(error?.message || 'An error occurred');
       } finally {
         setIsLoading(false)
       }
@@ -248,13 +298,16 @@ export default function DashboardPage() {
   }, [refreshTrigger]) // Add refreshTrigger to dependency array to refresh on key changes
 
   // Helper function for bar color based on risk score
-  const getRiskColor = (score) => {
+  const getRiskColor = (score: number) => {
     if (score > 75) return "#dc2626" // Red for High Risk
     if (score > 40) return "#f59e0b" // Amber for Medium Risk
     return "#16a34a" // Green for Low Risk
   }
 
-  const formatRiskScore = (score) => {
+  const formatRiskScore = (score: number | string | (string | number)[] | null | undefined) => {
+    if (Array.isArray(score)) {
+      score = score[0]; // Take first value if array
+    }
     if (typeof score === 'number') {
       return score.toFixed(1)
     } else if (score !== undefined && score !== null && typeof score === 'string' && !isNaN(parseFloat(score))) {
@@ -510,24 +563,24 @@ export default function DashboardPage() {
                             ))}
                           </Bar>
                           <Tooltip
-                              formatter={(value) => [
-                                formatRiskScore(value),
-                                "Risk Score"
-                              ]}
-                              labelFormatter={(label) => `${label}`}
-                              content={({ active, payload, label }) => {
-                                if (active && payload && payload.length) {
-                                  const data = payload[0].payload;
-                                  return (
-                                      <div className="bg-white p-2 border border-gray-200 shadow-md text-sm">
-                                        <p className="font-bold">{label}</p>
-                                        <p>Average Risk Score: {formatRiskScore(data.riskScore)}</p>
-                                        <p>Login Attempts: {data.attemptCount || 0}</p>
-                                      </div>
-                                  );
-                                }
+                            formatter={(value: number | string | Array<number | string>) => [
+                              formatRiskScore(value),
+                              "Risk Score"
+                            ] as [string, string]}
+                            labelFormatter={(label) => `${label}`}
+                            content={({ active, payload, label }) => {
+                              if (!active || !payload || !payload.length) {
                                 return null;
-                              }}
+                              }
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-white p-2 border border-gray-200 shadow-md text-sm">
+                                  <p className="font-bold">{label}</p>
+                                  <p>Average Risk Score: {formatRiskScore(data.riskScore)}</p>
+                                  <p>Login Attempts: {data.attemptCount || 0}</p>
+                                </div>
+                              );
+                            }}
                           />
                         </BarChart>
                       </ResponsiveContainer>
