@@ -4083,48 +4083,6 @@ def get_locked_accounts():
         print(f"Error getting locked accounts: {str(e)}")
         return jsonify({'error': 'Failed to retrieve locked accounts'}), 500
 
-@app.route('/api/accounts/<int:user_id>/unlock', methods=['POST'])
-def unlock_user_account(user_id):
-    try:
-        # Verify admin authorization
-        auth_token = request.headers.get('Authorization')
-        if not auth_token or not auth_token.startswith('Bearer '):
-            return jsonify({'error': 'Admin authorization required'}), 401
-            
-        auth_token = auth_token.replace('Bearer ', '')
-        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
-        if not auth_session:
-            return jsonify({'error': 'Invalid session'}), 401
-            
-        admin_user = Users.query.get(auth_session.user_id)
-        if not admin_user or admin_user.role != 'admin':
-            return jsonify({'error': 'Admin privileges required'}), 403
-
-        # Find and unlock the user account
-        user = Users.query.filter_by(id=user_id, is_deleted=False).first()
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-            
-        if not user.account_locked:
-            return jsonify({'error': 'Account is not locked'}), 400
-            
-        # Unlock the account
-        user.unlock_account(admin_user.id)
-        
-        return jsonify({
-            'message': 'Account unlocked successfully',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'unlocked_by': admin_user.username,
-                'unlocked_time': user.unlocked_time.isoformat()
-            }
-        })
-        
-    except Exception as e:
-        print(f"Error unlocking account: {str(e)}")
-        return jsonify({'error': 'Failed to unlock account'}), 500
-
 
 # Initialize database and create admin user
 with app.app_context():
