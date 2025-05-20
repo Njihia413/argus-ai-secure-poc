@@ -116,32 +116,18 @@ export function LockedAccountsDataTable() {
   return (
     <CardContent className="px-4 py-4"> {/* Use CardContent as the main wrapper */}
           <div className="flex items-center justify-between mb-4 mt-2">
-            <div className="flex gap-2">
+            <div className="flex">
               <Input
-                placeholder="Filter by username..."
-                value={(table.getColumn("username")?.getFilterValue() as string) ?? ""}
-                onChange={(event) =>
-                  table.getColumn("username")?.setFilterValue(event.target.value)
-                }
-                className="max-w-[200px]"
-              />
-              <Input
-                placeholder="Filter by email..."
-                value={(table.getColumn("email")?.getFilterValue() as string) ?? ""}
-                onChange={(event) =>
-                  table.getColumn("email")?.setFilterValue(event.target.value)
-                }
-                className="max-w-[200px]"
-              />
-              <Input
-                placeholder="Filter by name..."
-                value={(table.getColumn("firstName")?.getFilterValue() as string) ?? ""}
+                placeholder="Search..."
+                className="min-w-md"
                 onChange={(event) => {
                   const value = event.target.value;
+                  // Apply search value to all searchable columns
+                  table.getColumn("username")?.setFilterValue(value);
+                  table.getColumn("email")?.setFilterValue(value);
                   table.getColumn("firstName")?.setFilterValue(value);
                   table.getColumn("lastName")?.setFilterValue(value);
                 }}
-                className="max-w-[200px]"
               />
             </div>
             <div>
