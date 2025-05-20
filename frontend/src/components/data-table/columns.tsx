@@ -24,12 +24,13 @@ export type User = {
   email: string
   role: string
   hasSecurityKey: boolean
+  securityKeyStatus: string | null // Add this new field for status (active, inactive, null)
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
 }
 
-export const columns: ColumnDef<User>[] = [
+export const columns: ColumnDef<User, unknown>[] = [
   {
     accessorKey: "firstName",
     header: "First Name",
@@ -57,34 +58,46 @@ export const columns: ColumnDef<User>[] = [
   {
     accessorKey: "role",
     header: "Role",
-    cell: ({ row }) => {
-      return (
+    cell: ({ row }) => {return (
         <Badge variant="outline" className="bg-slate-100">
           {row.getValue("role")}
         </Badge>
-      )
+    )
     },
   },
   {
-    accessorKey: "hasSecurityKey",
+    // Updated to use securityKeyStatus instead of securityKeyCount
+    accessorKey: "securityKeyStatus",
     header: "Security Key",
     filterFn: (row, id, value) => {
       if (value === "all") return true
-      if (value === "registered") return row.getValue(id) === true
-      if (value === "not_registered") return row.getValue(id) === false
+      if (value === "active") return row.getValue(id) === "active"
+      if (value === "inactive") return row.getValue(id) === "inactive"
+      if (value === "none") return row.getValue(id) === null
       return true
     },
     cell: ({ row }) => {
-      const hasKey = row.getValue("hasSecurityKey")
-      return hasKey ? (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-          Registered
-        </Badge>
-      ) : (
-        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-          Not Registered
-        </Badge>
-      )
+      const keyStatus = row.getValue("securityKeyStatus") as string | null
+
+      if (keyStatus === "active") {
+        return (
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              Active
+            </Badge>
+        )
+      } else if (keyStatus === "inactive") {
+        return (
+            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+              Inactive
+            </Badge>
+        )
+      } else {
+        return (
+            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+              None
+            </Badge>
+        )
+      }
     },
   },
   {
@@ -95,22 +108,22 @@ export const columns: ColumnDef<User>[] = [
       if (!lastLogin) return <span className="text-sm text-muted-foreground">Not available</span>
 
       return (
-        <div className="text-sm text-muted-foreground">
-          <div>
-            {new Date(lastLogin as string).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric'
-            })}
+          <div className="text-sm text-muted-foreground">
+            <div>
+              {new Date(lastLogin as string).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })}
+            </div>
+            <div>
+              {new Date(lastLogin as string).toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              })}
+            </div>
           </div>
-          <div>
-            {new Date(lastLogin as string).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            })}
-          </div>
-        </div>
       )
     },
   },
@@ -120,12 +133,12 @@ export const columns: ColumnDef<User>[] = [
     cell: ({ row }) => {
       const attempts = row.getValue("loginAttempts")
       return (
-        <Badge
-          variant="outline"
-          className={`${(attempts as number) > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
-        >
-          {attempts as number}
-        </Badge>
+          <Badge
+              variant="outline"
+              className={`${(attempts as number) > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
+          >
+            {attempts as number}
+          </Badge>
       )
     },
   },
@@ -135,12 +148,12 @@ export const columns: ColumnDef<User>[] = [
     cell: ({ row }) => {
       const attempts = row.getValue("failedAttempts")
       return (
-        <Badge
-          variant="outline"
-          className={`${(attempts as number) > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
-        >
-          {attempts as number}
-        </Badge>
+          <Badge
+              variant="outline"
+              className={`${(attempts as number) > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
+          >
+            {attempts as number}
+          </Badge>
       )
     },
   },
@@ -152,34 +165,34 @@ export const columns: ColumnDef<User>[] = [
       const { setSelectedUser, setIsDeleteDialogOpen } = table.options.meta as any
 
       return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="font-montserrat">
-            <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
-              View Details
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              (table.options.meta as any).setSelectedUser(user);
-              (table.options.meta as any).setIsEditUserDialogOpen(true);
-            }}>
-              Edit User
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="font-montserrat">
+              <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
+                View Details
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
                 (table.options.meta as any).setSelectedUser(user);
-                (table.options.meta as any).setIsDeleteDialogOpen(true);
-              }}
-              className="text-red-600"
-            >
-              Delete User
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                (table.options.meta as any).setIsEditUserDialogOpen(true);
+              }}>
+                Edit User
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                  onClick={() => {
+                    (table.options.meta as any).setSelectedUser(user);
+                    (table.options.meta as any).setIsDeleteDialogOpen(true);
+                  }}
+                  className="text-red-600"
+              >
+                Delete User
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
       )
     },
   },
