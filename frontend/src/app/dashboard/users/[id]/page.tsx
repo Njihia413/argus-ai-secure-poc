@@ -1029,19 +1029,19 @@ const handleReassignKey = async () => {
               <div className="space-y-4">
                 <p>Are you sure you want to reset this security key for reassignment to another user?</p>
                 
-                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
-                  <h3 className="font-semibold text-yellow-800">This will:</h3>
-                  <ul className="list-disc pl-5 text-sm text-yellow-700 space-y-1">
+                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 dark:border-yellow-700/40">
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">This will:</h3>
+                  <ul className="list-disc pl-5 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                     <li>Deactivate the key for the current user</li>
                     <li>Clear the security key's PIN in the database</li>
                     <li>Mark the key as available for reassignment</li>
                   </ul>
                 </div>
                 
-                <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                  <h3 className="font-semibold text-blue-800">Note:</h3>
-                  <p className="text-sm text-blue-700">
-                    For security reasons, after resetting, a new user will need to register 
+                <div className="bg-blue-50 p-4 rounded-md border border-blue-200 dark:border-blue-700/40">
+                  <h3 className="font-semibold text-blue-800 dark:text-blue-300">Note:</h3>
+                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                    For security reasons, after resetting, a new user will need to register
                     the security key before they can use it.
                   </p>
                 </div>
