@@ -581,17 +581,16 @@ const handleReassignKey = async () => {
 
   return (
       <div className="grid gap-6 w-full font-montserrat">
-        <div className="flex justify-between items-center bg-white p-4">
-          <div className="flex items-center text-sm text-gray-500">
-            <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard")}>Dashboard</span>
+        <div className="flex justify-between items-center bg-background p-4">
+          <div className="flex items-center text-sm text-muted-foreground">
+            <span className="hover:text-foreground cursor-pointer" onClick={() => router.push("/dashboard")}>Dashboard</span>
             <ChevronRight className="h-4 w-4 mx-1" />
-            <span className="hover:text-gray-800 cursor-pointer" onClick={() => router.push("/dashboard/users")}>Users</span>
+            <span className="hover:text-foreground cursor-pointer" onClick={() => router.push("/dashboard/users")}>Users</span>
             <ChevronRight className="h-4 w-4 mx-1" />
-            <span className="text-gray-800">{user.firstName} {user.lastName}</span>
+            <span className="text-foreground">{user.firstName} {user.lastName}</span>
           </div>
           <Button
               onClick={() => router.push("/dashboard/users")}
-              className="bg-black hover:bg-black/90 text-white"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Users
@@ -691,11 +690,11 @@ const handleReassignKey = async () => {
                       }}
                     />
                 ) : (
-                    <div className="text-center p-4 border rounded-md bg-gray-50">
-                      <p className="text-gray-500">No security keys registered yet</p>
+                    <div className="text-center p-4 border rounded-md bg-muted">
+                      <p className="text-muted-foreground">No security keys registered yet</p>
                       <Button
                           onClick={() => setShowKeyDetailsModal(true)}
-                          className="mt-2 bg-black hover:bg-black/90 text-white"
+                          className="mt-2"
                       >
                         <Key className="h-4 w-4 mr-1"/>
                         Register Security Key
@@ -820,6 +819,7 @@ const handleReassignKey = async () => {
             <DialogFooter>
               <Button
                   variant="outline"
+                  type="button"
                   onClick={() => {
                     setShowKeyDetailsModal(false);
                     setKeyDetails({
@@ -831,13 +831,11 @@ const handleReassignKey = async () => {
                     setSelectedKey(null);
                     setIsKeyReassigned(false); // Reset this flag
                   }}
-                  className="border-black bg-white hover:bg-gray-50"
               >
                 Cancel
               </Button>
               <Button
                   onClick={handleKeyDetailsSubmit}
-                  className="bg-black hover:bg-black/90 text-white"
                   disabled={isUpdating}
               >
                   {selectedKey ? (
@@ -896,19 +894,18 @@ const handleReassignKey = async () => {
             <DialogFooter>
               <Button
                   variant="outline"
+                  type="button"
                   onClick={() => {
                     setShowRegistrationModal(false);
                     setIsKeyReassigned(false); // Reset the flag when canceling
                   }}
                   disabled={isRegistering}
-                  className="border-black bg-white hover:bg-gray-50"
               >
                 Cancel
               </Button>
               <Button
                   onClick={beginRegistration}
                   disabled={isRegistering}
-                  className="bg-black hover:bg-black/90 text-white"
               >
                 {isRegistering ? (
                     <>
@@ -935,7 +932,7 @@ const handleReassignKey = async () => {
 
             <div className="space-y-4 py-4">
               {selectedKey && (
-                <div className="bg-gray-50 p-3 rounded border mb-4">
+                <div className="bg-muted p-3 rounded border mb-4">
                   <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
                   <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
                   <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
@@ -956,18 +953,17 @@ const handleReassignKey = async () => {
             <DialogFooter>
               <Button
                 variant="outline"
+                type="button"
                 onClick={() => {
                   setShowDeactivateDialog(false)
                   setDeactivationReason('')
                   setSelectedKey(null)
                 }}
-                className="border-black bg-white hover:bg-gray-50"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleDeactivate}
-                className="bg-black hover:bg-black/90 text-white"
                 disabled={isDeactivating || !deactivationReason.trim()}
               >
                 {isDeactivating ? (
@@ -992,7 +988,7 @@ const handleReassignKey = async () => {
                 Are you sure you want to delete this security key? This action cannot be undone and the user
                 will no longer be able to use this key for authentication.
                 {selectedKey && (
-                    <div className="bg-gray-50 p-3 mt-2 rounded border">
+                    <div className="bg-muted p-3 mt-2 rounded border">
                       <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
                       <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
                       <p><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</p>
@@ -1068,7 +1064,6 @@ const handleReassignKey = async () => {
                 });
               }}
               disabled={isResetting}
-              className="bg-black text-white"
             >
               {isResetting ? (
                 <>
@@ -1095,7 +1090,7 @@ const handleReassignKey = async () => {
 
           <div className="space-y-4 py-4">
             {selectedKey && (
-              <div className="bg-gray-50 p-3 rounded border mb-4">
+              <div className="bg-muted p-3 rounded border mb-4">
                 <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
                 <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
                 <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
@@ -1132,17 +1127,16 @@ const handleReassignKey = async () => {
           <DialogFooter>
             <Button
               variant="outline"
+              type="button"
               onClick={() => {
                 setShowReassignDialog(false);
                 setSelectedUserId(null);
               }}
-              className="border-black bg-white hover:bg-gray-50"
             >
               Cancel
             </Button>
             <Button
               onClick={handleReassignKey}
-              className="bg-black hover:bg-black/90 text-white"
               disabled={isReassigning || !selectedUserId}
             >
               {isReassigning ? (
@@ -1158,6 +1152,3 @@ const handleReassignKey = async () => {
       </div>
   )
 }
-
-
-
