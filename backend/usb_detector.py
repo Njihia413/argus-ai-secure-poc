@@ -4,32 +4,15 @@ import psutil
 import json
 import platform
 
-# --- Configuration ---
 HOST = "localhost"
-PORT = 12345  # Port for the WebSocket server
-CHECK_INTERVAL = 2  # Seconds
-
-# --- State ---
+PORT = 12345
+CHECK_INTERVAL = 2
 connected_clients = set()
-# Using disk partitions as a proxy for USB storage devices.
-# We store mountpoints of removable drives.
 known_usb_drives = set()
-
-# --- WebAuthn Key Identification (Placeholder) ---
-# In a more advanced version, we'd populate this with VIDs/PIDs
-# or other identifiers of known WebAuthn security keys to ignore them.
-# For now, we assume any detected removable drive is "normal".
-KNOWN_WEBAUTHN_VIDS_PIDS = [
-    # Example: ("0x1050", "0x0407") # Yubico YubiKey 5
-]
+KNOWN_WEBAUTHN_VIDS_PIDS = []
 
 
 def get_removable_drives():
-    """
-    Identifies removable USB storage devices.
-    This is a basic implementation. More sophisticated detection might be needed
-    to differentiate various USB device types (e.g., using pyusb).
-    """
     drives = set()
     try:
         partitions = psutil.disk_partitions(all=True)
@@ -51,73 +34,91 @@ def get_removable_drives():
 
 
 async def send_to_all(message):
-    """Sends a message to all connected WebSocket clients."""
     if connected_clients:
-        await asyncio.wait([client.send(json.dumps(message)) for client in connected_clients])
+        print(f"Python: Attempting to send to {len(connected_clients)} client(s): {message}")
+        # Use a list comprehension for awaiting multiple sends
+        await asyncio.gather(*[client.send(json.dumps(message)) for client in connected_clients])
+    else:
+        print(f"Python: No clients connected. Message not sent: {message}")
 
 
 async def usb_monitor():
-    """Monitors USB drive changes and notifies clients."""
     global known_usb_drives
-    print("USB monitor started.")
-
+    print("Python usb_monitor: Started.")
     known_usb_drives = get_removable_drives()
-    print(f"Initial removable drives (normal USBs): {known_usb_drives}")
-
+    print(f"Python usb_monitor: Initial removable drives (normal USBs): {known_usb_drives}")
     while True:
         await asyncio.sleep(CHECK_INTERVAL)
         current_drives = get_removable_drives()
-
         newly_connected = current_drives - known_usb_drives
         newly_disconnected = known_usb_drives - current_drives
-
         if newly_connected:
             for drive in newly_connected:
-                print(f"Normal USB Connected: {drive}")
+                print(f"Python usb_monitor: Normal USB Connected: {drive}")
                 await send_to_all({"event": "NORMAL_USB_CONNECTED", "drive": drive})
-
         if newly_disconnected:
             for drive in newly_disconnected:
-                print(f"Normal USB Disconnected: {drive}")
+                print(f"Python usb_monitor: Normal USB Disconnected: {drive}")
                 await send_to_all({"event": "NORMAL_USB_DISCONNECTED", "drive": drive})
-
         known_usb_drives = current_drives
 
 
-async def handler(websocket, path):
-    """Handles new WebSocket connections."""
-    print(f"Client connected from {path}")
+async def handler(websocket):  # Single argument for websockets v15+
+    remote_addr_info = websocket.remote_address
+    client_id_str = "unknown_client"
+    if isinstance(remote_addr_info, tuple) and len(remote_addr_info) >= 2:
+        client_id_str = f"{remote_addr_info[0]}:{remote_addr_info[1]}"  # Use first two elements
+    elif isinstance(remote_addr_info, (str, bytes)):
+        client_id_str = str(remote_addr_info)
+
+    print(f"Python Handler: Client {client_id_str} connected. Adding to connected_clients.")
     connected_clients.add(websocket)
+    print(f"Python Handler: connected_clients now has {len(connected_clients)} client(s).")
     try:
-        # Send current state upon connection
+        print(f"Python Handler: Sending initial state to client {client_id_str}.")
         if known_usb_drives:
             await websocket.send(json.dumps(
                 {"event": "NORMAL_USB_CONNECTED", "drive": list(known_usb_drives)[0], "initial_state": True}))
         else:
             await websocket.send(json.dumps({"event": "NORMAL_USB_DISCONNECTED", "initial_state": True}))
-
+        print(f"Python Handler: Initial state sent to client {client_id_str}.")
         async for message in websocket:
-            print(f"Received message: {message}")
-    except websockets.exceptions.ConnectionClosedError:
-        print("Client connection closed.")
+            print(f"Python Handler: Client {client_id_str} sent message: {message}")
+    except websockets.exceptions.ConnectionClosedError as e:
+        print(f"Python Handler: Client {client_id_str} connection closed normally. Code: {e.code}, Reason: {e.reason}")
+    except websockets.exceptions.ConnectionClosedOK as e:
+        print(f"Python Handler: Client {client_id_str} connection closed OK. Code: {e.code}, Reason: {e.reason}")
     except Exception as e:
-        print(f"Error in handler: {e}")
+        print(f"Python Handler: Error with client {client_id_str}: {type(e).__name__} - {e}")
     finally:
-        connected_clients.remove(websocket)
-        print("Client disconnected.")
+        print(f"Python Handler: Client {client_id_str} finalizing. Removing from connected_clients.")
+        connected_clients.discard(websocket)
+        print(
+            f"Python Handler: connected_clients now has {len(connected_clients)} client(s) after removal of {client_id_str}.")
 
 
 async def main():
+    print("Python main: Starting USB monitor task...")
     monitor_task = asyncio.create_task(usb_monitor())
+    print("Python main: Starting WebSocket server...")
     server = await websockets.serve(handler, HOST, PORT)
-    print(f"WebSocket server started on ws://{HOST}:{PORT}")
-
+    print(f"Python main: WebSocket server started on ws://{HOST}:{PORT}")
     await server.wait_closed()
+    print("Python main: Server wait_closed completed. Cancelling monitor task.")
     monitor_task.cancel()
+    try:
+        await monitor_task
+    except asyncio.CancelledError:
+        print("Python main: Monitor task successfully cancelled.")
 
 
 if __name__ == "__main__":
+    print("Python script: Starting.")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Server shutting down...")
+        print("Python script: Server shutting down due to KeyboardInterrupt.")
+    except Exception as e:
+        print(f"Python script: An unexpected error occurred in __main__: {type(e).__name__} - {e}")
+    finally:
+        print("Python script: Exiting.")
