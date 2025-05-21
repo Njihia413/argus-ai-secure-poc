@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList, Lock } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, Lock, KeyRound } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -39,6 +39,11 @@ const items = [
     title: "Audit Logs",
     url: "/dashboard/audit-logs",
     icon: ClipboardList,
+  },
+  {
+    title: "Security Keys",
+    url: "/dashboard/security-keys",
+    icon: KeyRound,
   },
   {
     title: "Settings",
