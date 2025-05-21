@@ -16,6 +16,7 @@
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
 - [x] Users management (**Enhanced with client-side search and dropdown filters for role & security key status. Filters are part of the `DataTable` via a `toolbar` prop. Filter controls use `font-montserrat`. Security key filter labels updated.**)
 - [x] Audit logs view
+    - [x] **UI Fix:** Action badges in Security Key Audit Logs table ([`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1)) now have transparent backgrounds and theme-aware text/border colors for improved dark mode visibility.
 - [x] Settings page
 
 ### Security Features
@@ -26,6 +27,9 @@
     - [x] **Verified backend logic in [`../backend/app.py`](../backend/app.py:1) (`reset_security_key` and `webauthn_register_complete`) supports this flow by correctly nullifying `credentialId` on reset and updating the existing key record on re-registration when `forceRegistration` and `keyId` are provided.**
 - [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal with consistent styling, "Successful Attempts" column removed**)
 - [x] Audit logging system
+    - [x] **Backend Fix ([`../backend/app.py`](../backend/app.py:1)):**
+        - Ensured `SecurityKeyAudit` logs are created for `re-register` actions within the `webauthn_register_complete` function.
+        - **Revised logic in `webauthn_register_complete` to more reliably determine `actor_id` for the `performed_by` field in `SecurityKeyAudit`. It defaults to `user.id` (for self-registration) and updates to the admin's ID if a valid `auth_token` corresponding to an admin user is provided.**
 - [x] User activity tracking
 
 ### AI Integration

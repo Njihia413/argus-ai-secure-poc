@@ -5,7 +5,7 @@ Based on open files and recent activity, development is focused on security mana
 
 1.  Security Dashboard Implementation
     *   Security key management interface
-        *   **Refined logic for "Register Key" and "Reset Key" actions in the security keys table dropdown ([`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1)).**
+        *   Refined logic for "Register Key" and "Reset Key" actions in the security keys table dropdown ([`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1)).
             *   If a key is inactive (`!key.isActive`):
                 *   If `key.deactivatedAt !== null && key.credentialId !== null` (key is deactivated and needs reset):
                     *   "Reset Key" option is **shown**.
@@ -13,7 +13,10 @@ Based on open files and recent activity, development is focused on security mana
                 *   Else (if `key.deactivatedAt === null || key.credentialId === null`, meaning key is reset or was never formally deactivated):
                     *   "Register Key" option is **shown**.
                     *   "Reset Key" option is **hidden**.
-            *   Backend logic in [`../backend/app.py`](../backend/app.py:1) (`reset_security_key` and `webauthn_register_complete` with `forceRegistration`) already supports this flow by correctly nullifying `credentialId` on reset and updating the existing record on re-registration.
+        *   Security Key Audit Log UI: Updated action badges in [`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1) to have transparent backgrounds and theme-aware text/border colors for better dark mode visibility. Added `initial-register` and `re-register` cases to the badge styling switch.
+        *   **Security Key Audit Log Backend ([`../backend/app.py`](../backend/app.py:1)):**
+            *   Modified `webauthn_register_complete` to correctly log `re-register` actions in `SecurityKeyAudit`.
+            *   **Revised logic in `webauthn_register_complete` to more reliably determine the `actor_id` (who performed the action). It defaults to `user.id` (for self-registration) and updates to the admin's ID if a valid `auth_token` corresponding to an admin user is provided. This `actor_id` is used for the `performed_by` field in audit logs.**
     *   Dashboard security overview
     *   Integration with WebAuthn
 
@@ -54,8 +57,9 @@ Based on open files and recent activity, development is focused on security mana
     *   `src/app/dashboard/page.tsx`: Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
     *   `src/components/data-table/locked-accounts-columns.tsx`: Columns for Locked Accounts table. (**"Unlock Account" & "Confirm Unlock" buttons to default blue; "Cancel" button to blue outline.**)
     *   `src/app/dashboard/users/[id]/page.tsx`: User details page. (**Action buttons to default blue; "Cancel" buttons to blue outline; backgrounds made theme-aware. Corrected text visibility in dark mode for Register/Reset/Reassign Key modal instructions/notes by applying theme-aware text/border colors and ensuring transparent backgrounds in dark mode for instructional containers.**)
-    *   `src/components/data-table/security-key-columns.tsx`: Columns for Security Keys table in User Details page. (**Fixed dark mode visibility for "Status" badges by removing hardcoded light-theme classes and using theme-aware styling. Updated dropdown logic to conditionally render "Register Key" and "Reset Key" based on key status: `isActive`, `deactivatedAt`, and `credentialId`.**)
-    *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock. `failed_login_attempts` are now reset to 0 when an admin unlocks an account. `unlocked_by` column stores admin username. Added a check to ensure admin performing unlock has a username. Reviewed `reset_security_key` and `webauthn_register_complete` - existing logic supports the refined UI flow for deactivated/reset keys.**)
+    *   `src/components/data-table/security-key-columns.tsx`: Columns for Security Keys table in User Details page. (**Fixed dark mode visibility for "Status" badges. Updated dropdown logic to conditionally render "Register Key" and "Reset Key" based on key status.**)
+    *   `src/components/data-table/audit-log-columns.tsx`: Columns for Security Key Audit Logs. (**Updated action badge styling for theme-aware transparent backgrounds.**)
+    *   `../backend/app.py`: Backend logic for authentication and account management. (**Updated `webauthn_register_complete` to correctly log `re-register` actions and to more reliably determine and use the admin's ID (if available via `auth_token`) or the target user's ID for `performed_by` in audit logs.**)
     *   `src/components/theme-provider.tsx`: New component for `next-themes` integration. (**Corrected `ThemeProviderProps` import path.**)
     *   `src/components/theme-toggle-button.tsx`: New component for theme switching.
     *   `src/app/layout.tsx`: Updated to include `ThemeProvider`.
@@ -108,6 +112,9 @@ Based on open files and recent activity, development is focused on security mana
 37. Removed duplicate manual pagination controls from the Security page, relying on the DataTable's built-in pagination.
 38. Users Table Badge Styling: Corrected badge styling in `src/components/data-table/columns.tsx` for "role", "loginAttempts", "failedAttempts", and "securityKeyStatus" to ensure visibility in dark mode by removing hardcoded light-theme classes and applying theme-aware text/border colors.
 39. **Security Key Deactivation/Re-registration Flow: Refined UI logic in [`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1) to conditionally render (show/hide) "Register Key" and "Reset Key" options based on the key's `isActive`, `deactivatedAt`, and `credentialId` status. This ensures only the relevant action is presented to the admin. Ensured backend (`../backend/app.py`) already supports this flow via `reset_security_key` (nullifies `credentialId`) and `webauthn_register_complete` (updates existing key record if `forceRegistration` and `keyId` are provided).**
+40. **Security Key Audit Log Enhancements:**
+    *   **UI:** Updated action badge styling in [`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1) for theme-aware transparent backgrounds.
+    *   **Backend ([`../backend/app.py`](../backend/app.py:1)):** Modified `webauthn_register_complete` to log `re-register` actions and to more reliably determine and use the admin's ID (if available via `auth_token`) or the target user's ID for the `performed_by` audit log field.
 
 ## Active Technical Patterns
 1.  Data Table Pattern
@@ -121,7 +128,7 @@ Based on open files and recent activity, development is focused on security mana
 2.  Security Patterns
     *   WebAuthn integration.
     *   Locked account management (manual admin unlock with confirmation, `failed_login_attempts` are reset to 0 upon unlock, `unlocked_by` stores admin username).
-    *   Audit logging.
+    *   Audit logging (**Enhanced for security key re-registrations and more reliable `performed_by` tracking based on `auth_token`**).
     *   **Security Key Lifecycle Management: Admins are guided to reset a deactivated key (which nullifies its `credentialId` on the backend) before it can be re-registered. The UI in the security keys table dropdown now enforces this by showing only the "Reset Key" option if a key is deactivated but not yet reset, and only "Register Key" if it's ready for registration.**
 
 3.  Layout Patterns
@@ -146,7 +153,7 @@ Based on open files and recent activity, development is focused on security mana
 ## Current Considerations
 1.  Security Features
     *   Account locking mechanisms (manual admin unlock with confirmation, locks at 5 attempts, `failed_login_attempts` are reset to 0 upon admin unlock, `unlocked_by` stores admin username).
-    *   Security key management (**Verified deactivation/reset/re-registration flow with conditional rendering of actions**).
+    *   Security key management (**Verified deactivation/reset/re-registration flow with conditional rendering of actions. Audit logs for these actions improved for accuracy of `performed_by`.**).
     *   Audit trail implementation.
 
 2.  User Experience
