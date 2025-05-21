@@ -102,7 +102,7 @@ class Users(db.Model):
     def unlock_account(self, admin_username):
         """Unlock a locked account and record who unlocked it"""
         self.account_locked = False
-        # self.failed_login_attempts = 0 # This line is removed as per request
+        self.failed_login_attempts = 0
         self.unlocked_by = admin_username
         self.unlocked_time = datetime.now(timezone.utc)
         db.session.commit()
@@ -4010,6 +4010,10 @@ def unlock_user_account(user_id):
         admin_user = Users.query.get(auth_session.user_id)
         if not admin_user or admin_user.role != 'admin':
             return jsonify({'error': 'Admin privileges required'}), 403
+
+        if not admin_user.username:
+            print(f"CRITICAL: Admin user (ID: {admin_user.id}) performing unlock for user ID {user_id} has a missing username.")
+            return jsonify({'error': 'Admin account data is incomplete. Cannot complete unlock operation.'}), 500
 
         # Find and unlock the user account
         user = Users.query.get(user_id)
