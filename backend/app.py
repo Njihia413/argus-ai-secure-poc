@@ -960,6 +960,95 @@ def get_all_security_keys():
        print(traceback.format_exc())
        return jsonify({'error': 'Failed to fetch all security keys'}), 500
 
+@app.route('/api/security-keys/<int:key_id>', methods=['GET'])
+def get_security_key_details(key_id):
+   # Verify admin token and authorization
+   auth_token = request.headers.get('Authorization')
+   if not auth_token:
+       return jsonify({'error': 'Admin authorization required'}), 401
+
+   auth_token = auth_token.replace('Bearer ', '')
+   auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+   if not auth_session:
+       return jsonify({'error': 'Invalid admin token'}), 401
+
+   admin_user = Users.query.get(auth_session.user_id)
+   if not admin_user or admin_user.role != 'admin':
+       return jsonify({'error': 'Admin privileges required'}), 403
+
+   try:
+       key = db.session.query(
+           SecurityKey.id,
+           SecurityKey.model,
+           SecurityKey.type,
+           SecurityKey.serial_number,
+           SecurityKey.is_active,
+           SecurityKey.created_at,
+           SecurityKey.last_used,
+           SecurityKey.deactivated_at,
+           SecurityKey.deactivation_reason,
+           SecurityKey.credential_id, # Added for completeness
+           SecurityKey.public_key,    # Added for completeness
+           SecurityKey.sign_count,    # Added for completeness
+           Users.username,
+           Users.id.label('user_id'),
+           Users.first_name,
+           Users.last_name
+       ).join(Users, Users.id == SecurityKey.user_id).filter(SecurityKey.id == key_id).first()
+
+       if not key:
+           return jsonify({'error': 'Security key not found'}), 404
+
+       key_details = {
+           'id': key.id,
+           'model': key.model,
+           'type': key.type,
+           'serialNumber': key.serial_number,
+           'status': 'active' if key.is_active else 'inactive',
+           'isActive': key.is_active, # Keep boolean for logic
+           'registeredOn': key.created_at.isoformat() if key.created_at else None,
+           'lastUsed': key.last_used.isoformat() if key.last_used else 'Never',
+           'deactivatedAt': key.deactivated_at.isoformat() if key.deactivated_at else None,
+           'deactivationReason': key.deactivation_reason,
+           'credentialId': key.credential_id,
+           'publicKey': key.public_key,
+           'signCount': key.sign_count,
+           'user': {
+               'id': key.user_id,
+               'username': key.username,
+               'firstName': key.first_name,
+               'lastName': key.last_name,
+           }
+       }
+       
+       # Fetch audit logs for this specific key
+       audit_logs_query = SecurityKeyAudit.query.filter_by(security_key_id=key_id).order_by(SecurityKeyAudit.timestamp.desc()).all()
+       audit_logs = []
+       for log in audit_logs_query:
+           audit_logs.append({
+               'id': log.id,
+               'action': log.action,
+               'details': log.details,
+               'timestamp': log.timestamp.isoformat(),
+               'performedBy': {
+                   'id': log.actor.id,
+                   'username': log.actor.username
+               },
+               'previousState': log.previous_state,
+               'newState': log.new_state
+           })
+       
+       key_details['auditLogs'] = audit_logs
+
+       return jsonify({'securityKey': key_details})
+
+   except Exception as e:
+       print(f"Error fetching security key details for key ID {key_id}: {str(e)}")
+       import traceback
+       print(traceback.format_exc())
+       return jsonify({'error': f'Failed to fetch security key details: {str(e)}'}), 500
+
 # Add this new route to delete a security key
 @app.route('/api/security-keys/<int:key_id>', methods=['DELETE'])
 def delete_security_key(key_id):
