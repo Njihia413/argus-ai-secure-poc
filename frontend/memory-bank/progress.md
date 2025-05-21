@@ -47,7 +47,7 @@
     - User-sent chat messages (`src/components/message.tsx`) now have the new primary blue color background and foreground text.
     - "Login with Security Key" button (`src/app/login/page.tsx`) now has the new primary blue color border.
     - Ensured buttons on Users, Locked Accounts, Security, and User Details dashboard pages use the default primary blue styling (action buttons) or blue outline styling ("Cancel" buttons) by removing/adjusting explicit classes and variants, and updated backgrounds to be theme-aware.
-    - [x] User Details Page Modals: Ensured important instructional text within Register/Reset/Reassign Key modals is visible in dark mode in `src/app/dashboard/users/[id]/page.tsx`.
+    - [x] User Details Page Modals: Ensured important instructional text within Register/Reset/Reassign Key modals is visible in dark mode (theme-aware text/border, transparent background in dark mode for instructional containers) in `src/app/dashboard/users/[id]/page.tsx`.
 - [x] Data Table Enhancements:
     - Loading spinners in Users and Locked Accounts tables are now blue.
     - Removed duplicate pagination controls from the Security page.
