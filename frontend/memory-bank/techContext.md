@@ -32,6 +32,7 @@
 - Class Variance Authority & Tailwind Merge for styling utilities
 - Lucide React for icons
 - Sonner for toast notifications (**Standardized for user feedback**)
+- `next-themes` for theme management (light/dark/system)
 
 ### Authentication & Security
 - SimpleWebAuthn Browser SDK (v13.1.0)
@@ -72,9 +73,11 @@
     - Component prop validation
 
 2.  **Styling**
-    - Tailwind CSS for utility-first styling
+    - Tailwind CSS for utility-first styling.
+    - CSS Custom Properties (variables) in `globals.css` for theme colors (light/dark modes), including a primary color of `#e60053`, dark theme background of `#0b0a0a`, and a derived chart palette.
     - Component-level style composition using `Card` and `CardContent` for consistent table layouts.
-    - CSS animation utilities
+    - Consistent `rounded-xl` applied to most buttons and inputs for unified styling.
+    - CSS animation utilities.
 
 3.  **Performance**
     - Turbopack for fast development
