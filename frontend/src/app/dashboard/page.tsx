@@ -455,11 +455,11 @@ export default function DashboardPage() {
                               iconType="circle"
                           />
                           <Line
-                              type="monotone"
-                              dataKey="successful"
-                              stroke="#16A34A"
-                              strokeWidth={2}
-                              dot={true}
+                            type="monotone"
+                            dataKey="successful"
+                            stroke="var(--chart-2)" /* New Lighter Pink */
+                            strokeWidth={2}
+                            dot={true}
                               activeDot={{ r: 6 }}
                               connectNulls={true}
                               name="Successfully Logged In"
@@ -473,11 +473,11 @@ export default function DashboardPage() {
                               labelFormatter={(label) => `${label}`}
                           />
                           <Line
-                              type="monotone"
-                              dataKey="failed"
-                              stroke="#DC2626"
-                              strokeWidth={2}
-                              dot={true}
+                            type="monotone"
+                            dataKey="failed"
+                            stroke="var(--chart-4)" /* Base Pink #e60053 */
+                            strokeWidth={2}
+                            dot={true}
                               activeDot={{ r: 6 }}
                               connectNulls={true}
                               name="Failed to Login"
