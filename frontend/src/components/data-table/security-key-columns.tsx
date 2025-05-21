@@ -66,11 +66,11 @@ export const securityKeyColumns: ColumnDef<SecurityKey, unknown>[] = [
       const isActive = row.getValue("isActive")
 
       return isActive ? (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+        <Badge variant="outline" className="text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
           Active
         </Badge>
       ) : (
-        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+        <Badge variant="outline" className="text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
           Inactive
         </Badge>
       )
