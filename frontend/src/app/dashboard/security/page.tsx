@@ -333,9 +333,7 @@ export default function SecurityPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">Security Overview</h2>
           <Button
-              variant="default"
               onClick={exportAlerts}
-              className="bg-black hover:bg-black/90 text-white dark:bg-black/90"
               disabled={alerts.length === 0 || loading}
           >
             Export Report
@@ -473,35 +471,6 @@ export default function SecurityPage() {
                       data={alerts}
                       onTableInit={handleTableInit}
                   />
-
-                  {/* Manual pagination control */}
-                  {alerts.length > 0 && !loading && (
-                      <div className="flex items-center justify-between py-4">
-                        <div className="flex items-center space-x-2">
-                    <span className="text-sm text-muted-foreground">
-                      Page {pageIndex + 1} of {getTotalPages()}
-                    </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
-                              disabled={pageIndex === 0}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPageIndex(pageIndex + 1)}
-                              disabled={(pageIndex + 1) * pageSize >= (stats?.alertStats?.total || alerts.length || 0)}
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                  )}
 
                   {alerts.length === 0 && !loading && (
                       <div className="text-center py-8 text-muted-foreground">
