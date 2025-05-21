@@ -11,8 +11,9 @@
 
 ### Dashboard
 - [x] Main dashboard layout
-- [x] Sidebar navigation
+- [x] Sidebar navigation (**Added "Security Keys" menu item**)
 - [x] Security overview page
+- [x] **New:** Security Keys page ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) with data table for managing security keys. **Now fetches data from backend, includes global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive").**
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
 - [x] Users management (**Enhanced with client-side search and dropdown filters for role & security key status. Filters are part of the `DataTable` via a `toolbar` prop. Filter controls use `font-montserrat`. Security key filter labels updated.**)
 - [x] Audit logs view
@@ -21,13 +22,15 @@
 
 ### Security Features
 - [x] Security key management
+    - [x] **New:** Created Security Keys table ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) with columns: User, Model, Type, Serial Number, Status, Registered On, Last Used, Action. ([`src/components/data-table/security-keys-columns.tsx`](src/components/data-table/security-keys-columns.tsx:1), [`src/components/data-table/security-keys-data-table.tsx`](src/components/data-table/security-keys-data-table.tsx:1)). **Table now fetches from `/api/security-keys/all`, has global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive"). Status badges styled. Action column dropdown updated to "View Details".**
     - [x] **Refined UI logic in [`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1) for security key deactivation/reset/re-registration flow. "Register Key" and "Reset Key" options in the dropdown menu are now conditionally rendered (shown/hidden) based on the key's `isActive`, `deactivatedAt`, and `credentialId` status to guide admins by only showing the currently relevant action.**
         - If `!isActive && deactivatedAt !== null && credentialId !== null` (deactivated, needs reset): Show "Reset Key", hide "Register Key".
         - If `!isActive && (deactivatedAt === null || credentialId === null)` (reset or never formally deactivated): Show "Register Key", hide "Reset Key".
     - [x] **Verified backend logic in [`../backend/app.py`](../backend/app.py:1) (`reset_security_key` and `webauthn_register_complete`) supports this flow by correctly nullifying `credentialId` on reset and updating the existing key record on re-registration when `forceRegistration` and `keyId` are provided.**
 - [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal with consistent styling, "Successful Attempts" column removed**)
 - [x] Audit logging system
-    - [x] **Backend Fix ([`../backend/app.py`](../backend/app.py:1)):**
+    - [x] **Backend ([`../backend/app.py`](../backend/app.py:1)):**
+        - **Added new endpoint `/api/security-keys/all` to fetch all security keys for the main table.**
         - Ensured `SecurityKeyAudit` logs are created for `re-register` actions within the `webauthn_register_complete` function.
         - **Revised logic in `webauthn_register_complete` to more reliably determine `actor_id` for the `performed_by` field in `SecurityKeyAudit`. It defaults to `user.id` (for self-registration) and updates to the admin's ID if a valid `auth_token` corresponding to an admin user is provided.**
 - [x] User activity tracking

@@ -5,6 +5,7 @@ Based on open files and recent activity, development is focused on security mana
 
 1.  Security Dashboard Implementation
     *   Security key management interface
+        *   **New Feature: Security Keys Table page ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) added. Fetches data from new backend endpoint `/api/security-keys/all`. Displays security key details (User, Model, Type, Serial Number, Status, Registered On, Last Used, Action) with a dedicated data table ([`src/components/data-table/security-keys-data-table.tsx`](src/components/data-table/security-keys-data-table.tsx:1)) and column definitions ([`src/components/data-table/security-keys-columns.tsx`](src/components/data-table/security-keys-columns.tsx:1)). Includes global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive"). Status badges styled like user details page. Action column dropdown updated ("View Details").**
         *   Refined logic for "Register Key" and "Reset Key" actions in the security keys table dropdown ([`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1)).
             *   If a key is inactive (`!key.isActive`):
                 *   If `key.deactivatedAt !== null && key.credentialId !== null` (key is deactivated and needs reset):
@@ -17,6 +18,7 @@ Based on open files and recent activity, development is focused on security mana
         *   **Security Key Audit Log Backend ([`../backend/app.py`](../backend/app.py:1)):**
             *   Modified `webauthn_register_complete` to correctly log `re-register` actions in `SecurityKeyAudit`.
             *   **Revised logic in `webauthn_register_complete` to more reliably determine the `actor_id` (who performed the action). It defaults to `user.id` (for self-registration) and updates to the admin's ID if a valid `auth_token` corresponding to an admin user is provided. This `actor_id` is used for the `performed_by` field in audit logs.**
+        *   **Backend ([`../backend/app.py`](../backend/app.py:1)): Added new endpoint `/api/security-keys/all` to fetch all security keys with associated usernames for the main security keys table.**
     *   Dashboard security overview
     *   Integration with WebAuthn
 
@@ -38,8 +40,9 @@ Based on open files and recent activity, development is focused on security mana
 *   User chat messages in `src/components/message.tsx` now have primary background and foreground text color.
 
 6.  Sidebar Enhancement
-    *   Updated `src/components/app-sidebar.tsx` to support an icon-only collapsed state.
-        *   Uses `collapsible="icon"` prop from `src/components/ui/sidebar.tsx`.
+    *   Updated [`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1) to support an icon-only collapsed state.
+        *   **Added "Security Keys" menu item with `KeyRound` icon, linking to [`/dashboard/security-keys`](/dashboard/security-keys).**
+        *   Uses `collapsible="icon"` prop from [`src/components/ui/sidebar.tsx`](src/components/ui/sidebar.tsx:1).
         *   Text labels are hidden when collapsed using conditional rendering and opacity/width classes.
         *   Tooltips display item titles on hover when collapsed.
         *   Attempted to ensure icon centering in collapsed state by adjusting classes on `SidebarMenuButton` and its child `<a>` tag.
@@ -52,14 +55,17 @@ Based on open files and recent activity, development is focused on security mana
     *   `src/components/data-table/locked-accounts-data-table.tsx`: Main interface for locked accounts. (**Refined styling, single search filter with `max-w-md`, notification handling. "Successful Attempts" column removed from display logic. Loading spinner color changed to primary blue.**)
     *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
     *   `src/app/dashboard/security/page.tsx`: Security dashboard implementation. (**"Export Report" and pagination buttons updated to default blue styling. Removed duplicate manual pagination controls.**)
-    *   `src/components/app-sidebar.tsx`: Navigation and layout structure. (**Updated to support icon-only collapsed state with tooltips, with specific class adjustments for icon centering and text hiding.**)
-    *   `src/components/ui/sidebar.tsx`: Base sidebar UI component. (**Updated `SidebarMenuButton` active state to use `bg-primary`, `text-primary-foreground`, and `rounded-xl`.**)
-    *   `src/app/dashboard/page.tsx`: Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
+    *   [`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1): Navigation and layout structure. (**Updated to support icon-only collapsed state with tooltips, added "Security Keys" menu item.**)
+    *   [`src/components/ui/sidebar.tsx`](src/components/ui/sidebar.tsx:1): Base sidebar UI component. (**Updated `SidebarMenuButton` active state to use `bg-primary`, `text-primary-foreground`, and `rounded-xl`.**)
+    *   [`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1): Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
+    *   **New:** [`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1): Page for displaying security keys table. **Now fetches data from `/api/security-keys/all`.**
+    *   **New:** [`src/components/data-table/security-keys-columns.tsx`](src/components/data-table/security-keys-columns.tsx:1): Column definitions for the security keys table. **Interface updated (id type, status options, added username), status badge styling aligned. Action column header added, dropdown simplified to "View Details".**
+    *   **New:** [`src/components/data-table/security-keys-data-table.tsx`](src/components/data-table/security-keys-data-table.tsx:1): Data table component for security keys. **Added global search ("Search...") across multiple columns and a status dropdown filter (button text updated to show only selected status, e.g., "All Statuses").**
     *   `src/components/data-table/locked-accounts-columns.tsx`: Columns for Locked Accounts table. (**"Unlock Account" & "Confirm Unlock" buttons to default blue; "Cancel" button to blue outline.**)
     *   `src/app/dashboard/users/[id]/page.tsx`: User details page. (**Action buttons to default blue; "Cancel" buttons to blue outline; backgrounds made theme-aware. Corrected text visibility in dark mode for Register/Reset/Reassign Key modal instructions/notes by applying theme-aware text/border colors and ensuring transparent backgrounds in dark mode for instructional containers.**)
     *   `src/components/data-table/security-key-columns.tsx`: Columns for Security Keys table in User Details page. (**Fixed dark mode visibility for "Status" badges. Updated dropdown logic to conditionally render "Register Key" and "Reset Key" based on key status.**)
     *   `src/components/data-table/audit-log-columns.tsx`: Columns for Security Key Audit Logs. (**Updated action badge styling for theme-aware transparent backgrounds.**)
-    *   `../backend/app.py`: Backend logic for authentication and account management. (**Updated `webauthn_register_complete` to correctly log `re-register` actions and to more reliably determine and use the admin's ID (if available via `auth_token`) or the target user's ID for `performed_by` in audit logs.**)
+    *   [`../backend/app.py`](../backend/app.py:1): Backend logic. (**Added `/api/security-keys/all` endpoint. Updated `webauthn_register_complete` for audit logs.**)
     *   `src/components/theme-provider.tsx`: New component for `next-themes` integration. (**Corrected `ThemeProviderProps` import path.**)
     *   `src/components/theme-toggle-button.tsx`: New component for theme switching.
     *   `src/app/layout.tsx`: Updated to include `ThemeProvider`.
