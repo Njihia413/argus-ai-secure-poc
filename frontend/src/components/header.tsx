@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
+import { ThemeToggleButton } from "./theme-toggle-button";
 
 // Define the UserData interface
 interface UserData {
@@ -342,7 +343,8 @@ export const Header = () => {
 
           {/* User profile section - simplified */}
           {userData && (
-              <div className="flex items-center font">
+              <div className="flex items-center font gap-2">
+                <ThemeToggleButton />
                 {/* User avatar/dropdown menu - without arrow */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
