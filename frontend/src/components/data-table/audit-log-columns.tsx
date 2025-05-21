@@ -21,10 +21,10 @@ export type AuditLog = {
 };
 
 export const columns: ColumnDef<AuditLog>[] = [
-  {
-    accessorKey: "username",
-    header: "User",
-  },
+  // { // Removing User column as it's redundant on the key-specific details page
+  //   accessorKey: "username",
+  //   header: "User",
+  // },
   {
     accessorKey: "action",
     header: "Action",
@@ -88,6 +88,14 @@ export const columns: ColumnDef<AuditLog>[] = [
     cell: ({ row }) => {
       const performedBy = row.getValue("performedBy") as { username: string };
       return performedBy.username;
+    },
+    // Custom filter function for the "Search..." input
+    filterFn: (row, columnId, filterValue) => {
+      const performedByUsername = (row.getValue("performedBy") as { username: string })?.username?.toLowerCase() || "system";
+      const action = (row.getValue("action") as string)?.toLowerCase();
+      const searchTerm = String(filterValue).toLowerCase(); // Ensure filterValue is a string
+
+      return performedByUsername.includes(searchTerm) || action.includes(searchTerm);
     },
   },
 ];
