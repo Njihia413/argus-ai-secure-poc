@@ -35,7 +35,7 @@ Organizations need robust security management tools that combine traditional sec
 3. User activity tracking and management
 
 ### AI Integration
-1. Chat-based security assistance
+1. Chat-based security assistance (model availability can be enhanced for certain users by connecting a generic USB device, facilitated by a local helper app).
 2. AI-powered security insights and recommendations
 
 ## Success Metrics

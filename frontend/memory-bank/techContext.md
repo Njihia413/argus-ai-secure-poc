@@ -36,7 +36,11 @@
 ### Authentication & Security
 - SimpleWebAuthn Browser SDK (v13.1.0)
 - Axios for HTTP requests
-- Backend: Flask (Python) for API endpoints including authentication and account management.
+- Backend:
+    - Flask (Python) for API endpoints including authentication and account management.
+    - Local Python Helper (`../backend/usb_detector.py`):
+        - `websockets` (v15.0.1): For WebSocket server to communicate with frontend.
+        - `psutil`: For detecting USB storage device connections.
 
 ### Data Management & Display
 - Zustand for state management
@@ -48,6 +52,7 @@
 - AI SDK (Groq provider)
 - AI SDK React components
 - React Markdown with GFM for content rendering
+- Frontend uses native Browser WebSocket API to connect to the local Python helper.
 
 ## Development Tools
 - TypeScript with React types

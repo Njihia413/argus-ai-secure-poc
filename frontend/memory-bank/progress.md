@@ -25,9 +25,14 @@
 - [x] User activity tracking
 
 ### AI Integration
-- [x] AI chat implementation
+- [x] AI chat implementation ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1))
 - [x] AI providers setup
 - [x] AI tools integration
+- [x] Dynamic AI Model Availability via USB Detection:
+    - Implemented a local Python helper application (`../backend/usb_detector.py`) using WebSockets to detect "normal" (non-WebAuthn) USB device connections.
+    - Frontend chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) connects to this helper and adjusts available AI models for email/password authenticated users based on USB status.
+    - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status.
+    - Resolved Python `websockets` library v15.0.1 API incompatibilities.
 
 ## In Progress
 1.  Security Dashboard Enhancements
@@ -45,6 +50,8 @@
     *   Enhanced security insights
     *   Automated threat detection
     *   Security recommendations
+    *   [ ] Refine USB device detection in `usb_detector.py` to more accurately distinguish between generic USBs and specific WebAuthn keys (currently uses a placeholder).
+    *   [ ] Consider packaging or auto-start mechanism for the `usb_detector.py` helper application for better UX.
 
 ## Known Issues
 1.  Performance
@@ -62,6 +69,7 @@
     *   Ensure consistent search/filter patterns and input sizing across all data tables (User table filters implemented via `toolbar` prop).
     *   Ensure consistent use of confirmation dialogs (styling and behavior) for critical actions across the application.
     *   Review all data tables for column relevance.
+    *   User experience for the local Python USB helper application (e.g., clear instructions if it's not running, connection status indication).
 
 ## Next Steps
 1.  Short Term

@@ -54,11 +54,25 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 ### 4. AI Integration
 -   Provider-based AI service architecture.
 -   Tool-based AI capabilities.
--   Chat interface for AI interactions.
+-   Chat interface for AI interactions ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)).
+-   Dynamic AI model availability based on external events (e.g., USB connection) communicated via WebSocket from a local helper application.
 
 ### 5. User Interaction
 -   Use of `shadcn/ui Dialog` components to implement confirmation modals for sensitive operations, ensuring consistent styling (font, size) with the rest of the application.
 -   Clear visual feedback during asynchronous operations (e.g., "Unlocking..." button text).
+
+### 6. Local Hardware/System Interaction (New Pattern)
+-   **Problem:** Browser limitations prevent direct access to certain system-level hardware events (e.g., generic USB plug/unplug).
+-   **Solution:** Employ a lightweight local helper application (e.g., Python script `../backend/usb_detector.py`) that runs on the user's machine.
+    -   The helper application has the necessary permissions to detect these system events.
+    -   It hosts a WebSocket server (e.g., on `ws://localhost:[PORT]`).
+-   **Communication:** The frontend application ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) acts as a WebSocket client, connecting to the local helper.
+    -   The helper sends messages to the frontend upon event detection (e.g., `NORMAL_USB_CONNECTED`).
+    -   The frontend reacts to these messages to update UI or application state (e.g., changing available AI models).
+-   **Considerations:**
+    -   Requires user to run the local helper application separately.
+    -   Error handling for helper connection status (e.g., helper not running, connection lost).
+    -   Security: WebSocket server in helper should ideally only bind to `localhost`.
 
 ## Technical Decisions
 
