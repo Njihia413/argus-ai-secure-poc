@@ -35,6 +35,7 @@ Based on open files and recent activity, development is focused on security mana
 
 7.  Active Components
 *   `src/app/dashboard/users/page.tsx`: User management page. (**Added client-side search and dropdown filters for role and security key status. Filter controls are passed to the `DataTable` via a `toolbar` prop. Applied `font-montserrat` to filter controls. Updated security key filter labels. Loading spinner color changed to primary blue.**)
+    *   `src/components/data-table/columns.tsx`: Columns for Users table. (**Fixed dark mode visibility for "role", "failedAttempts", and "securityKeyStatus" badges by removing hardcoded light-theme classes and using theme-aware styling.**)
     *   `src/components/data-table/data-table.tsx`: Generic data table component. (**Added an optional `toolbar` prop to render custom controls like filters. Implemented pagination with "Previous" and "Next" buttons.**)
     *   `src/components/data-table/locked-accounts-data-table.tsx`: Main interface for locked accounts. (**Refined styling, single search filter with `max-w-md`, notification handling. "Successful Attempts" column removed from display logic. Loading spinner color changed to primary blue.**)
     *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
@@ -43,15 +44,16 @@ Based on open files and recent activity, development is focused on security mana
     *   `src/components/ui/sidebar.tsx`: Base sidebar UI component. (**Updated `SidebarMenuButton` active state to use `bg-primary`, `text-primary-foreground`, and `rounded-xl`.**)
     *   `src/app/dashboard/page.tsx`: Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
     *   `src/components/data-table/locked-accounts-columns.tsx`: Columns for Locked Accounts table. (**"Unlock Account" & "Confirm Unlock" buttons to default blue; "Cancel" button to blue outline.**)
-    *   `src/app/dashboard/users/[id]/page.tsx`: User details page. (**Action buttons to default blue; "Cancel" buttons to blue outline; backgrounds made theme-aware.**)
-    *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock. `failed_login_attempts` now persist after unlock and increment even if the account is already locked. `unlocked_by` column stores admin username.**)
+    *   `src/app/dashboard/users/[id]/page.tsx`: User details page. (**Action buttons to default blue; "Cancel" buttons to blue outline; backgrounds made theme-aware. Corrected text visibility in dark mode for Register/Reset Key modal instructions/notes by applying theme-aware text and border classes, and removing dark mode specific backgrounds for instructional containers.**)
+    *   `src/components/data-table/security-key-columns.tsx`: Columns for Security Keys table in User Details page. (**Fixed dark mode visibility for "Status" badges by removing hardcoded light-theme classes and using theme-aware styling.**)
+    *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock. `failed_login_attempts` are now reset to 0 when an admin unlocks an account. `unlocked_by` column stores admin username. Added a check to ensure admin performing unlock has a username.**)
     *   `src/components/theme-provider.tsx`: New component for `next-themes` integration. (**Corrected `ThemeProviderProps` import path.**)
     *   `src/components/theme-toggle-button.tsx`: New component for theme switching.
     *   `src/app/layout.tsx`: Updated to include `ThemeProvider`.
     *   `src/app/globals.css`: Updated CSS variables for `--primary`, `--ring`, and `--chart-*` to reflect the new blue color scheme (`#2563eb`).
     *   `src/components/ui/button.tsx`: Default `rounded-md` changed to `rounded-xl`. (**Outline variant updated for blue border and text.**)
     *   `src/components/ui/input.tsx`: Default `rounded-md` changed to `rounded-xl`.
-    *   `src/components/textarea.tsx`: Textarea wrapper `rounded-2xl` changed to `rounded-xl`. (**Submit button styled with primary color.**)
+    *   `src/components/textarea.tsx`: Textarea wrapper `rounded-xl` changed to `rounded-xl`. (**Submit button styled with primary color.**)
     *   `src/components/header.tsx`: Integrated `ThemeToggleButton`.
     *   `src/components/message.tsx`: (**User messages styled with primary background and foreground text.**)
     *   `src/app/login/page.tsx`: (**"Login with Security Key" button border styled with primary color.**)
@@ -68,7 +70,7 @@ Based on open files and recent activity, development is focused on security mana
 8.  Renamed the actions column header to "Action" for clarity in `locked-accounts-columns.tsx`.
 9.  Added a confirmation dialog (`shadcn/ui Dialog`) to the "Unlock Account" button in `locked-accounts-columns.tsx` to prevent accidental unlocks, styled with `font-montserrat` and `sm:max-w-[425px]`.
 10. Removed the "Successful Attempts" column from the locked accounts data table as it was deemed redundant.
-11. Backend: `failed_login_attempts` are no longer reset when an admin unlocks an account.
+11. Backend: `failed_login_attempts` are now reset to 0 when an admin unlocks an account.
 12. Backend: The `unlocked_by` column in the `Users` table now stores the admin's username (string) instead of their ID (integer), and the foreign key constraint was removed. Database migration required.
 13. Backend: `failed_login_attempts` now increment for every incorrect password entry, even if the account is already locked, ensuring the admin sees the total number of attempts. Account locks at 5 failed attempts.
 14. User Table Filters: Added search input, role dropdown, and security key status dropdown to the user management page (`src/app/dashboard/users/page.tsx`). These filters are rendered within the `DataTable` component using a new `toolbar` prop.
@@ -90,10 +92,12 @@ Based on open files and recent activity, development is focused on security mana
 30. Ensured buttons on Users page (`src/app/dashboard/users/page.tsx`) use default primary blue styling (Add User, Create User, Update User, Cancel buttons in dialogs).
 31. Ensured buttons on Locked Accounts page (via `src/components/data-table/locked-accounts-columns.tsx`) use default primary blue styling (Unlock Account, Confirm Unlock, Cancel buttons in dialog).
 32. Ensured buttons on Security page (`src/app/dashboard/security/page.tsx`) use default primary blue styling (Export Report, pagination buttons).
-33. Updated User Details page (`src/app/dashboard/users/[id]/page.tsx`) to ensure action buttons use primary blue styling, "Cancel" buttons use blue outline, and backgrounds are theme-aware.
-34. Modified `outline` button variant in `src/components/ui/button.tsx` to use primary blue for border and text, with appropriate hover states.
+33. Updated User Details page (`src/app/dashboard/users/[id]/page.tsx`): Ensured action buttons use primary blue styling, "Cancel" buttons use blue outline, backgrounds are theme-aware. Corrected important instructional text within modals (Register/Reset Key) to be visible in dark mode by using theme-aware text/border colors and removing dark-mode specific container backgrounds.
+34. User Details Security Keys Table: Corrected "Status" badge styling in `src/components/data-table/security-key-columns.tsx` for dark mode visibility.
+35. Modified `outline` button variant in `src/components/ui/button.tsx` to use primary blue for border and text, with appropriate hover states.
 35. Changed loading spinner color to primary blue on Users page and Locked Accounts data table.
 36. Removed duplicate manual pagination controls from the Security page, relying on the DataTable's built-in pagination.
+37. Users Table Badge Styling: Corrected badge styling in `src/components/data-table/columns.tsx` for "role", "loginAttempts", "failedAttempts", and "securityKeyStatus" to ensure visibility in dark mode by removing hardcoded light-theme classes and applying theme-aware text/border colors.
 
 ## Active Technical Patterns
 1.  Data Table Pattern
@@ -106,7 +110,7 @@ Based on open files and recent activity, development is focused on security mana
 
 2.  Security Patterns
     *   WebAuthn integration.
-    *   Locked account management (manual admin unlock with confirmation, `failed_login_attempts` persist and continue to increment post-lock, `unlocked_by` stores admin username).
+    *   Locked account management (manual admin unlock with confirmation, `failed_login_attempts` are reset to 0 upon unlock, `unlocked_by` stores admin username).
     *   Audit logging.
 
 3.  Layout Patterns
@@ -130,7 +134,7 @@ Based on open files and recent activity, development is focused on security mana
 
 ## Current Considerations
 1.  Security Features
-    *   Account locking mechanisms (manual admin unlock with confirmation, locks at 5 attempts, `failed_login_attempts` persist through unlock and increment even if account is already locked, `unlocked_by` stores admin username).
+    *   Account locking mechanisms (manual admin unlock with confirmation, locks at 5 attempts, `failed_login_attempts` are reset to 0 upon admin unlock, `unlocked_by` stores admin username).
     *   Security key management.
     *   Audit trail implementation.
 

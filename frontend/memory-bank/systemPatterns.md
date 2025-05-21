@@ -57,7 +57,7 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 -   WebAuthn integration for passwordless authentication.
 -   Role-based access control.
 -   Audit logging for security events.
--   Locked account management system (manual admin unlock with confirmation step, locks at 5 attempts, `failed_login_attempts` persist through unlock and increment even if account is already locked, `unlocked_by` stores admin username).
+-   Locked account management system (manual admin unlock with confirmation step, locks at 5 attempts, `failed_login_attempts` are reset to 0 upon admin unlock, `unlocked_by` stores admin username, includes check for admin's username before unlock).
 
 ### 4. AI Integration
 -   Provider-based AI service architecture.
