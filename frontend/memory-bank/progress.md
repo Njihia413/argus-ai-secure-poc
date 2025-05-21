@@ -34,6 +34,24 @@
     - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status.
     - Resolved Python `websockets` library v15.0.1 API incompatibilities.
 
+### UI/UX Enhancements
+- [x] Implemented Dark/Light Theme:
+    - Added `next-themes` for theme management.
+    - Created `ThemeProvider` (with corrected `ThemeProviderProps` import) and `ThemeToggleButton` components.
+    - Defined CSS variables in `globals.css` for light/dark modes, primary color `#e60053`, dark background `#0b0a0a`, and chart color palette.
+    - Integrated theme toggle into the main header (`src/components/header.tsx`) and dashboard layout (`src/app/dashboard/layout.tsx`) for universal visibility.
+- [x] Styling Consistency & Fixes:
+    - Applied `rounded-xl` to most `Button` and `Input` components globally.
+    - Updated `Textarea` component wrapper to `rounded-xl`.
+    - Chat textarea submit button (`src/components/textarea.tsx`) now uses primary color background and foreground text.
+    - User-sent chat messages (`src/components/message.tsx`) now have primary color background and foreground text.
+    - "Login with Security Key" button (`src/app/login/page.tsx`) now has primary color border.
+- [x] Dashboard Sidebar Enhancement:
+    - Updated `src/components/app-sidebar.tsx` to use `collapsible="icon"` mode.
+    - Sidebar now collapses to show only icons, with text labels hidden (using conditional rendering and opacity/width classes for robustness).
+    - Tooltips display item names on hover when collapsed.
+    - Added specific classes to `SidebarMenuButton` and its child `<a>` tag to improve icon centering in collapsed view.
+
 ## In Progress
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
@@ -68,6 +86,8 @@
     *   Error handling enhancements (standardized sonner toasts)
     *   Ensure consistent search/filter patterns and input sizing across all data tables (User table filters implemented via `toolbar` prop).
     *   Ensure consistent use of confirmation dialogs (styling and behavior) for critical actions across the application.
+    *   [x] Verify new dark/light theme consistency across all components and pages (Initial fixes applied based on feedback).
+    *   [ ] Test chart color palette usability in both themes.
     *   Review all data tables for column relevance.
     *   User experience for the local Python USB helper application (e.g., clear instructions if it's not running, connection status indication).
 
