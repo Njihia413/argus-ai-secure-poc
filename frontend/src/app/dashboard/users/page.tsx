@@ -240,7 +240,7 @@ export default function UsersPage() {
       <>
         <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
           <h2 className="text-2xl font-bold tracking-tight">Users</h2>
-          <Button onClick={() => setIsAddUserDialogOpen(true)} className="bg-black hover:bg-black/90 text-white">
+          <Button onClick={() => setIsAddUserDialogOpen(true)}>
             <UserPlus className="h-4 w-4 mr-2" />
             Add User
           </Button>
@@ -250,8 +250,8 @@ export default function UsersPage() {
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardContent>
               {isLoading ? (
-                  <div className="flex flex-col items-center space-y-2 text-slate-500 py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                  <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                     <span>Loading users...</span>
                   </div>
               ) : (
@@ -419,7 +419,7 @@ export default function UsersPage() {
                 <Button variant="outline" type="button" onClick={() => setIsAddUserDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-black hover:bg-black/90 text-white" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading}>
                   {isLoading ? "Creating..." : "Create User"}
                 </Button>
               </DialogFooter>
@@ -587,7 +587,6 @@ export default function UsersPage() {
                     </Button>
                     <Button
                         type="submit"
-                        className="bg-black hover:bg-black/90 text-white"
                         disabled={isLoading}
                     >
                       {isLoading ? "Updating..." : "Update User"}
