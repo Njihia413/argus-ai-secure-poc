@@ -136,38 +136,44 @@ export const securityKeyColumns: ColumnDef<SecurityKey, unknown>[] = [
 
              {!key.isActive && (
                <>
-                 <DropdownMenuItem
-                   onClick={() => {
-                     if (!table.options.meta) return
-                     const meta = table.options.meta as SecurityKeyTableMeta
-                     meta.setSelectedKey(key)
-                     meta.setKeyDetails({
-                       model: key.model || '',
-                       type: key.type || '',
-                       serialNumber: key.serialNumber || '',
-                       pin: ''
-                     })
-                     meta.setIsKeyReassigned?.(true)
-                     meta.setShowKeyDetailsModal(true)
-                   }}
-                   className="text-green-600"
-                 >
-                   <Key className="mr-2 h-4 w-4" />
-                   Register Key
-                 </DropdownMenuItem>
-                 
-                 <DropdownMenuItem
-                   onClick={async () => {
-                     if (!table.options.meta) return
-                     const meta = table.options.meta as SecurityKeyTableMeta
-                     meta.setSelectedKey(key)
-                     await meta.handleResetKey(key.id)
-                   }}
-                   className="text-blue-600"
-                 >
-                   <RefreshCw className="mr-2 h-4 w-4" />
-                   Reset Key
-                 </DropdownMenuItem>
+                 {/* Show Register Key option if key is reset or was never formally deactivated */}
+                 {(key.deactivatedAt === null || key.credentialId === null) && (
+                    <DropdownMenuItem
+                        onClick={() => {
+                        if (!table.options.meta) return
+                        const meta = table.options.meta as SecurityKeyTableMeta
+                        meta.setSelectedKey(key)
+                        meta.setKeyDetails({
+                            model: key.model || '',
+                            type: key.type || '',
+                            serialNumber: key.serialNumber || '',
+                            pin: ''
+                        })
+                        meta.setIsKeyReassigned?.(true)
+                        meta.setShowKeyDetailsModal(true)
+                        }}
+                        className="text-green-600"
+                    >
+                        <Key className="mr-2 h-4 w-4" />
+                        Register Key
+                    </DropdownMenuItem>
+                 )}
+
+                 {/* Show Reset Key option if key is deactivated AND has not been reset yet */}
+                 {(key.deactivatedAt !== null && key.credentialId !== null) && (
+                   <DropdownMenuItem
+                     onClick={async () => {
+                       if (!table.options.meta) return
+                       const meta = table.options.meta as SecurityKeyTableMeta
+                       meta.setSelectedKey(key)
+                       await meta.handleResetKey(key.id)
+                     }}
+                     className="text-blue-600"
+                   >
+                     <RefreshCw className="mr-2 h-4 w-4" />
+                     Reset Key
+                   </DropdownMenuItem>
+                 )}
                </>
              )}
              
