@@ -132,7 +132,6 @@ export const columns: ColumnDef<LockedAccount>[] = [
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button
-              className="bg-black hover:bg-black/90 text-white"
               size="sm"
             >
               Unlock Account
@@ -151,7 +150,6 @@ export const columns: ColumnDef<LockedAccount>[] = [
               </DialogClose>
               <Button
                 onClick={handleUnlockAccount}
-                className="bg-black hover:bg-black/90 text-white"
                 disabled={isLoading}
               >
                 {isLoading ? "Unlocking..." : "Confirm Unlock"}
