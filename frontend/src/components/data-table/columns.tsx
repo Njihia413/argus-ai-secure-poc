@@ -59,7 +59,7 @@ export const columns: ColumnDef<User, unknown>[] = [
     accessorKey: "role",
     header: "Role",
     cell: ({ row }) => {return (
-        <Badge variant="outline" className="bg-slate-100">
+        <Badge variant="outline">
           {row.getValue("role")}
         </Badge>
     )
@@ -81,19 +81,19 @@ export const columns: ColumnDef<User, unknown>[] = [
 
       if (keyStatus === "active") {
         return (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <Badge variant="outline" className="text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
               Active
             </Badge>
         )
       } else if (keyStatus === "inactive") {
         return (
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+            <Badge variant="outline" className="text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
               Inactive
             </Badge>
         )
       } else {
         return (
-            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+            <Badge variant="outline" className="text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
               None
             </Badge>
         )
@@ -135,7 +135,7 @@ export const columns: ColumnDef<User, unknown>[] = [
       return (
           <Badge
               variant="outline"
-              className={`${(attempts as number) > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-100"}`}
+              className={`${(attempts as number) > 0 ? "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : ""}`}
           >
             {attempts as number}
           </Badge>
@@ -150,7 +150,7 @@ export const columns: ColumnDef<User, unknown>[] = [
       return (
           <Badge
               variant="outline"
-              className={`${(attempts as number) > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-100"}`}
+              className={`${(attempts as number) > 0 ? "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700" : ""}`}
           >
             {attempts as number}
           </Badge>
