@@ -20,6 +20,10 @@
 
 ### Security Features
 - [x] Security key management
+    - [x] **Refined UI logic in [`src/components/data-table/security-key-columns.tsx`](src/components/data-table/security-key-columns.tsx:1) for security key deactivation/reset/re-registration flow. "Register Key" and "Reset Key" options in the dropdown menu are now conditionally rendered (shown/hidden) based on the key's `isActive`, `deactivatedAt`, and `credentialId` status to guide admins by only showing the currently relevant action.**
+        - If `!isActive && deactivatedAt !== null && credentialId !== null` (deactivated, needs reset): Show "Reset Key", hide "Register Key".
+        - If `!isActive && (deactivatedAt === null || credentialId === null)` (reset or never formally deactivated): Show "Register Key", hide "Reset Key".
+    - [x] **Verified backend logic in [`../backend/app.py`](../backend/app.py:1) (`reset_security_key` and `webauthn_register_complete`) supports this flow by correctly nullifying `credentialId` on reset and updating the existing key record on re-registration when `forceRegistration` and `keyId` are provided.**
 - [x] Locked accounts monitoring (**Improved data table UI: single search with `max-w-md`, "Action" column, standardized button style, unlock confirmation modal with consistent styling, "Successful Attempts" column removed**)
 - [x] Audit logging system
 - [x] User activity tracking
@@ -52,7 +56,7 @@
     - Loading spinners in Users and Locked Accounts tables are now blue.
     - Removed duplicate pagination controls from the Security page.
     - [x] Users Table: Fixed dark mode visibility for "role", "loginAttempts", "failedAttempts", and "securityKeyStatus" badges in `src/components/data-table/columns.tsx`.
-    - [x] User Details Security Keys Table: Fixed dark mode visibility for "Status" badge in `src/components/data-table/security-key-columns.tsx`.
+    - [x] User Details Security Keys Table: Fixed dark mode visibility for "Status" badge in `src/components/data-table/security-key-columns.tsx`. **Dropdown action logic updated for deactivation/reset/re-registration flow with conditional rendering.**
 - [x] Dashboard Sidebar Enhancement:
     - Updated `src/components/app-sidebar.tsx` to use `collapsible="icon"` mode.
     - Sidebar now collapses to show only icons, with text labels hidden (using conditional rendering and opacity/width classes for robustness).
