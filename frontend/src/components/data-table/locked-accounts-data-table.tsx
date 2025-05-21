@@ -102,8 +102,8 @@ export function LockedAccountsDataTable() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center space-y-2 text-slate-500 py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+      <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         <span>Loading accounts...</span>
       </div>
     )
