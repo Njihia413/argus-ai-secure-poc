@@ -730,9 +730,9 @@ const handleReassignKey = async () => {
 
             <div className="space-y-4 py-4">
               {isKeyReassigned && (
-                <div className="bg-blue-50 p-3 rounded-sm border-l-4 border-blue-400 mb-4">
-                  <h4 className="text-blue-800 font-medium">Reassigned Security Key</h4>
-                  <p className="text-blue-700 text-sm mt-1">
+                <div className="bg-blue-50 dark:bg-transparent p-3 rounded-sm border border-blue-400 dark:border-blue-600 mb-4">
+                  <h4 className="text-blue-800 dark:text-blue-300 font-medium">Reassigned Security Key</h4>
+                  <p className="text-blue-700 dark:text-blue-400 text-sm mt-1">
                     This key has been reset and is ready to be registered for this user. Review the details below.
                   </p>
                 </div>
@@ -872,9 +872,9 @@ const handleReassignKey = async () => {
             </DialogHeader>
 
             <div className="space-y-4 py-4">
-              <div className="bg-yellow-50 p-3 rounded-sm border-l-4 border-yellow-400">
-                <h4 className="text-yellow-800 font-medium">Important Instructions</h4>
-                <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 space-y-1">
+              <div className="bg-yellow-50 dark:bg-transparent p-3 rounded-sm border-l-4 border-yellow-400 dark:border-yellow-600">
+                <h4 className="text-yellow-800 dark:text-yellow-300 font-medium">Important Instructions</h4>
+                <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                   <li>Ensure the security key is connected to your device</li>
                   <li>When prompted, tap the button on your security key</li>
                   <li>Keep the key connected until registration is complete</li>
@@ -882,9 +882,9 @@ const handleReassignKey = async () => {
               </div>
               
               {isKeyReassigned && (
-                <div className="bg-blue-50 p-3 rounded-sm border-l-4 border-blue-400 mt-3">
-                  <h4 className="text-blue-800 font-medium">Reassigned Security Key</h4>
-                  <p className="text-blue-700 text-sm mt-1">
+                <div className="bg-blue-50 dark:bg-transparent p-3 rounded-sm border-l-4 border-blue-400 dark:border-blue-600 mt-3">
+                  <h4 className="text-blue-800 dark:text-blue-300 font-medium">Reassigned Security Key</h4>
+                  <p className="text-blue-700 dark:text-blue-400 text-sm mt-1">
                     This security key was reassigned from another user. It needs to be registered with this account before it can be used.
                   </p>
                 </div>
@@ -1029,7 +1029,7 @@ const handleReassignKey = async () => {
               <div className="space-y-4">
                 <p>Are you sure you want to reset this security key for reassignment to another user?</p>
                 
-                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 dark:border-yellow-700/40">
+                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 dark:bg-transparent dark:border-yellow-700/40">
                   <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">This will:</h3>
                   <ul className="list-disc pl-5 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                     <li>Deactivate the key for the current user</li>
@@ -1038,9 +1038,9 @@ const handleReassignKey = async () => {
                   </ul>
                 </div>
                 
-                <div className="bg-blue-50 p-4 rounded-md border border-blue-200 dark:border-blue-700/40">
-                  <h3 className="font-semibold text-blue-800 dark:text-blue-300">Note:</h3>
-                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                <div className="bg-red-50 p-4 rounded-md border border-red-200 dark:bg-transparent dark:border-red-700/40">
+                  <h3 className="font-semibold text-red-800 dark:text-red-300">Note:</h3>
+                  <p className="text-sm text-red-700 dark:text-red-400">
                     For security reasons, after resetting, a new user will need to register
                     the security key before they can use it.
                   </p>
