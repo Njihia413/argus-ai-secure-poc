@@ -52,6 +52,9 @@ export function SecurityKeysDataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
+  const [globalFilter, setGlobalFilter] = React.useState('')
+  // Explicitly manage the text for the status filter button
+  const [statusButtonText, setStatusButtonText] = React.useState("All Statuses");
 
   const table = useReactTable({
     data,
@@ -60,30 +63,101 @@ export function SecurityKeysDataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
-    onColumnFiltersChange: setColumnFilters,
+    // onColumnFiltersChange: setColumnFilters, // Removed duplicate
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => {
+      const safeValue = (value: any): string => String(value ?? '').toLowerCase();
+      const term = safeValue(filterValue);
+      const model = safeValue(row.getValue('model'));
+      const type = safeValue(row.getValue('type'));
+      const serialNumber = safeValue(row.getValue('serialNumber'));
+      const username = safeValue(row.getValue('username'));
+      return model.includes(term) ||
+             type.includes(term) ||
+             serialNumber.includes(term) ||
+             username.includes(term);
+    },
     state: {
       sorting,
       columnFilters,
       columnVisibility,
       rowSelection,
+      globalFilter,
     },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater);
+      // Update status button text when filter changes
+      const statusFilter = table.getColumn("status")?.getFilterValue();
+      if (statusFilter === "active") {
+        setStatusButtonText("Active");
+      } else if (statusFilter === "inactive") {
+        setStatusButtonText("Inactive");
+      } else {
+        setStatusButtonText("All Statuses");
+      }
+    }
   });
+
+  // Effect to update button text if filters are set externally or on initial load
+  React.useEffect(() => {
+    const statusFilter = table.getColumn("status")?.getFilterValue();
+    if (statusFilter === "active") {
+      setStatusButtonText("Active");
+    } else if (statusFilter === "inactive") {
+      setStatusButtonText("Inactive");
+    } else {
+      setStatusButtonText("All Statuses");
+    }
+  }, [columnFilters, table]);
 
   return (
     <div>
       <div className="flex items-center py-4 gap-2">
         <Input
-          placeholder="Filter by Serial Number..."
-          value={(table.getColumn("serialNumber")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("serialNumber")?.setFilterValue(event.target.value)
-          }
+          placeholder="Search..." // Updated placeholder
+          value={globalFilter ?? ""}
+          onChange={(event) => setGlobalFilter(event.target.value)}
           className="max-w-sm"
         />
-        {/* Add other filters here if needed, e.g., for status or type */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              {statusButtonText} <ChevronDown className="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuCheckboxItem
+              checked={!table.getColumn("status")?.getFilterValue()}
+              onCheckedChange={() => {
+                table.getColumn("status")?.setFilterValue(undefined);
+                setStatusButtonText("All Statuses");
+              }}
+            >
+              All Statuses
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={table.getColumn("status")?.getFilterValue() === "active"}
+              onCheckedChange={() => {
+                table.getColumn("status")?.setFilterValue("active");
+                setStatusButtonText("Active");
+              }}
+            >
+              Active
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={table.getColumn("status")?.getFilterValue() === "inactive"}
+              onCheckedChange={() => {
+                table.getColumn("status")?.setFilterValue("inactive");
+                setStatusButtonText("Inactive");
+              }}
+            >
+              Inactive
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="ml-auto">
