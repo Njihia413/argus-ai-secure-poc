@@ -30,46 +30,41 @@ export const columns: ColumnDef<AuditLog>[] = [
     header: "Action",
     cell: ({ row }) => {
       const action = row.getValue("action") as string;
-      let bgColor = "";
       let textColor = "";
       let borderColor = "";
       
       switch (action.toLowerCase()) {
         case "register":
-          bgColor = "bg-green-50";
-          textColor = "text-green-700";
-          borderColor = "border-green-200";
+        case "initial-register": // Adding this case for consistency
+        case "re-register": // Adding this case for consistency
+          textColor = "text-green-700 dark:text-green-400";
+          borderColor = "border-green-300 dark:border-green-700";
           break;
         case "deactivate":
-          bgColor = "bg-red-50";
-          textColor = "text-red-700";
-          borderColor = "border-red-200";
+          textColor = "text-red-700 dark:text-red-400";
+          borderColor = "border-red-300 dark:border-red-700";
           break;
         case "activate":
-          bgColor = "bg-blue-50";
-          textColor = "text-blue-700";
-          borderColor = "border-blue-200";
+          textColor = "text-blue-700 dark:text-blue-400";
+          borderColor = "border-blue-300 dark:border-blue-700";
           break;
         case "reassign":
-          bgColor = "bg-yellow-50";
-          textColor = "text-yellow-700";
-          borderColor = "border-yellow-200";
+          textColor = "text-yellow-700 dark:text-yellow-400";
+          borderColor = "border-yellow-300 dark:border-yellow-700";
           break;
         case "reset":
-          bgColor = "bg-purple-50";
-          textColor = "text-purple-700";
-          borderColor = "border-purple-200";
+          textColor = "text-purple-700 dark:text-purple-400";
+          borderColor = "border-purple-300 dark:border-purple-700";
           break;
         default:
-          bgColor = "bg-gray-50";
-          textColor = "text-gray-700";
-          borderColor = "border-gray-200";
+          textColor = "text-gray-700 dark:text-gray-400";
+          borderColor = "border-gray-300 dark:border-gray-700";
       }
 
       return (
-        <Badge 
-          variant="outline" 
-          className={`${bgColor} ${textColor} ${borderColor}`}
+        <Badge
+          variant="outline"
+          className={`${textColor} ${borderColor}`} // Removed bgColor
         >
           {action}
         </Badge>
