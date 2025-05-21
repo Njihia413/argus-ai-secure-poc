@@ -52,6 +52,9 @@ export default function ChatPage() {
   const [availableModels, setAvailableModels] = useState<ModelDict>(RESTRICTED_MODELS);
   const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
   const [securityKeyStatus, setSecurityKeyStatus] = useState<boolean>(false);
+  const [isNormalUsbConnected, setIsNormalUsbConnected] = useState<boolean>(false);
+  const [isHelperAppConnected, setIsHelperAppConnected] = useState<boolean>(false);
+  const wsRef = useRef<WebSocket | null>(null);
   const securityKeyDetectionInterval = useRef<NodeJS.Timeout | null>(null);
   const keyCheckInProgress = useRef<boolean>(false);
   const initialLoadComplete = useRef<boolean>(false);
@@ -102,17 +105,13 @@ export default function ChatPage() {
         // Set initial security key status based on auth method
         setSecurityKeyStatus(isSecurityKeyAuth);
 
-        // Set initial models based on auth method
-        if (isSecurityKeyAuth) {
-          setAvailableModels(ALL_MODELS);
-          // Only show toast on initial page load
-          if (!initialLoadComplete.current) {
-            toast.success("Security Key: Connected - Full model access");
+        // Initial model setting will be handled by the combined useEffect.
+        // We still set initialLoadComplete here.
+        if (isSecurityKeyAuth && !initialLoadComplete.current) {
+            // toast.success("Logged in with Security Key."); // Toast handled by combined logic
+        }
+        if (!initialLoadComplete.current) {
             initialLoadComplete.current = true;
-          }
-        } else {
-          setAvailableModels(RESTRICTED_MODELS);
-          setSelectedModel(DEFAULT_MODEL_ID);
         }
       } catch (err) {
         console.error('Error checking authentication:', err);
@@ -126,13 +125,164 @@ export default function ChatPage() {
 
   // Force update selected model when available models change
   useEffect(() => {
-    // If the currently selected model isn't available in RESTRICTED_MODELS
-    // and the security key is disconnected, reset to default model
-    if (!RESTRICTED_MODELS[selectedModel] && !securityKeyStatus) {
-      console.log("Forcing model reset to default because current selection is unavailable");
-      setSelectedModel(DEFAULT_MODEL_ID);
+    if (Object.keys(availableModels).length > 0 && !availableModels[selectedModel]) {
+        console.log(`Selected model ${selectedModel} not in newly set available models (${Object.keys(availableModels).join(', ')}). Resetting.`);
+        if (availableModels[DEFAULT_MODEL_ID]) {
+            setSelectedModel(DEFAULT_MODEL_ID);
+        } else if (Object.keys(availableModels).length > 0) { // Ensure there's at least one model
+            setSelectedModel(Object.keys(availableModels)[0] as modelID);
+        }
     }
-  }, [availableModels, selectedModel, securityKeyStatus]);
+  }, [availableModels, selectedModel]);
+
+  // WebSocket connection to Python helper for Normal USB detection
+  useEffect(() => {
+    console.log("WebSocket useEffect triggered. UserData:", userData ? "Exists" : "null", "wsRef.current:", wsRef.current ? wsRef.current.readyState : "null"); // DEBUG LOG
+
+    if (!userData) {
+      if (wsRef.current) {
+        console.log("No user data, ensuring old WebSocket is closed.");
+        wsRef.current.close();
+      }
+      return;
+    }
+
+    if (wsRef.current && wsRef.current.readyState < WebSocket.CLOSING) {
+      console.log("WebSocket connection attempt skipped: already exists or connecting.");
+      return;
+    }
+    
+    console.log("Attempting to connect to Normal USB helper WebSocket...");
+    const socket = new WebSocket("ws://localhost:12345");
+    wsRef.current = socket;
+
+    let initialConnectionFailed = true;
+
+    socket.onopen = () => {
+      initialConnectionFailed = false;
+      console.log("Connected to Normal USB helper WebSocket.");
+      setIsHelperAppConnected(true);
+      toast.success("USB Helper: Connected");
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data as string);
+        console.log("Message from Normal USB helper:", message);
+        if (message.event === "NORMAL_USB_CONNECTED") {
+          console.log("setIsNormalUsbConnected called with true");
+          setIsNormalUsbConnected(true);
+        } else if (message.event === "NORMAL_USB_DISCONNECTED") {
+          console.log("setIsNormalUsbConnected called with false");
+          setIsNormalUsbConnected(false);
+        }
+      } catch (error) {
+        console.error("Failed to parse message from Normal USB helper:", error);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("Normal USB helper WebSocket error:", error);
+      if (initialConnectionFailed && wsRef.current === socket) {
+          toast.error("USB Helper: Failed to connect.");
+      } else if (isHelperAppConnected) {
+          toast.error("USB Helper: Connection error.");
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("Disconnected from Normal USB helper WebSocket.");
+      if (isHelperAppConnected && !initialConnectionFailed) {
+         toast.info("USB Helper: Disconnected.");
+      }
+      
+      setIsHelperAppConnected(false);
+      setIsNormalUsbConnected(false);
+      
+      if (wsRef.current === socket) {
+        wsRef.current = null;
+      }
+    };
+
+    return () => {
+      console.log("Cleaning up WebSocket effect for Normal USB helper.");
+      if (socket) {
+        console.log(`Closing WebSocket (readyState: ${socket.readyState}) in cleanup.`);
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+      if (wsRef.current === socket) {
+          wsRef.current = null;
+      }
+    };
+  }, [userData]);
+
+  // Combined logic for setting availableModels
+  useEffect(() => {
+    if (!userData) {
+      if (JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
+        setAvailableModels(RESTRICTED_MODELS);
+      }
+      return;
+    }
+
+    const loggedInWithSecurityKeyAtAuthTime = userData.securityKeyAuthenticated === true;
+    let newAvailableModels = RESTRICTED_MODELS;
+    let toastMessage: { type: 'success' | 'error' | 'info'; message: string } | null = null;
+
+    console.log(
+      "Combined logic check:",
+      { loggedInWithSecurityKeyAtAuthTime },
+      { securityKeyStatus },
+      { isNormalUsbConnected },
+      { isHelperAppConnected },
+      { currentAvailableModels: JSON.stringify(availableModels) }
+    );
+
+    if (loggedInWithSecurityKeyAtAuthTime) {
+      if (securityKeyStatus) {
+        newAvailableModels = ALL_MODELS;
+      } else {
+        newAvailableModels = RESTRICTED_MODELS;
+      }
+    } else {
+      if (isNormalUsbConnected && isHelperAppConnected) {
+        newAvailableModels = ALL_MODELS;
+        if (JSON.stringify(availableModels) !== JSON.stringify(ALL_MODELS)) {
+            toastMessage = { type: 'success', message: "Normal USB Detected: Full model access enabled." };
+        }
+      } else {
+        newAvailableModels = RESTRICTED_MODELS;
+        if (JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
+            if (isHelperAppConnected && initialLoadComplete.current && !isNormalUsbConnected) { // Check initialLoadComplete
+                toastMessage = { type: 'error', message: "Normal USB Disconnected/Not Found: Model access restricted." };
+            }
+        }
+      }
+    }
+    
+    if (JSON.stringify(availableModels) !== JSON.stringify(newAvailableModels)) {
+        console.log("Setting new available models:", newAvailableModels);
+        setAvailableModels(newAvailableModels);
+        if (toastMessage) {
+            toast[toastMessage.type](toastMessage.message);
+        }
+    } else {
+      if (toastMessage && JSON.stringify(availableModels) === JSON.stringify(newAvailableModels)) {
+           console.log("Models unchanged, but showing toast:", toastMessage.message);
+           toast[toastMessage.type](toastMessage.message);
+      } else {
+           console.log("Available models did not change, no toast needed.", availableModels);
+      }
+    }
+
+  }, [userData, securityKeyStatus, isNormalUsbConnected, isHelperAppConnected, availableModels, initialLoadComplete]); // Added initialLoadComplete
+
 
   // Monitor security key connection status
   useEffect(() => {
@@ -156,19 +306,13 @@ export default function ChatPage() {
         // Only update state if the status has changed
         if (isConnected !== securityKeyStatus) {
           console.log("Security key status changed from", securityKeyStatus, "to", isConnected);
-
-          // Update status first
+          
           setSecurityKeyStatus(isConnected);
-
+ 
           if (!isConnected) {
-            // When disconnected, restrict models and reset selection
-            toast.error("Security key disconnected. Access restricted to default model.");
-            setAvailableModels(RESTRICTED_MODELS);
-            setSelectedModel(DEFAULT_MODEL_ID);
+            toast.error("Security Key: Disconnected. Model access may be restricted.");
           } else {
-            // When connected, expand available models
-            toast.success("Security key connected. Full model access restored.");
-            setAvailableModels(ALL_MODELS);
+            toast.success("Security Key: Connected. Full model access may be restored.");
           }
         }
       } catch (error) {
@@ -194,15 +338,9 @@ export default function ChatPage() {
         setSecurityKeyStatus(newKeyState);
 
         if (!newKeyState) {
-          // Force immediate model restriction
-          console.log("Restricting models to:", Object.keys(RESTRICTED_MODELS));
-          setAvailableModels(RESTRICTED_MODELS);
-          setSelectedModel(DEFAULT_MODEL_ID);
-          toast.error("Security key disconnected. Access restricted to default model.");
+          toast.error("Simulated: Security key disconnected. Model access may be restricted.");
         } else {
-          console.log("Expanding models to:", Object.keys(ALL_MODELS));
-          setAvailableModels(ALL_MODELS);
-          toast.success("Security key connected. Full model access restored.");
+          toast.success("Simulated: Security key connected. Full model access may be restored.");
         }
 
         // Update localStorage for simulation
@@ -220,15 +358,11 @@ export default function ChatPage() {
 
         if (newState !== securityKeyStatus) {
           setSecurityKeyStatus(newState);
-
+ 
           if (!newState) {
-            // Force immediate model restriction
-            setAvailableModels(RESTRICTED_MODELS);
-            setSelectedModel(DEFAULT_MODEL_ID);
-            toast.error("Security key disconnected in another tab. Access restricted.");
+            toast.error("Security key status changed in another tab: Disconnected. Model access may be restricted.");
           } else {
-            setAvailableModels(ALL_MODELS);
-            toast.success("Security key connected. Full model access restored.");
+            toast.success("Security key status changed in another tab: Connected. Full model access may be restored.");
           }
         }
       }
