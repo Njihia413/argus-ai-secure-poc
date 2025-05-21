@@ -909,6 +909,57 @@ def get_user_security_keys(user_id):
 
     return jsonify({'securityKeys': keys_list})
 
+
+@app.route('/api/security-keys/all', methods=['GET'])
+def get_all_security_keys():
+   # Verify admin token and authorization
+   auth_token = request.headers.get('Authorization')
+   if not auth_token:
+       return jsonify({'error': 'Admin authorization required'}), 401
+
+   auth_token = auth_token.replace('Bearer ', '')
+   auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+   if not auth_session:
+       return jsonify({'error': 'Invalid admin token'}), 401
+
+   admin_user = Users.query.get(auth_session.user_id)
+   if not admin_user or admin_user.role != 'admin':
+       return jsonify({'error': 'Admin privileges required'}), 403
+
+   try:
+       keys = db.session.query(
+           SecurityKey.id,
+           SecurityKey.model,
+           SecurityKey.type,
+           SecurityKey.serial_number,
+           SecurityKey.is_active,
+           SecurityKey.created_at,
+           SecurityKey.last_used,
+           Users.username
+       ).join(Users, Users.id == SecurityKey.user_id).order_by(SecurityKey.created_at.desc()).all()
+
+       keys_list = []
+       for key_data in keys:
+           keys_list.append({
+               'id': key_data.id,
+               'model': key_data.model,
+               'type': key_data.type,
+               'serialNumber': key_data.serial_number,
+               'status': 'active' if key_data.is_active else 'inactive', # Derived status
+               'registeredOn': key_data.created_at.isoformat() if key_data.created_at else None,
+               'lastUsed': key_data.last_used.isoformat() if key_data.last_used else 'Never',
+               'username': key_data.username
+           })
+       
+       return jsonify({'securityKeys': keys_list})
+
+   except Exception as e:
+       print(f"Error fetching all security keys: {str(e)}")
+       import traceback
+       print(traceback.format_exc())
+       return jsonify({'error': 'Failed to fetch all security keys'}), 500
+
 # Add this new route to delete a security key
 @app.route('/api/security-keys/<int:key_id>', methods=['DELETE'])
 def delete_security_key(key_id):
