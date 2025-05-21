@@ -610,7 +610,7 @@ export default function LoginPage() {
                         <Button
                             type="button"
                             variant="outline"
-                            className="w-full border-black"
+                            className="w-full border-primary text-primary hover:bg-primary/10"
                             onClick={handleSecurityKeyLogin}
                             disabled={isLoading}
                         >
