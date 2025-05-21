@@ -11,7 +11,13 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar, // Import useSidebar
 } from "@/components/ui/sidebar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip" // Import Tooltip components
 
 const items = [
   {
@@ -48,6 +54,7 @@ const items = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const { state } = useSidebar() // Get sidebar state
 
   const isItemActive = (itemUrl: string) => {
     // For nested routes, make sure it's an exact match for overview
@@ -59,7 +66,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon"> {/* Enable icon collapse */}
       <SidebarContent>
         <SidebarGroup>
           {/* Updated text size for label */}
@@ -68,15 +75,25 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isItemActive(item.url)}
-                  >
-                    <a href={item.url} className="flex items-center gap-2">
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm">{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isItemActive(item.url)}
+                        className={state === "collapsed" ? "justify-center" : ""}
+                      >
+                        <a href={item.url} className={`flex items-center ${state === "expanded" ? "gap-2" : "justify-center w-full"}`}>
+                          <item.icon className="h-4 w-4" />
+                          <span className={`text-sm ${state === "expanded" ? "opacity-100" : "opacity-0 w-0 hidden"}`}>{item.title}</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </TooltipTrigger>
+                    {state === "collapsed" && (
+                      <TooltipContent side="right">
+                        <p>{item.title}</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
