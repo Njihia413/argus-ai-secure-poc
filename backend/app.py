@@ -1767,10 +1767,35 @@ def webauthn_register_complete():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    # If auth token provided, validate binding
-    if auth_token and binding_nonce:
-        if not validate_token_binding(auth_token, binding_nonce, request):
-            return jsonify({'error': 'Invalid session or connection'}), 400
+    # Determine the actor_id (who is performing this registration)
+    actor_id = user.id  # Default to the user themselves (self-registration)
+
+    if auth_token:
+        # Validate binding if nonce is also present
+        if binding_nonce and not validate_token_binding(auth_token, binding_nonce, request):
+            return jsonify({'error': 'Invalid session or connection during token binding validation'}), 400
+
+        cleaned_token = auth_token.replace('Bearer ', '')
+        acting_session = AuthenticationSession.query.filter_by(session_token=cleaned_token).first()
+        
+        if acting_session:
+            potential_admin_user = Users.query.get(acting_session.user_id)
+            if potential_admin_user and potential_admin_user.role == 'admin':
+                actor_id = potential_admin_user.id
+                print(f"Admin user (ID: {actor_id}) is performing this registration for user {user.username} (ID: {user.id}).")
+            else:
+                # Token provided but not for a valid admin, or session user is not an admin.
+                # If token belongs to the target user, it's still self-registration.
+                # If token belongs to another non-admin, this is an edge case, but actor_id remains user.id.
+                if potential_admin_user and potential_admin_user.id != user.id :
+                     print(f"Warning: Auth token provided by user {potential_admin_user.id} who is not an admin, for registering key for user {user.id}. Logging as performed by target user.")
+                # If potential_admin_user is None, the session is invalid or user deleted.
+                # actor_id correctly remains user.id
+        else:
+            # No valid session found for the provided auth_token
+            # This could be an expired/invalid admin token, or a user token passed incorrectly.
+            # For audit purposes, if we can't confirm an admin, log as performed by target user.
+            print(f"Warning: Auth token provided but no valid session found. Logging as performed by target user {user.id}.")
 
     challenge_record = db.session.query(WebAuthnChallenge).filter(
         WebAuthnChallenge.user_id == user.id,
@@ -1915,7 +1940,26 @@ def webauthn_register_complete():
                         if key_details.get('pin'):
                             target_key.pin = generate_password_hash(key_details.get('pin'))
                     
-                    db.session.commit()
+                    # Create audit log for re-registration
+                    audit_log_re_register = SecurityKeyAudit(
+                        security_key_id=target_key.id,
+                        user_id=user.id,
+                        action='re-register',
+                        details=f"Security key re-registered for user {user.username}", # Detail updated
+                        performed_by=actor_id,
+                        previous_state=None, # Or capture previous state if relevant
+                        new_state={
+                            'user_id': user.id,
+                            'credential_id': credential_id,
+                            'model': target_key.model,
+                            'type': target_key.type,
+                            'serial_number': target_key.serial_number,
+                            'is_active': True,
+                            'created_at': target_key.created_at.isoformat()
+                        }
+                    )
+                    db.session.add(audit_log_re_register)
+                    db.session.commit() # Commit audit log separately or as part of main transaction
                     
                     # Update user's security key fields
                     user.has_security_key = True
@@ -2041,7 +2085,7 @@ def webauthn_register_complete():
                     user_id=user.id,
                     action=action,
                     details=details,
-                    performed_by=auth_session.user_id if auth_session else user.id,
+                    performed_by=actor_id,
                     previous_state=None,
                     new_state={
                         'user_id': user.id,
