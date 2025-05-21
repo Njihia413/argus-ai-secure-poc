@@ -102,7 +102,7 @@ export default function DashboardLayout({
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar>
-                      <AvatarFallback className="bg-black text-white">SA</AvatarFallback>
+                      <AvatarFallback className="bg-primary text-white">SA</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
