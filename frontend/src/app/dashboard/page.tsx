@@ -457,12 +457,12 @@ export default function DashboardPage() {
                           <Line
                             type="monotone"
                             dataKey="successful"
-                            stroke="var(--chart-2)" /* New Lighter Pink */
+                            stroke="#2563eb"
                             strokeWidth={2}
                             dot={true}
                               activeDot={{ r: 6 }}
                               connectNulls={true}
-                              name="Successfully Logged In"
+                              name="Successful"
                               isAnimationActive={false}
                           />
                           <Tooltip
@@ -475,12 +475,12 @@ export default function DashboardPage() {
                           <Line
                             type="monotone"
                             dataKey="failed"
-                            stroke="var(--chart-4)" /* Base Pink #e60053 */
+                            stroke="#a6c4fc"
                             strokeWidth={2}
                             dot={true}
                               activeDot={{ r: 6 }}
                               connectNulls={true}
-                              name="Failed to Login"
+                              name="Failed"
                               isAnimationActive={false}
                           />
                         </LineChart>
@@ -862,3 +862,4 @@ export default function DashboardPage() {
       </div>
   )
 }
+
