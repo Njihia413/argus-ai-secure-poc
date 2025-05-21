@@ -38,19 +38,27 @@
 - [x] Implemented Dark/Light Theme:
     - Added `next-themes` for theme management.
     - Created `ThemeProvider` (with corrected `ThemeProviderProps` import) and `ThemeToggleButton` components.
-    - Defined CSS variables in `globals.css` for light/dark modes, primary color `#e60053`, dark background `#0b0a0a`, and chart color palette.
+    - Defined CSS variables in `globals.css` for light/dark modes, new primary color `#2563eb` (blue), dark background `#0b0a0a`, and a regenerated blue-based chart color palette.
     - Integrated theme toggle into the main header (`src/components/header.tsx`) and dashboard layout (`src/app/dashboard/layout.tsx`) for universal visibility.
 - [x] Styling Consistency & Fixes:
     - Applied `rounded-xl` to most `Button` and `Input` components globally.
     - Updated `Textarea` component wrapper to `rounded-xl`.
-    - Chat textarea submit button (`src/components/textarea.tsx`) now uses primary color background and foreground text.
-    - User-sent chat messages (`src/components/message.tsx`) now have primary color background and foreground text.
-    - "Login with Security Key" button (`src/app/login/page.tsx`) now has primary color border.
+    - Chat textarea submit button (`src/components/textarea.tsx`) now uses the new primary blue color background and foreground text.
+    - User-sent chat messages (`src/components/message.tsx`) now have the new primary blue color background and foreground text.
+    - "Login with Security Key" button (`src/app/login/page.tsx`) now has the new primary blue color border.
+    - Ensured buttons on Users, Locked Accounts, Security, and User Details dashboard pages use the default primary blue styling (action buttons) or blue outline styling ("Cancel" buttons) by removing/adjusting explicit classes and variants, and updated backgrounds to be theme-aware.
+- [x] Data Table Enhancements:
+    - Loading spinners in Users and Locked Accounts tables are now blue.
+    - Removed duplicate pagination controls from the Security page.
 - [x] Dashboard Sidebar Enhancement:
     - Updated `src/components/app-sidebar.tsx` to use `collapsible="icon"` mode.
     - Sidebar now collapses to show only icons, with text labels hidden (using conditional rendering and opacity/width classes for robustness).
     - Tooltips display item names on hover when collapsed.
-    - Added specific classes to `SidebarMenuButton` and its child `<a>` tag to improve icon centering in collapsed view.
+    - Added specific classes to `SidebarMenuButton` and its child `<a>` tag in `app-sidebar.tsx` to improve icon centering in collapsed view.
+    - Updated `SidebarMenuButton` in `src/components/ui/sidebar.tsx` to use `bg-primary`, `text-primary-foreground`, and `rounded-xl` for active links.
+
+- [x] Dashboard Chart Theming:
+    - Updated "Login Attempts" chart in `src/app/dashboard/page.tsx` to use the new, more distinct theme colors (`--chart-2` and `--chart-4`) instead of previous theme colors.
 
 ## In Progress
 1.  Security Dashboard Enhancements

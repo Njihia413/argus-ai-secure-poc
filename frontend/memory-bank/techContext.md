@@ -74,7 +74,7 @@
 
 2.  **Styling**
     - Tailwind CSS for utility-first styling.
-    - CSS Custom Properties (variables) in `globals.css` for theme colors (light/dark modes), including a primary color of `#e60053`, dark theme background of `#0b0a0a`, and a derived chart palette.
+    - CSS Custom Properties (variables) in `globals.css` for theme colors (light/dark modes), including the primary color `#2563eb` (blue), dark theme background `#0b0a0a`, and a derived blue-based chart palette.
     - Component-level style composition using `Card` and `CardContent` for consistent table layouts.
     - Consistent `rounded-xl` applied to most buttons and inputs for unified styling.
     - CSS animation utilities.

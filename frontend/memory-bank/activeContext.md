@@ -17,11 +17,11 @@ Based on open files and recent activity, development is focused on security mana
 *   Dark theme implementation with light/dark mode toggle.
     *   Fixed `ThemeProviderProps` import in `src/components/theme-provider.tsx`.
     *   Theme toggle button added to `src/app/dashboard/layout.tsx` for visibility.
-*   Button color `#e60053` (primary) for both themes.
-    *   Textarea submit button in `src/components/textarea.tsx` now uses primary color.
-    *   "Login with Security Key" button in `src/app/login/page.tsx` now has primary color border.
-*   Dark theme background color `#0b0a0a`.
-*   Color palette generated from `#e60053` for charts.
+*   Primary color changed to `#2563eb` (blue) for both themes.
+    *   Textarea submit button in `src/components/textarea.tsx` now uses this new primary blue color.
+    *   "Login with Security Key" button in `src/app/login/page.tsx` now has this new primary blue color border.
+*   Dark theme background color `#0b0a0a` (remains unchanged).
+*   Chart color palette regenerated based on the new primary blue color (`#2563eb`) providing distinct variations. "Login Attempts" chart uses `--chart-2` and `--chart-4` from this new blue palette.
 *   Inputs and buttons styled with `rounded-xl` (except chat textarea's internal submit button, which is `rounded-full`).
 *   User chat messages in `src/components/message.tsx` now have primary background and foreground text color.
 
@@ -31,20 +31,25 @@ Based on open files and recent activity, development is focused on security mana
         *   Text labels are hidden when collapsed using conditional rendering and opacity/width classes.
         *   Tooltips display item titles on hover when collapsed.
         *   Attempted to ensure icon centering in collapsed state by adjusting classes on `SidebarMenuButton` and its child `<a>` tag.
+        *   Active sidebar links are now styled with the primary blue color and `rounded-xl`.
 
 7.  Active Components
-*   `src/app/dashboard/users/page.tsx`: User management page. (**Added client-side search and dropdown filters for role and security key status. Filter controls are passed to the `DataTable` via a `toolbar` prop. Applied `font-montserrat` to filter controls. Updated security key filter labels.**)
+*   `src/app/dashboard/users/page.tsx`: User management page. (**Added client-side search and dropdown filters for role and security key status. Filter controls are passed to the `DataTable` via a `toolbar` prop. Applied `font-montserrat` to filter controls. Updated security key filter labels. Loading spinner color changed to primary blue.**)
     *   `src/components/data-table/data-table.tsx`: Generic data table component. (**Added an optional `toolbar` prop to render custom controls like filters. Implemented pagination with "Previous" and "Next" buttons.**)
-    *   `locked-accounts-data-table.tsx`: Main interface for locked accounts (**Refined styling, single search filter with `max-w-md`, and notification handling. "Successful Attempts" column removed from display logic.**)
+    *   `src/components/data-table/locked-accounts-data-table.tsx`: Main interface for locked accounts. (**Refined styling, single search filter with `max-w-md`, notification handling. "Successful Attempts" column removed from display logic. Loading spinner color changed to primary blue.**)
     *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
-    *   `security/page.tsx`: Security dashboard implementation
+    *   `src/app/dashboard/security/page.tsx`: Security dashboard implementation. (**"Export Report" and pagination buttons updated to default blue styling. Removed duplicate manual pagination controls.**)
     *   `src/components/app-sidebar.tsx`: Navigation and layout structure. (**Updated to support icon-only collapsed state with tooltips, with specific class adjustments for icon centering and text hiding.**)
+    *   `src/components/ui/sidebar.tsx`: Base sidebar UI component. (**Updated `SidebarMenuButton` active state to use `bg-primary`, `text-primary-foreground`, and `rounded-xl`.**)
+    *   `src/app/dashboard/page.tsx`: Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
+    *   `src/components/data-table/locked-accounts-columns.tsx`: Columns for Locked Accounts table. (**"Unlock Account" & "Confirm Unlock" buttons to default blue; "Cancel" button to blue outline.**)
+    *   `src/app/dashboard/users/[id]/page.tsx`: User details page. (**Action buttons to default blue; "Cancel" buttons to blue outline; backgrounds made theme-aware.**)
     *   `../backend/app.py`: Backend logic for authentication and account management (**Simplified account lock mechanism, removed time-based auto-unlock. `failed_login_attempts` now persist after unlock and increment even if the account is already locked. `unlocked_by` column stores admin username.**)
     *   `src/components/theme-provider.tsx`: New component for `next-themes` integration. (**Corrected `ThemeProviderProps` import path.**)
     *   `src/components/theme-toggle-button.tsx`: New component for theme switching.
     *   `src/app/layout.tsx`: Updated to include `ThemeProvider`.
-    *   `src/app/globals.css`: Updated with CSS variables for light/dark themes, primary color `#e60053`, dark background `#0b0a0a`, and chart color palette.
-    *   `src/components/ui/button.tsx`: Default `rounded-md` changed to `rounded-xl`.
+    *   `src/app/globals.css`: Updated CSS variables for `--primary`, `--ring`, and `--chart-*` to reflect the new blue color scheme (`#2563eb`).
+    *   `src/components/ui/button.tsx`: Default `rounded-md` changed to `rounded-xl`. (**Outline variant updated for blue border and text.**)
     *   `src/components/ui/input.tsx`: Default `rounded-md` changed to `rounded-xl`.
     *   `src/components/textarea.tsx`: Textarea wrapper `rounded-2xl` changed to `rounded-xl`. (**Submit button styled with primary color.**)
     *   `src/components/header.tsx`: Integrated `ThemeToggleButton`.
@@ -70,16 +75,25 @@ Based on open files and recent activity, development is focused on security mana
 15. DataTable Component Enhancement: The generic `DataTable` component (`src/components/data-table/data-table.tsx`) was updated to accept a `toolbar` prop for rendering custom controls and to include pagination functionality.
 16. Styling Consistency: Applied `font-montserrat` to the user table filter controls for consistency. Updated security key filter labels for clarity.
 17. Implemented dark/light theme using `next-themes`.
-18. Defined CSS variables in `globals.css` for theming, including primary color `#e60053`, dark theme background `#0b0a0a`, and a chart color palette derived from the primary color.
+18. Changed the primary theme color from `#e60053` (pink) to `#2563eb` (blue). Updated CSS variables in `globals.css` for `--primary`, `--ring`, and regenerated the `--chart-*` palette accordingly. Dark theme background (`#0b0a0a`) remains unchanged.
 19. Created a `ThemeToggleButton` component for users to switch themes.
 20. Integrated the `ThemeToggleButton` into the main `Header` component and `src/app/dashboard/layout.tsx`.
 21. Standardized most button and input elements to use `rounded-xl` styling, with an exception for the chat page's textarea internal button (which is `rounded-full`).
 22. Corrected `ThemeProviderProps` import in `src/components/theme-provider.tsx`.
-23. Styled the chat textarea's submit button with the primary color (`#e60053`).
-24. Styled user-sent chat messages with a primary color background and white text.
-25. Styled the "Login with Security Key" button on the login page with a primary color border.
+23. Styled the chat textarea's submit button with the new primary blue color.
+24. Styled user-sent chat messages with the new primary blue color background and white text.
+25. Styled the "Login with Security Key" button on the login page with the new primary blue color border.
 26. Ensured theme toggle button is visible in the admin dashboard by adding it to `src/app/dashboard/layout.tsx`.
 27. Enhanced `src/components/app-sidebar.tsx` to provide a collapsible icon-only view with tooltips, similar to the shadcn/ui dashboard example, including attempts to refine icon centering and text hiding in collapsed mode.
+28. Updated "Login Attempts" chart on the dashboard (`src/app/dashboard/page.tsx`) to use more distinct colors from the theme's updated chart palette (`--chart-2` and `--chart-4`) instead of the previous theme colors.
+29. Updated active link styling in `src/components/ui/sidebar.tsx` to use the primary blue color and `rounded-xl`.
+30. Ensured buttons on Users page (`src/app/dashboard/users/page.tsx`) use default primary blue styling (Add User, Create User, Update User, Cancel buttons in dialogs).
+31. Ensured buttons on Locked Accounts page (via `src/components/data-table/locked-accounts-columns.tsx`) use default primary blue styling (Unlock Account, Confirm Unlock, Cancel buttons in dialog).
+32. Ensured buttons on Security page (`src/app/dashboard/security/page.tsx`) use default primary blue styling (Export Report, pagination buttons).
+33. Updated User Details page (`src/app/dashboard/users/[id]/page.tsx`) to ensure action buttons use primary blue styling, "Cancel" buttons use blue outline, and backgrounds are theme-aware.
+34. Modified `outline` button variant in `src/components/ui/button.tsx` to use primary blue for border and text, with appropriate hover states.
+35. Changed loading spinner color to primary blue on Users page and Locked Accounts data table.
+36. Removed duplicate manual pagination controls from the Security page, relying on the DataTable's built-in pagination.
 
 ## Active Technical Patterns
 1.  Data Table Pattern
@@ -108,11 +122,11 @@ Based on open files and recent activity, development is focused on security mana
 
 6.  Theming Pattern (New)
     *   Utilizes `next-themes` for managing light, dark, and system themes.
-    *   CSS custom properties (variables) defined in `globals.css` for theme-specific styling (e.g., `--background`, `--foreground`, `--primary`, chart colors).
+    *   CSS custom properties (variables) defined in `globals.css` for theme-specific styling (e.g., `--background`, `--foreground`, new `--primary` blue, and a regenerated blue-based chart color palette).
     *   A dedicated `ThemeProvider` component wraps the application layout.
     *   A `ThemeToggleButton` component allows users to switch themes, integrated into headers.
     *   Consistent corner rounding (`rounded-xl`) applied to UI elements like buttons and inputs for a unified look.
-    *   Specific UI elements (chat messages, login buttons) styled with the primary theme color.
+    *   Specific UI elements (chat messages, login buttons, "Cancel" buttons) styled with the primary theme color (solid or outline).
 
 ## Current Considerations
 1.  Security Features
