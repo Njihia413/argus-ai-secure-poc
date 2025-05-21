@@ -21,8 +21,9 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 2.  **Component Organization**
     ```
     components/
-    ├── ui/           # Base UI components (including Dialog for confirmations)
+    ├── ui/           # Base UI components (including Dialog for confirmations, Sidebar, Tooltip)
     ├── data-table/   # Data display components (e.g., locked-accounts-data-table.tsx)
+    ├── app-sidebar.tsx # Application-specific sidebar implementation
     └── [feature]/    # Feature-specific components
     ```
 
@@ -39,6 +40,12 @@ The application follows Next.js 13+ App Router architecture with a clear separat
     -   Confirmation dialogs (`shadcn/ui Dialog`) for critical actions within table rows (e.g., "Unlock Account"), styled with application's primary font (`font-montserrat`) and consistent sizing (`sm:max-w-[425px]`).
     -   Selective display of columns based on relevance (e.g., "Successful Attempts" column removed where not critical).
 -   Compound components for complex UI patterns.
+-   **Sidebar Architecture (`src/components/app-sidebar.tsx` & `src/components/ui/sidebar.tsx`):**
+    -   Utilizes a context (`SidebarContext`) for managing expanded/collapsed state.
+    -   Supports `collapsible="icon"` mode, showing only icons when collapsed.
+    -   Integrates with `Tooltip` components from `shadcn/ui` to display item names on hover in collapsed mode.
+    -   Conditionally renders text labels based on the sidebar's state, with specific classes (`opacity-0 w-0 hidden`) to ensure proper hiding and layout in collapsed mode.
+    -   Applies `justify-center` to `SidebarMenuButton` and its child `<a>` tag when collapsed to aid icon centering.
 
 ### 2. State Management
 -   React `useState` for local component state (e.g., dialog open/closed, loading states for actions).
@@ -73,6 +80,18 @@ The application follows Next.js 13+ App Router architecture with a clear separat
     -   Requires user to run the local helper application separately.
     -   Error handling for helper connection status (e.g., helper not running, connection lost).
     -   Security: WebSocket server in helper should ideally only bind to `localhost`.
+
+### 7. Theming Pattern (New)
+-   **Library:** `next-themes` is used for managing theme state (light, dark, system).
+-   **Provider:** A `src/components/theme-provider.tsx` (with corrected `ThemeProviderProps` import) wraps the root layout (`src/app/layout.tsx`) to enable theme switching.
+-   **CSS Variables:** Theme-specific colors (backgrounds, foregrounds, primary, accent, chart colors) are defined as CSS custom properties in `src/app/globals.css` within `:root` (for light theme) and `.dark` (for dark theme) selectors.
+    -   Primary button color (`#e60053`) is consistent across themes. This is also applied to specific interactive elements like the chat submit button, user messages, and the "Login with Security Key" button's border.
+    -   Dark theme background is `#0b0a0a`.
+    -   A monochromatic color palette derived from `#e60053` is defined for charts.
+-   **Toggle Component:** A `src/components/theme-toggle-button.tsx` provides a UI for users to switch themes. This button is integrated into the main `src/components/header.tsx` (for chat UI) and directly into `src/app/dashboard/layout.tsx` (for dashboard visibility).
+-   **Styling Consistency:**
+    -   Base UI components like `src/components/ui/button.tsx` and `src/components/ui/input.tsx` are updated to use `rounded-xl` for a consistent look and feel.
+    -   Specific components like `src/components/textarea.tsx` (main container) are also updated to `rounded-xl`. The internal submit button remains `rounded-full` but uses the primary theme color.
 
 ## Technical Decisions
 
