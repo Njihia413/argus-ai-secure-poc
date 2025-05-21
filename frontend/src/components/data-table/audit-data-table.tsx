@@ -85,11 +85,14 @@ export function AuditDataTable<TData, TValue>({
     <div>
       <div className="flex items-center py-4 gap-2">
         <Input
-          placeholder="Filter users..."
-          value={(table.getColumn("username")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("username")?.setFilterValue(event.target.value)
-          }
+          placeholder="Search..." // Changed placeholder
+          value={(table.getColumn("performedBy")?.getFilterValue() as string) ?? ""}
+          onChange={(event) => {
+            // The custom filterFn on the 'performedBy' column will handle searching
+            // against both 'performedBy.username' and 'action'.
+            // So, we only need to set the filter value for the 'performedBy' column here.
+            table.getColumn("performedBy")?.setFilterValue(event.target.value);
+          }}
           className="max-w-sm"
         />
         <Select
