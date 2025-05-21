@@ -872,7 +872,7 @@ const handleReassignKey = async () => {
             </DialogHeader>
 
             <div className="space-y-4 py-4">
-              <div className="bg-yellow-50 dark:bg-transparent p-3 rounded-sm border-l-4 border-yellow-400 dark:border-yellow-600">
+              <div className="bg-yellow-50 dark:bg-transparent p-3 rounded-sm border border-yellow-400 dark:border-yellow-600">
                 <h4 className="text-yellow-800 dark:text-yellow-300 font-medium">Important Instructions</h4>
                 <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                   <li>Ensure the security key is connected to your device</li>
@@ -882,9 +882,9 @@ const handleReassignKey = async () => {
               </div>
               
               {isKeyReassigned && (
-                <div className="bg-blue-50 dark:bg-transparent p-3 rounded-sm border-l-4 border-blue-400 dark:border-blue-600 mt-3">
-                  <h4 className="text-blue-800 dark:text-blue-300 font-medium">Reassigned Security Key</h4>
-                  <p className="text-blue-700 dark:text-blue-400 text-sm mt-1">
+                <div className="bg-red-50 dark:bg-transparent p-3 rounded-sm border border-red-400 dark:border-red-600 mt-3">
+                  <h4 className="text-red-800 dark:text-red-300 font-medium">Reassigned Security Key</h4>
+                  <p className="text-red-700 dark:text-red-400 text-sm mt-1">
                     This security key was reassigned from another user. It needs to be registered with this account before it can be used.
                   </p>
                 </div>
