@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ThemeToggleButton } from "@/components/theme-toggle-button";
 
 // Sample security alerts data for notifications
 const securityAlertsData = [
@@ -65,6 +66,7 @@ export default function DashboardLayout({
             <SidebarTrigger />
             <div className="flex-1" />
             <div className="flex items-center gap-4">
+              <ThemeToggleButton />
               <div className="relative">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
