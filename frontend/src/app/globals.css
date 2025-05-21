@@ -52,7 +52,7 @@
   --card-foreground: oklch(0.145 0 0); /* Dark Gray */
   --popover: oklch(1 0 0); /* White */
   --popover-foreground: oklch(0.145 0 0); /* Dark Gray */
-  --primary: oklch(0.512 0.228 14.17); /* #e60053 */
+  --primary: oklch(0.507 0.191 256.34); /* #2563eb */
   --primary-foreground: oklch(0.985 0 0); /* Near White */
   --secondary: oklch(0.97 0 0); /* Light Gray */
   --secondary-foreground: oklch(0.205 0 0); /* Dark Gray */
@@ -63,12 +63,12 @@
   --destructive: oklch(0.577 0.245 27.325); /* Red */
   --border: oklch(0.922 0 0); /* Light Gray */
   --input: oklch(0.922 0 0); /* Light Gray */
-  --ring: oklch(0.512 0.228 14.17 / 0.5); /* #e60053 with alpha for focus */
-  --chart-1: oklch(0.512 0.228 14.17); /* #e60053 */
-  --chart-2: oklch(0.612 0.208 14.17); /* Lighter #e60053 */
-  --chart-3: oklch(0.412 0.248 14.17); /* Darker #e60053 */
-  --chart-4: oklch(0.512 0.188 14.17); /* Desaturated #e60053 */
-  --chart-5: oklch(0.712 0.188 14.17); /* Much Lighter #e60053 */
+  --ring: oklch(0.507 0.191 256.34 / 0.5); /* #2563eb with alpha for focus */
+  --chart-1: oklch(0.80 0.12 256.34);    /* Lightest Blue */
+  --chart-2: oklch(0.65 0.15 256.34);    /* Lighter Blue */
+  --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
+  --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
+  --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -86,7 +86,7 @@
   --card-foreground: oklch(0.95 0 0); /* Light Gray */
   --popover: oklch(0.12 0.002 302.75); /* Slightly lighter than background */
   --popover-foreground: oklch(0.95 0 0); /* Light Gray */
-  --primary: oklch(0.512 0.228 14.17); /* #e60053 */
+  --primary: oklch(0.507 0.191 256.34); /* #2563eb */
   --primary-foreground: oklch(0.985 0 0); /* Near White */
   --secondary: oklch(0.15 0.002 302.75); /* Darker shade for secondary elements */
   --secondary-foreground: oklch(0.95 0 0); /* Light Gray */
@@ -97,15 +97,15 @@
   --destructive: oklch(0.577 0.245 27.325 / 0.9); /* Red, slightly desaturated for dark mode */
   --border: oklch(0.2 0.002 302.75); /* Visible border on dark background */
   --input: oklch(0.2 0.002 302.75); /* Visible input background */
-  --ring: oklch(0.512 0.228 14.17 / 0.6); /* #e60053 with alpha for focus */
-  --chart-1: oklch(0.512 0.228 14.17); /* #e60053 */
-  --chart-2: oklch(0.612 0.208 14.17); /* Lighter #e60053 */
-  --chart-3: oklch(0.412 0.248 14.17); /* Darker #e60053 */
-  --chart-4: oklch(0.512 0.188 14.17); /* Desaturated #e60053 */
-  --chart-5: oklch(0.712 0.188 14.17); /* Much Lighter #e60053 */
+  --ring: oklch(0.507 0.191 256.34 / 0.6); /* #2563eb with alpha for focus */
+  --chart-1: oklch(0.80 0.12 256.34);    /* Lightest Blue */
+  --chart-2: oklch(0.65 0.15 256.34);    /* Lighter Blue */
+  --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
+  --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
+  --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
   --sidebar: oklch(0.11 0.002 302.75); /* Dark sidebar, slightly different from main bg */
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.488 0.243 264.376); /* Keeping a distinct sidebar primary for dark mode for now */
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
