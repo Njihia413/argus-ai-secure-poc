@@ -50,11 +50,6 @@ const items = [
     url: "/dashboard/settings",
     icon: Settings,
   },
-  {
-    title: "Locked Accounts",
-    url: "/dashboard/locked-accounts",
-    icon: Lock,
-  },
 ]
 
 export function AppSidebar() {
