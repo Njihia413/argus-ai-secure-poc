@@ -796,9 +796,17 @@ def get_users():
                 'securityKeyCount': total_key_count,  # Total number of keys
                 'securityKeyStatus': security_key_status,  # 'active', 'inactive', or null
                 'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
-                'loginAttempts': successful_attempts,
+                'loginAttempts': successful_attempts, # successful_login_attempts in db
                 'failedAttempts': failed_attempts,
-                'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None
+                'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None,
+                # Added fields:
+                'account_locked': user.account_locked,
+                'timezone': user.timezone,
+                'last_login_ip': user.last_login_ip,
+                'total_login_attempts': user.total_login_attempts, # This uses the DB column
+                'locked_time': user.locked_time.isoformat() if user.locked_time else None,
+                'unlocked_by': user.unlocked_by,
+                'unlocked_time': user.unlocked_time.isoformat() if user.unlocked_time else None
             })
 
         return jsonify({'users': user_list})
@@ -858,6 +866,14 @@ def get_user(user_id):
             'lastName': user.last_name,
             'email': user.email,
             'role': user.role,
+            'securityKeyStatus': user.security_key_status, # Added
+            'account_locked': user.account_locked, # Added
+            'locked_time': user.locked_time.isoformat() if user.locked_time else None, # Added
+            'timezone': user.timezone, # Added
+            'last_login_ip': user.last_login_ip, # Added
+            'total_login_attempts': user.total_login_attempts, # Added
+            'unlocked_by': user.unlocked_by, # Added
+            'unlocked_time': user.unlocked_time.isoformat() if user.unlocked_time else None, # Added
             'hasSecurityKey': security_key_count > 0,
             'securityKeyCount': security_key_count,
             'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
