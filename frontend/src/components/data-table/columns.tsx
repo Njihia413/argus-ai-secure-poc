@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Eye, Edit3, Trash2, LockOpen } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +28,7 @@ export type User = {
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
+  account_locked: boolean // New field for account lock status
 }
 
 export const columns: ColumnDef<User, unknown>[] = [
@@ -158,11 +159,32 @@ export const columns: ColumnDef<User, unknown>[] = [
     },
   },
   {
+    accessorKey: "account_locked",
+    header: "Account Status",
+    cell: ({ row }) => {
+      const isLocked = row.getValue("account_locked") as boolean
+
+      if (isLocked) {
+        return (
+          <Badge variant="destructive" className="bg-red-100 text-red-700 dark:bg-transparent dark:text-red-300 border-red-300 dark:border-red-700">
+            Locked
+          </Badge>
+        )
+      } else {
+        return (
+          <Badge variant="outline" className="text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
+            Unlocked
+          </Badge>
+        )
+      }
+    },
+  },
+  {
     id: "actions",
     cell: ({ row, table }) => {
       const router = useRouter()
       const user = row.original
-      const { setSelectedUser, setIsDeleteDialogOpen } = table.options.meta as any
+      const { setSelectedUser, setIsDeleteDialogOpen, setIsEditUserDialogOpen, setIsUnlockAccountDialogOpen } = table.options.meta as any
 
       return (
           <DropdownMenu>
@@ -171,24 +193,35 @@ export const columns: ColumnDef<User, unknown>[] = [
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="font-montserrat">
+            <DropdownMenuContent align="end" className="font-montserrat border-0 shadow-lg">
               <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
+                <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => {
-                (table.options.meta as any).setSelectedUser(user);
-                (table.options.meta as any).setIsEditUserDialogOpen(true);
+                setSelectedUser(user);
+                setIsEditUserDialogOpen(true);
               }}>
+                <Edit3 className="mr-2 h-4 w-4" />
                 Edit User
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              {user.account_locked && (
+                <DropdownMenuItem onClick={() => {
+                  setSelectedUser(user);
+                  setIsUnlockAccountDialogOpen(true);
+                }}>
+                  <LockOpen className="mr-2 h-4 w-4" />
+                  Unlock Account
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                   onClick={() => {
-                    (table.options.meta as any).setSelectedUser(user);
-                    (table.options.meta as any).setIsDeleteDialogOpen(true);
+                    setSelectedUser(user);
+                    setIsDeleteDialogOpen(true);
                   }}
-                  className="text-red-600"
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900 dark:focus:text-red-400"
               >
+                <Trash2 className="mr-2 h-4 w-4" />
                 Delete User
               </DropdownMenuItem>
             </DropdownMenuContent>
