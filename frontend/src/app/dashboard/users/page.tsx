@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
-import { UserPlus, Eye, EyeOff } from "lucide-react"
+import { UserPlus, Eye, EyeOff, LockOpen } from "lucide-react"
 import axios from "axios"
 import { toast } from "sonner"
 import { DataTable } from "@/components/data-table/data-table"
@@ -63,6 +63,7 @@ interface User {
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
+  account_locked: boolean
 }
 
 // New user form interface for real API integration
@@ -81,6 +82,7 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isUnlockAccountDialogOpen, setIsUnlockAccountDialogOpen] = useState(false) // New state for unlock dialog
   const router = useRouter()
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -236,6 +238,42 @@ export default function UsersPage() {
     return matchesSearch && matchesRole && matchesSecurityKey;
   });
 
+  const handleUnlockUserAccount = async () => {
+    if (!selectedUser) return; // Ensure selectedUser is not null
+    setIsLoading(true);
+    try {
+      const userStr = sessionStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not authenticated');
+      }
+      
+      const adminUserInfo = JSON.parse(userStr);
+      const authToken = adminUserInfo.authToken;
+
+      const response = await fetch(`${API_URL}/users/${selectedUser.id}/unlock`, {
+        method: 'POST', // Corrected method
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to unlock account');
+      }
+      
+      toast.success(`User account ${selectedUser.username} unlocked successfully`);
+      setIsUnlockAccountDialogOpen(false); // Close dialog on success
+      fetchUsers(authToken); // Refresh users list
+    } catch (error) {
+      console.error('Error unlocking account:', error);
+      toast.error((error as Error).message || "Failed to unlock account. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
       <>
         <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
@@ -262,6 +300,7 @@ export default function UsersPage() {
                         setSelectedUser,
                         setIsDeleteDialogOpen,
                         setIsEditUserDialogOpen,
+                        setIsUnlockAccountDialogOpen, // Pass setter to DataTable
                       }}
                       toolbar={
                         <div className="flex items-center space-x-4 w-full font-montserrat">
@@ -664,6 +703,45 @@ export default function UsersPage() {
                     </Button>
                   </DialogFooter>
                 </div>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isUnlockAccountDialogOpen} onOpenChange={setIsUnlockAccountDialogOpen}>
+          <DialogContent className="sm:max-w-[425px] font-montserrat">
+            <DialogHeader>
+              <DialogTitle>Unlock User Account</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to unlock this user's account?
+              </DialogDescription>
+            </DialogHeader>
+            {selectedUser && (
+              <div>
+                <div className="py-4">
+                  <p className="text-sm text-muted-foreground">
+                    You are about to unlock the account for:
+                  </p>
+                  <p className="mt-2 font-medium">
+                    {selectedUser.firstName} {selectedUser.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Username: {selectedUser.username}
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsUnlockAccountDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleUnlockUserAccount}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Unlocking..." : "Unlock Account"}
+                  </Button>
+                </DialogFooter>
+              </div>
             )}
           </DialogContent>
         </Dialog>
