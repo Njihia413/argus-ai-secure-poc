@@ -59,6 +59,8 @@ interface User {
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
+  account_locked: boolean // Added for lock status
+  locked_time: string | null // Added for lock time
 }
 
 interface SecurityKey {
@@ -666,6 +668,24 @@ const handleReassignKey = async () => {
                   <Input value={user.failedAttempts} disabled/>
                 </div>
               </div>
+
+              {user.account_locked && user.locked_time && (
+                <div className="grid grid-cols-1 gap-4"> {/* Changed to grid-cols-1 */}
+                  <div className="space-y-2">
+                    <Label className="text-red-600 dark:text-red-400">Account Locked At</Label>
+                    <Input
+                      value={
+                        new Date(user.locked_time).toLocaleString('en-US', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        })
+                      }
+                      disabled
+                      className="border-red-500 dark:border-red-700"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
