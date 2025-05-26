@@ -299,9 +299,9 @@ export default function DashboardPage() {
 
   // Helper function for bar color based on risk score
   const getRiskColor = (score: number) => {
-    if (score > 75) return "#dc2626" // Red for High Risk
-    if (score > 40) return "#f59e0b" // Amber for Medium Risk
-    return "#16a34a" // Green for Low Risk
+    if (score > 75) return "#8B5CF6" // Purple for High Risk
+    if (score > 40) return "#2563eb" // Primary Blue for Medium Risk
+    return "#a6c4fc" // Light Blue for Low Risk
   }
 
   const formatRiskScore = (score: number | string | (string | number)[] | null | undefined) => {
@@ -318,7 +318,7 @@ export default function DashboardPage() {
   }
 
   return (
-      <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
         <h2 className="text-2xl font-bold tracking-tight">Dashboard Overview</h2>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -590,15 +590,15 @@ export default function DashboardPage() {
               {/* Custom Legend for Risk Score Colors */}
               <div className="mt-4 flex justify-center space-x-4 text-xs text-muted-foreground">
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#16A34A' }}></span>
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
                   Low Risk (&lt;=40)
                 </div>
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#F59E0B' }}></span>
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
                   Medium Risk (41-75)
                 </div>
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#DC2626' }}></span>
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
                   High Risk (&gt;75)
                 </div>
               </div>
@@ -650,9 +650,9 @@ export default function DashboardPage() {
                               formatter={(value, name) => [`${value} users`, name]}
                               content={({ active, payload, label }) => {
                                 if (active && payload && payload.length) {
-                                  const data = payload[0].payload;
+                                  const data = payload[0].payload as SecurityMetric; // Added type assertion
                                   return (
-                                      <div className="bg-white p-2 border border-gray-200 shadow-md text-sm">
+                                      <div className="rounded-lg border bg-background p-2 shadow-sm text-sm text-foreground">
                                         <p className="font-bold">{data.name}</p>
                                         <p>{data.value} users</p>
                                       </div>
@@ -660,27 +660,27 @@ export default function DashboardPage() {
                                 }
                                 return null;
                               }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
-              </div>
-              {/* Custom Legend with colored boxes */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-muted-foreground">
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#16A34A' }}></span>
-                  Active Keys
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                    )}
+                  </ChartErrorBoundary>
                 </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#F59E0B' }}></span>
-                  Inactive Keys
+                {/* Custom Legend with colored boxes */}
+                <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
+                  <div className="flex items-center">
+                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
+                    Active Keys
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
+                    Inactive Keys
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
+                    No Keys
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#DC2626' }}></span>
-                  No Keys
-                </div>
-              </div>
             </CardContent>
           </Card>
 
