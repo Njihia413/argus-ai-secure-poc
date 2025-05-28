@@ -69,7 +69,8 @@
   --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
   --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
   --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
-  --sidebar: oklch(0.985 0 0);
+  --sidebar-bg-light: #f2f0f1; /* New light mode sidebar background */
+  --sidebar: var(--sidebar-bg-light); /* Use the new light mode variable */
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -103,7 +104,8 @@
   --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
   --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
   --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
-  --sidebar: oklch(0.11 0.002 302.75); /* Dark sidebar, slightly different from main bg */
+  --sidebar-bg-dark: #272526; /* New dark mode sidebar background */
+  --sidebar: var(--sidebar-bg-dark); /* Use the new dark mode variable */
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376); /* Keeping a distinct sidebar primary for dark mode for now */
   --sidebar-primary-foreground: oklch(0.985 0 0);
