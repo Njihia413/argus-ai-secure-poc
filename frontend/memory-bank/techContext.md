@@ -42,6 +42,7 @@
     - Local Python Helper (`../backend/usb_detector.py`):
         - `websockets` (v15.0.1): For WebSocket server to communicate with frontend.
         - `psutil`: For detecting USB storage device connections.
+        - `hid`: For detecting HID FIDO security key devices.
 
 ### Data Management & Display
 - Zustand for state management

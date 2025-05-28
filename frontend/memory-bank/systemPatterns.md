@@ -71,16 +71,17 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 
 ### 6. Local Hardware/System Interaction (New Pattern)
 -   **Problem:** Browser limitations prevent direct access to certain system-level hardware events (e.g., generic USB plug/unplug).
--   **Solution:** Employ a lightweight local helper application (e.g., Python script `../backend/usb_detector.py`) that runs on the user's machine.
-    -   The helper application has the necessary permissions to detect these system events.
+-   **Solution:** Employ a lightweight local helper application (e.g., Python script [`../backend/usb_detector.py`](../backend/usb_detector.py:1)) that runs on the user's machine.
+    -   The helper application ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) has the necessary permissions to detect system events like generic USB connections and, more specifically, HID FIDO security key connect/disconnect events (using the `hid` library).
     -   It hosts a WebSocket server (e.g., on `ws://localhost:[PORT]`).
 -   **Communication:** The frontend application ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) acts as a WebSocket client, connecting to the local helper.
-    -   The helper sends messages to the frontend upon event detection (e.g., `NORMAL_USB_CONNECTED`).
+    -   The helper sends messages (e.g., `NORMAL_USB_CONNECTED`, `SECURITY_KEY_HID_CONNECTED`, `SECURITY_KEY_HID_DISCONNECTED`) to the frontend upon event detection.
     -   The frontend reacts to these messages to update UI or application state (e.g., changing available AI models).
 -   **Considerations:**
     -   Requires user to run the local helper application separately.
-    -   Error handling for helper connection status (e.g., helper not running, connection lost).
+    -   Error handling for helper connection status (e.g., helper not running, connection lost with robust client-side reconnection attempts).
     -   Security: WebSocket server in helper should ideally only bind to `localhost`.
+    -   **Frontend State Handling for WebSockets: To ensure WebSocket event handlers (like `onmessage` in [`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) access the latest React state values (which can be stale in closures), a pattern of using `useRef` to mirror the relevant state (e.g., `hidKeyRef` for `hidKey` state) is employed. The event handler then reads from `ref.current` for conditional logic.**
 
 ### 7. Theming Pattern (New)
 -   **Library:** `next-themes` is used for managing theme state (light, dark, system).

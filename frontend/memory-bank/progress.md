@@ -42,10 +42,11 @@
 - [x] AI providers setup
 - [x] AI tools integration
 - [x] Dynamic AI Model Availability via USB Detection:
-    - Implemented a local Python helper application (`../backend/usb_detector.py`) using WebSockets to detect "normal" (non-WebAuthn) USB device connections.
+    - Implemented a local Python helper application ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) using WebSockets to detect both "normal" (non-WebAuthn) USB device connections and HID FIDO security key connect/disconnect events.
     - Frontend chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) connects to this helper and adjusts available AI models for email/password authenticated users based on USB status.
-    - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status.
+    - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status (though physical presence of the key, now detected via HID, is also a factor for model availability).
     - Resolved Python `websockets` library v15.0.1 API incompatibilities.
+    - [x] **HID FIDO Security Key Detection: `usb_detector.py` now continuously monitors for HID FIDO keys, sending connect/disconnect events to the frontend. The chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) uses this to adjust model availability in real-time, leveraging a consolidated `hidKey` state object and `useRef` for robust state access in WebSocket handlers. Toast notifications for these events have been simplified.**
 
 ### UI/UX Enhancements
 - [x] Implemented Dark/Light Theme:
@@ -95,7 +96,7 @@
     *   Enhanced security insights
     *   Automated threat detection
     *   Security recommendations
-    *   [ ] Refine USB device detection in `usb_detector.py` to more accurately distinguish between generic USBs and specific WebAuthn keys (currently uses a placeholder).
+    *   [x] Refined USB device detection in `usb_detector.py` to distinguish generic USBs and HID FIDO WebAuthn keys using HID usage pages and VID/PID fallbacks. Frontend logic handles model availability based on these distinct events.
     *   [ ] Consider packaging or auto-start mechanism for the `usb_detector.py` helper application for better UX.
 
 ## Known Issues

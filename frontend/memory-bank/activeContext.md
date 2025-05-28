@@ -80,6 +80,20 @@ Based on open files and recent activity, development is focused on security mana
     *   `src/app/login/page.tsx`: (**"Login with Security Key" button border styled with primary color.**)
     *   `src/app/dashboard/layout.tsx`: (**Added `ThemeToggleButton` to dashboard header.**)
 
+8.  **Chat Page - Real-time HID Security Key Integration & Model Availability**
+    *   Implemented real-time detection of HID FIDO security key connect/disconnect events using a backend Python script ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) and WebSocket communication to the frontend chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)).
+    *   **Backend (`../backend/usb_detector.py`):**
+        *   Continuously monitors for HID FIDO device changes.
+        *   Sends `SECURITY_KEY_HID_CONNECTED` and `SECURITY_KEY_HID_DISCONNECTED` messages via WebSockets.
+        *   Notifies Flask backend (`/api/internal/hid_security_key_event`) for potential database updates (VID/PID).
+    *   **Frontend (`src/app/chat/page.tsx`):**
+        *   Establishes a robust WebSocket connection to `usb_detector.py` with indefinite reconnection attempts on unclean closures.
+        *   **State Management Refactor:** Consolidated HID security key state into a single `hidKey` object (`{isConnected, path, vendorId, productId}`) and utilized a `hidKeyRef` to ensure the `onmessage` WebSocket handler accesses the latest state, resolving stale closure issues.
+        *   Processes WebSocket messages to update the `hidKey` state.
+        *   Displays toast notifications for HID connect ("Security Key (HID) Connected") and disconnect ("Security Key (HID) Disconnected", with variations for specific vs. generic disconnects) events.
+        *   Dynamically updates `availableModels` based on `hidKey.isConnected` (and other factors like login method, helper app connection status), granting full model access when a recognized key is present and restricting it otherwise.
+        *   Corrected WebSocket `useEffect` dependency array to `[userData]` to prevent connection loops.
+
 ## Recent Decisions
 1.  Using data tables for security information display.
 2.  Implementing WebAuthn for authentication.
