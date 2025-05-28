@@ -4362,4 +4362,7 @@ def hid_security_key_event():
         return jsonify({'error': 'Invalid status provided'}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Note: db.create_all() and create_admin_user() are usually not called here
+    # if using Flask-Migrate and a proper seeding mechanism.
+    # Consider moving them to a dedicated init-db command or manage via migrations.
+    app.run(debug=True, host='0.0.0.0', port=5000)
