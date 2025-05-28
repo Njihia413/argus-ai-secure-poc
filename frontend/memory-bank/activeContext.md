@@ -84,16 +84,16 @@ Based on open files and recent activity, development is focused on security mana
     *   Implemented real-time detection of HID FIDO security key connect/disconnect events using a backend Python script ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) and WebSocket communication to the frontend chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)).
     *   **Backend (`../backend/usb_detector.py`):**
         *   Continuously monitors for HID FIDO device changes.
-        *   Sends `SECURITY_KEY_HID_CONNECTED` and `SECURITY_KEY_HID_DISCONNECTED` messages via WebSockets.
-        *   Notifies Flask backend (`/api/internal/hid_security_key_event`) for potential database updates (VID/PID). **The `vendor_id` and `product_id` in this payload are now sent as 4-digit hexadecimal strings (e.g., "1050", "0407") for consistency, instead of integers.**
+        *   Sends `SECURITY_KEY_HID_CONNECTED` and `SECURITY_KEY_HID_DISCONNECTED` messages via WebSockets. **The `vendorId` and `productId` in these WebSocket messages are now sent as 4-digit hexadecimal strings (e.g., "1050", "0407") for consistency.**
+        *   Notifies Flask backend (`/api/internal/hid_security_key_event`) for potential database updates (VID/PID). The `vendor_id` and `product_id` in this Flask API payload are also sent as 4-digit hexadecimal strings.
     *   **Frontend (`src/app/chat/page.tsx`):**
-        *   Establishes a robust WebSocket connection to `usb_detector.py` with indefinite reconnection attempts on unclean closures.
-        *   **State Management Refactor:** Consolidated HID security key state into a single `hidKey` object (`{isConnected, path, vendorId, productId}`) and utilized a `hidKeyRef` to ensure the `onmessage` WebSocket handler accesses the latest state, resolving stale closure issues.
+        *   Establishes a robust WebSocket connection to `usb_detector.py`. **The `onclose` handler logic has been updated to always attempt reconnection if the user is logged in and the connection was not closed cleanly (e.g., by the component unmounting or an intentional server close), ensuring the UI attempts to connect even if the helper app is started after the page loads. The `onerror` handler still uses a flag (`hasLoggedWebSocketErrorRef`) to prevent spamming the console/UI with the *initial* connection error toast/overlay if the helper isn't running when the page first loads, but this flag no longer halts subsequent reconnection attempts initiated by `onclose`.**
+        *   **State Management Refactor:** Consolidated HID security key state into a single `hidKey` object (`{isConnected, path, vendorId, productId}`). The `vendorId` and `productId` are now stored as strings (hexadecimal) as received from the backend. Utilized a `hidKeyRef` to ensure the `onmessage` WebSocket handler accesses the latest state, resolving stale closure issues.
         *   Processes WebSocket messages to update the `hidKey` state.
-        *   Displays toast notifications for HID connect ("Security Key (HID) Connected") and disconnect ("Security Key (HID) Disconnected", with variations for specific vs. generic disconnects) events.
+        *   Displays toast notifications for HID connect and disconnect events. **These notifications now include the hexadecimal VID and PID for clarity (e.g., "Security Key (HID) Connected: VID=1050, PID=0407").**
         *   Dynamically updates `availableModels` based on `hidKey.isConnected` (and other factors like login method, helper app connection status), granting full model access when a recognized key is present and restricting it otherwise.
         *   Corrected WebSocket `useEffect` dependency array to `[userData]` to prevent connection loops.
-        *   **Fixed an issue where WebSocket connection errors were logged repeatedly: the error is now logged as a `console.warn` (to prevent the Next.js error overlay) by the application only once, and subsequent reconnection attempts are halted to prevent further browser-native error messages in the console for that session.**
+        *   The `onerror` handler for WebSockets logs a `console.warn` once per session if an initial connection error occurs (to prevent the Next.js error overlay), while the `onclose` handler ensures reconnection attempts continue if the closure was not intentional.
 
 ## Recent Decisions
 1.  Using data tables for security information display.
