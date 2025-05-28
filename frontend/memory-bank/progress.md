@@ -75,7 +75,10 @@
 
 - [x] Dashboard Chart Theming:
     - Updated "Login Attempts" chart in `src/app/dashboard/page.tsx` to use the new, more distinct theme colors (`--chart-2` and `--chart-4`) instead of previous theme colors.
-
+    - Moved the custom legend (displaying "Low Risk", "Medium Risk", "High Risk") from the "Top Locations" chart to be under the "Risk Score Trend" chart in `src/app/dashboard/page.tsx`, and ensured it is correctly positioned within the `CardContent`.
+    - Added a new custom legend for the "Top Locations" chart in `src/app/dashboard/page.tsx` to display "Low Severity (<= 5 attempts)", "Medium Severity (<= 15 attempts)", and "High Severity (> 15 attempts)" with corresponding colors, positioned correctly within its `CardContent`.
+    - Corrected a malformed JSX comment block in `src/app/dashboard/page.tsx`.
+    - Resolved linter errors on line 839 of `src/app/dashboard/page.tsx` by wrapping the `>` character in a JSX expression `{'>'}`.
 ## In Progress
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
