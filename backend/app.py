@@ -4292,5 +4292,74 @@ with app.app_context():
     create_admin_user()
     db.session.commit()
 
+@app.route('/api/internal/hid_security_key_event', methods=['POST'])
+def hid_security_key_event():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    vendor_id = data.get('vendor_id')
+    product_id = data.get('product_id')
+    device_path = data.get('path') # Unique path for the connected device session
+    status = data.get('status') # 'connected' or 'disconnected'
+
+    print(f"Received HID event: Status={status}, VID={vendor_id}, PID={product_id}, Path={device_path}")
+
+    if status == 'connected':
+        if vendor_id is None or product_id is None:
+            return jsonify({'error': 'Missing vendor_id or product_id for connected event'}), 400
+
+        # Attempt to find a SecurityKey that has a credential_id (is registered)
+        # but is missing vendor_id and product_id.
+        # This is a simple heuristic and might need refinement for multi-user or multi-key scenarios.
+        
+        print(f"Flask: Searching for active SecurityKey with NULL VID/PID and a credential_id...")
+        # Prioritize keys that are active and missing VID/PID
+        key_to_update = SecurityKey.query.filter(
+            SecurityKey.credential_id.isnot(None),
+            SecurityKey.is_active == True,
+            SecurityKey.vendor_id.is_(None),
+            SecurityKey.product_id.is_(None)
+        ).first()
+
+        if not key_to_update:
+            print(f"Flask: No active key found. Searching for any SecurityKey with NULL VID/PID and a credential_id...")
+            # Fallback: check any key missing VID/PID if no active ones are found
+            key_to_update = SecurityKey.query.filter(
+                SecurityKey.credential_id.isnot(None),
+                SecurityKey.vendor_id.is_(None),
+                SecurityKey.product_id.is_(None)
+            ).first()
+
+        if key_to_update:
+            print(f"Flask: Found SecurityKey ID {key_to_update.id} to update.")
+            key_to_update.vendor_id = str(vendor_id) # Ensure string
+            key_to_update.product_id = str(product_id) # Ensure string
+            try:
+                db.session.commit()
+                print(f"Updated SecurityKey ID {key_to_update.id} with VID: {vendor_id}, PID: {product_id}")
+                
+                # Optional: Log this update in SecurityKeyAudit
+                # This would require knowing which admin/user context this update is for,
+                # which is tricky if usb_detector.py is system-wide.
+                # For now, just a server log.
+                
+                return jsonify({'message': f'SecurityKey {key_to_update.id} updated with VID/PID'}), 200
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error updating SecurityKey with VID/PID: {e}")
+                return jsonify({'error': f'Failed to update database: {str(e)}'}), 500
+        else:
+            print(f"No suitable SecurityKey record found to update with VID: {vendor_id}, PID: {product_id}")
+            return jsonify({'message': 'No matching SecurityKey record to update with VID/PID'}), 200
+            
+    elif status == 'disconnected':
+        # Handle disconnection if needed, e.g., logging
+        print(f"Security key disconnected event received for path: {device_path}")
+        # No database update typically needed on disconnect for VID/PID here
+        return jsonify({'message': 'Disconnected event received'}), 200
+    else:
+        return jsonify({'error': 'Invalid status provided'}), 400
+
 if __name__ == '__main__':
     app.run(debug=True)
