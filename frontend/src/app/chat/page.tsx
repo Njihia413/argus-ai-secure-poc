@@ -45,8 +45,8 @@ const KEY_CHECK_INTERVAL = 3000;
 interface HidKeyInfo {
   isConnected: boolean;
   path: string | null;
-  vendorId: number | null;
-  productId: number | null;
+  vendorId: string | null;
+  productId: string | null;
 }
 
 const initialHidKeyInfo: HidKeyInfo = {
@@ -189,7 +189,7 @@ export default function ChatPage() {
                 vendorId: message.vendorId,
                 productId: message.productId
               });
-              toast.success(`Security Key (HID) Connected`); // Updated
+              toast.success(`Security Key (HID) Connected: VID=${message.vendorId}, PID=${message.productId}`);
               break;
             case "SECURITY_KEY_HID_DISCONNECTED":
               console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
@@ -199,11 +199,11 @@ export default function ChatPage() {
               if (hidKeyRef.current.path && hidKeyRef.current.path === message.path) {
                 console.log("Disconnect Case 1: Tracked key matches disconnected path.");
                 setHidKey(initialHidKeyInfo); 
-                toast.error(`Security Key (HID) Disconnected`); // Updated
+                toast.error(`Security Key (HID) Disconnected: VID=${hidKeyRef.current.vendorId || 'N/A'}, PID=${hidKeyRef.current.productId || 'N/A'}`);
               } else if (hidKeyRef.current.isConnected && message.path && (!hidKeyRef.current.path || hidKeyRef.current.path !== message.path)) {
                 console.log("Disconnect Case 2: A HID key disconnected, and we thought one was connected (path mismatch or no specific stored path).");
                 setHidKey(initialHidKeyInfo);
-                toast.error(`A Security Key (HID) Disconnected (Path: ${message.path})`); // Updated
+                toast.error(`A Security Key (HID) Disconnected: VID=${message.vendorId || 'N/A'}, PID=${message.productId || 'N/A'} (Path: ${message.path || 'N/A'})`);
               } else if (hidKeyRef.current.isConnected && !message.path) {
                 console.log("Disconnect Case 3: Generic HID disconnect (no path in message), and we thought one was connected.");
                 setHidKey(initialHidKeyInfo);
@@ -249,16 +249,13 @@ export default function ChatPage() {
         if (wsRef.current === socket) {
           wsRef.current = null;
         }
-        if (userData && event.code !== 1000) { // If not a clean, intentional close
-          if (!hasLoggedWebSocketErrorRef.current) { // And if our app hasn't logged a persistent error yet
-            console.log(`Will attempt to reconnect in ${retryDelay / 1000}s.`);
+        if (userData && event.code !== 1000) { // If not a clean, intentional close by the server or client
+            // Always attempt to reconnect if the closure was not intentional and user is logged in.
+            // The hasLoggedWebSocketErrorRef is primarily to prevent the initial error overlay/toast spam,
+            // but we still want to keep trying to connect in the background.
+            console.log(`WebSocket closed unexpectedly. Will attempt to reconnect in ${retryDelay / 1000}s. Error logged previously: ${hasLoggedWebSocketErrorRef.current}`);
             if (connectTimeoutId) clearTimeout(connectTimeoutId);
             connectTimeoutId = setTimeout(connectWebSocket, retryDelay);
-          } else {
-            // Our app has logged an error, so stop retrying to prevent console spam
-            console.log("USB helper WebSocket error previously logged. Halting further reconnection attempts for this session.");
-            if (connectTimeoutId) clearTimeout(connectTimeoutId); // Ensure any pending retry is cancelled
-          }
         }
       };
     }
