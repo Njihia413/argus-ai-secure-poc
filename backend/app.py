@@ -1429,7 +1429,9 @@ def reset_security_key(key_id):
             'is_active': key.is_active,
             'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
             'deactivation_reason': key.deactivation_reason,
-            'credential_id': key.credential_id
+            'credential_id': key.credential_id,
+            'public_key': key.public_key,
+            'sign_count': key.sign_count
         }
 
         # Reset the database record
@@ -1442,13 +1444,17 @@ def reset_security_key(key_id):
         
         # Clear credential if needed
         key.credential_id = None
+        key.public_key = None
+        key.sign_count = 0
 
         new_state = {
             'pin': None,
             'is_active': key.is_active,
             'deactivated_at': key.deactivated_at.isoformat(),
             'deactivation_reason': key.deactivation_reason,
-            'credential_id': key.credential_id
+            'credential_id': key.credential_id,
+            'public_key': key.public_key,
+            'sign_count': key.sign_count
         }
 
         # Create audit log
