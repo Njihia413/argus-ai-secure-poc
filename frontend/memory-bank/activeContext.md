@@ -85,7 +85,7 @@ Based on open files and recent activity, development is focused on security mana
     *   **Backend (`../backend/usb_detector.py`):**
         *   Continuously monitors for HID FIDO device changes.
         *   Sends `SECURITY_KEY_HID_CONNECTED` and `SECURITY_KEY_HID_DISCONNECTED` messages via WebSockets.
-        *   Notifies Flask backend (`/api/internal/hid_security_key_event`) for potential database updates (VID/PID).
+        *   Notifies Flask backend (`/api/internal/hid_security_key_event`) for potential database updates (VID/PID). **The `vendor_id` and `product_id` in this payload are now sent as 4-digit hexadecimal strings (e.g., "1050", "0407") for consistency, instead of integers.**
     *   **Frontend (`src/app/chat/page.tsx`):**
         *   Establishes a robust WebSocket connection to `usb_detector.py` with indefinite reconnection attempts on unclean closures.
         *   **State Management Refactor:** Consolidated HID security key state into a single `hidKey` object (`{isConnected, path, vendorId, productId}`) and utilized a `hidKeyRef` to ensure the `onmessage` WebSocket handler accesses the latest state, resolving stale closure issues.

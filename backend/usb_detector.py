@@ -148,7 +148,7 @@ async def hid_security_key_monitor():
                 })
                 
                 try:
-                    payload = {'vendor_id': info['vendor_id'], 'product_id': info['product_id'], 'path': path, 'status': 'connected'}
+                    payload = {'vendor_id': f"{info['vendor_id']:04x}", 'product_id': f"{info['product_id']:04x}", 'path': path, 'status': 'connected'}
                     response = requests.post(FLASK_API_URL, json=payload, timeout=5)
                     print(f"Python hid_security_key_monitor: Notified Flask of connection: {payload}, Response: {response.status_code}")
                 except requests.exceptions.RequestException as e:
@@ -177,9 +177,9 @@ async def hid_security_key_monitor():
                 })
                 
                 try:
-                    payload = {'path': path_disconnected, 'status': 'disconnected', 
-                               'vendor_id': disconnected_info.get('vendor_id'), 
-                               'product_id': disconnected_info.get('product_id')}
+                    payload = {'path': path_disconnected, 'status': 'disconnected',
+                               'vendor_id': f"{disconnected_info.get('vendor_id', 0):04x}",
+                               'product_id': f"{disconnected_info.get('product_id', 0):04x}"}
                     response = requests.post(FLASK_API_URL, json=payload, timeout=5)
                     print(f"Python hid_security_key_monitor: Notified Flask of disconnection: {payload}, Response: {response.status_code}")
                 except requests.exceptions.RequestException as e:

@@ -42,7 +42,7 @@
 - [x] AI providers setup
 - [x] AI tools integration
 - [x] Dynamic AI Model Availability via USB Detection:
-    - Implemented a local Python helper application ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) using WebSockets to detect both "normal" (non-WebAuthn) USB device connections and HID FIDO security key connect/disconnect events.
+    - Implemented a local Python helper application ([`../backend/usb_detector.py`](../backend/usb_detector.py:1)) using WebSockets to detect both "normal" (non-WebAuthn) USB device connections and HID FIDO security key connect/disconnect events. **The payload sent to the Flask backend for HID events now uses hexadecimal string representations for `vendor_id` and `product_id` for consistency.**
     - Frontend chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) connects to this helper and adjusts available AI models for email/password authenticated users based on USB status.
     - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status (though physical presence of the key, now detected via HID, is also a factor for model availability).
     - Resolved Python `websockets` library v15.0.1 API incompatibilities.
