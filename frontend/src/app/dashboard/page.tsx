@@ -297,6 +297,17 @@ export default function DashboardPage() {
     fetchDashboardData()
   }, [refreshTrigger]) // Add refreshTrigger to dependency array to refresh on key changes
 
+  const DEVICE_COLOR_MAP: { [key: string]: string } = {
+    'windows pc': '#2563eb',
+    'desktop': '#2563eb', // Assuming general 'Desktop' might also map to Windows or be a fallback
+    'mobile': '#a6c4fc',
+    'tablet': '#60A5FA',
+    'mac': '#8B5CF6',
+    'linux': '#C4B5FD',
+    'others': '#9CA3AF', // Default for 'Others'
+    'unknown': '#9CA3AF' // Fallback for unknown or null device types
+  };
+
   // Helper function for bar color based on risk score
   const getRiskColor = (score: number) => {
     if (score > 75) return "#8B5CF6" // Purple for High Risk
@@ -367,11 +378,11 @@ export default function DashboardPage() {
                     className={`text-xs ${
                         stats?.successRate !== undefined ? (
                             stats.successRate >= 90
-                                ? 'bg-green-50 text-green-700 border-green-200'
+                                ? 'text-green-700 border-green-700'
                                 : stats.successRate >= 70
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : 'bg-red-50 text-red-700 border-red-200'
-                        ) : 'bg-gray-50 text-gray-700 border-gray-200'
+                                    ? 'text-amber-700 border-amber-700'
+                                    : 'text-red-700 border-red-700'
+                        ) : 'text-gray-700 border-gray-700'
                     }`}
                 >
                   {stats?.successRate !== undefined ? (
@@ -502,7 +513,7 @@ export default function DashboardPage() {
                 <ChartErrorBoundary>
                   {isLoading ? (
                       <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading risk score data...
+                        Loading risk score trend...
                       </div>
                   ) : error ? (
                       <div className="h-full flex items-center justify-center text-red-500">
@@ -517,16 +528,9 @@ export default function DashboardPage() {
                         <BarChart
                             data={riskTrend?.length > 0 ? riskTrend.map(item => ({
                               ...item,
-                              // Ensure riskScore is a number
-                              riskScore: typeof item.riskScore === 'number' ? item.riskScore :
-                                  !isNaN(parseFloat(item.riskScore)) ? parseFloat(item.riskScore) : 0
-                            })) : [{ name: 'No data', riskScore: 0, attemptCount: 0 }]}
-                            margin={{
-                              top: 5,
-                              right: 10,
-                              left: 10,
-                              bottom: 0,
-                            }}
+                              riskScore: item.riskScore || 0 // Ensure riskScore is a number
+                            })) : [{ name: 'No Data', riskScore: 0 }]}
+                            margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
                         >
                           <XAxis
                               dataKey="name"
@@ -540,46 +544,43 @@ export default function DashboardPage() {
                               fontSize={12}
                               tickLine={false}
                               axisLine={false}
-                              tickFormatter={(value) => value.toString()}
+                              tickFormatter={(value) => Math.round(value).toString()}
                               allowDecimals={false}
-                              domain={[0, 100]}
-                              ticks={[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
-                              interval={0}
+                              domain={[0, 100]} // Risk score is 0-100
                           />
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <Bar
-                              dataKey="riskScore"
-                              name="Risk Score"
-                              isAnimationActive={false}
-                              radius={[4, 4, 0, 0]}
-                              activeBar={{ fill: 'none' }}
-                          >
+                          <Bar dataKey="riskScore" name="Avg Risk Score">
                             {(riskTrend || []).map((entry, index) => (
                                 <Cell
                                     key={`cell-${index}`}
-                                    fill={getRiskColor(typeof entry.riskScore === 'number' ? entry.riskScore :
-                                        !isNaN(parseFloat(entry.riskScore)) ? parseFloat(entry.riskScore) : 0)}
+                                    fill={getRiskColor(entry.riskScore || 0)}
                                 />
                             ))}
                           </Bar>
                           <Tooltip
                             formatter={(value: number | string | Array<number | string>) => [
                               formatRiskScore(value),
-                              "Risk Score"
-                            ] as [string, string]}
+                              "Avg Risk Score"
+                            ]}
                             labelFormatter={(label) => `${label}`}
                             content={({ active, payload, label }) => {
-                              if (!active || !payload || !payload.length) {
-                                return null;
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload as RiskTrendItem;
+                                return (
+                                  <div className="rounded-lg border bg-background p-2 shadow-sm text-sm text-foreground">
+                                    <div className="font-bold">{label}</div>
+                                    <div>
+                                      Avg Risk: <span style={{ color: getRiskColor(data.riskScore) }}>{formatRiskScore(data.riskScore)}</span>
+                                    </div>
+                                    {data.attemptCount !== undefined && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Attempts: {data.attemptCount}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
                               }
-                              const data = payload[0].payload;
-                              return (
-                                <div className="bg-white p-2 border border-gray-200 shadow-md text-sm">
-                                  <p className="font-bold">{label}</p>
-                                  <p>Average Risk Score: {formatRiskScore(data.riskScore)}</p>
-                                  <p>Login Attempts: {data.attemptCount || 0}</p>
-                                </div>
-                              );
+                              return null;
                             }}
                           />
                         </BarChart>
@@ -587,27 +588,12 @@ export default function DashboardPage() {
                   )}
                 </ChartErrorBoundary>
               </div>
-              {/* Custom Legend for Risk Score Colors */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-muted-foreground">
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                  Low Risk (&lt;=40)
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                  Medium Risk (41-75)
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                  High Risk (&gt;75)
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Security Score Distribution - UPDATED */}
+          {/* Security Metrics Pie Chart */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle>Security Metrics</CardTitle>
@@ -647,7 +633,6 @@ export default function DashboardPage() {
                             ))}
                           </Pie>
                           <Tooltip
-                              formatter={(value, name) => [`${value} users`, name]}
                               content={({ active, payload, label }) => {
                                 if (active && payload && payload.length) {
                                   const data = payload[0].payload as SecurityMetric; // Added type assertion
@@ -661,26 +646,26 @@ export default function DashboardPage() {
                                 return null;
                               }}
                             />
-                          </PieChart>
-                        </ResponsiveContainer>
-                    )}
-                  </ChartErrorBoundary>
+                        </PieChart>
+                      </ResponsiveContainer>
+                  )}
+                </ChartErrorBoundary>
+              </div>
+              {/* Custom Legend with colored boxes */}
+              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
+                  Active Keys
                 </div>
-                {/* Custom Legend with colored boxes */}
-                <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
-                  <div className="flex items-center">
-                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                    Active Keys
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                    Inactive Keys
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                    No Keys
-                  </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
+                  Inactive Keys
                 </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
+                  No Keys
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -716,32 +701,49 @@ export default function DashboardPage() {
                               cy="50%"
                               outerRadius={80}
                           >
-                            {deviceStats.map((entry, index) => (
+                            {deviceStats.map((entry, index) => {
+                              const deviceName = entry.name ? entry.name.toLowerCase() : 'unknown';
+                              const color = DEVICE_COLOR_MAP[deviceName] || DEVICE_COLOR_MAP['others'];
+                              return (
                                 <Cell
                                     key={`cell-${index}`}
-                                    fill={[
-                                      "#16A34A", // Windows/Desktop - Green
-                                      "#F59E0B", // Mobile - Amber
-                                      "#3B82F6", // Tablet - Blue
-                                      "#8B5CF6", // Mac - Purple
-                                      "#EC4899", // Linux - Pink
-                                      "#6B7280"  // Others - Gray
-                                    ][index % 6]}
+                                    fill={color}
                                 />
-                            ))}
+                              );
+                            })}
                           </Pie>
                           <Tooltip
                               formatter={(value) => [`${value} attempts`, "Logins"]}
-                          />
-                          <Legend
-                              verticalAlign="bottom"
-                              height={36}
                           />
                         </PieChart>
                       </ResponsiveContainer>
                   )}
                 </ChartErrorBoundary>
               </div>
+              {/* Custom Legend for Device Distribution */}
+              {!isLoading && !error && deviceStats.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center space-x-4 text-xs text-foreground">
+                  {Object.entries(
+                    // Create a unique set of device names and their colors for the legend
+                    deviceStats.reduce((acc, entry) => {
+                      const deviceName = entry.name ? entry.name : 'Unknown';
+                      const color = DEVICE_COLOR_MAP[deviceName.toLowerCase()] || DEVICE_COLOR_MAP['others'];
+                      if (!acc[deviceName]) {
+                        acc[deviceName] = color;
+                      }
+                      return acc;
+                    }, {} as Record<string, string>)
+                  ).map(([name, color]) => (
+                    <div key={name} className="flex items-center mb-2">
+                      <span
+                        className="w-3 h-3 rounded-sm mr-1.5"
+                        style={{ backgroundColor: color }}
+                      ></span>
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -791,10 +793,10 @@ export default function DashboardPage() {
                                 <Cell
                                     key={`cell-${index}`}
                                     fill={entry.severity === 'high'
-                                        ? '#DC2626'
+                                        ? '#8B5CF6' // High severity - Purple
                                         : entry.severity === 'medium'
-                                            ? '#F59E0B'
-                                            : '#16A34A'
+                                            ? '#2563eb' // Medium severity - Primary Blue
+                                            : '#a6c4fc'   // Low severity - Light Blue
                                     }
                                 />
                             ))}
@@ -808,18 +810,18 @@ export default function DashboardPage() {
                 </ChartErrorBoundary>
               </div>
               {/* Custom Legend for Severity Colors */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-muted-foreground">
+              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#16A34A' }}></span>
-                  Low (&lt;=5)
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
+                  Low Risk
                 </div>
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#F59E0B' }}></span>
-                  Medium (6-15)
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
+                  Medium Risk
                 </div>
                 <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#DC2626' }}></span>
-                  High (&gt;15)
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
+                  High Risk
                 </div>
               </div>
             </CardContent>
@@ -862,4 +864,3 @@ export default function DashboardPage() {
       </div>
   )
 }
-
