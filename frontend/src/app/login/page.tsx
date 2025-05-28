@@ -527,8 +527,8 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-            <div className="hidden bg-muted lg:block">
+        <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2 bg-[var(--login-page-background)]"> {/* Changed to use CSS variable */}
+            <div className="hidden bg-background lg:block">
                 <Image
                     src="/assets/images/Login.jpg"
                     alt="Login Image"
