@@ -42,7 +42,7 @@ Based on open files and recent activity, development is focused on security mana
 
 6.  Sidebar Enhancement
     *   Updated [`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1) to support an icon-only collapsed state.
-        *   **Added "Security Keys" menu item with `KeyRound` icon, linking to [`/dashboard/security-keys`](/dashboard/security-keys).**
+        *   **"Security Keys" and "Audit Logs" are now top-level menu items. "Security" remains a top-level item linking to [`/dashboard/security`](/dashboard/security).**
         *   Uses `collapsible="icon"` prop from [`src/components/ui/sidebar.tsx`](src/components/ui/sidebar.tsx:1).
         *   Text labels are hidden when collapsed using conditional rendering and opacity/width classes.
         *   Tooltips display item titles on hover when collapsed.
@@ -56,7 +56,7 @@ Based on open files and recent activity, development is focused on security mana
     *   `src/components/data-table/locked-accounts-data-table.tsx`: Main interface for locked accounts. (**Refined styling, single search filter with `max-w-md`, notification handling. "Successful Attempts" column removed from display logic. Loading spinner color changed to primary blue.**)
     *   `locked-accounts-columns.tsx`: Data structure for locked accounts (**Updated action column header to "Action", button styling matches "Add User" button, "Unlock Account" button now triggers a confirmation dialog with `font-montserrat` and `sm:max-w-[425px]` styling, "Successful Attempts" column definition removed, uses sonner toasts for actions**)
     *   `src/app/dashboard/security/page.tsx`: Security dashboard implementation. (**"Export Report" and pagination buttons updated to default blue styling. Removed duplicate manual pagination controls.**)
-    *   [`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1): Navigation and layout structure. (**Updated to support icon-only collapsed state with tooltips, added "Security Keys" menu item.**)
+    *   [`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1): Navigation and layout structure. (**Updated to support icon-only collapsed state with tooltips. "Security Keys" and "Audit Logs" are now top-level menu items. "Security" remains a top-level item linking to [`/dashboard/security`](/dashboard/security).**)
     *   [`src/components/ui/sidebar.tsx`](src/components/ui/sidebar.tsx:1): Base sidebar UI component. (**Updated `SidebarMenuButton` active state to use `bg-primary`, `text-primary-foreground`, and `rounded-xl`.**)
     *   [`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1): Main dashboard page. (**"Login Attempts" chart updated to use theme color palette.**)
     *   **New:** [`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1): Page for displaying security keys table. **Now fetches data from `/api/security-keys/all`.**

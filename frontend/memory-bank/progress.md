@@ -11,7 +11,7 @@
 
 ### Dashboard
 - [x] Main dashboard layout
-- [x] Sidebar navigation (**Added "Security Keys" menu item**)
+- [x] Sidebar navigation (**"Security Keys" and "Audit Logs" are now top-level menu items. "Security" remains a top-level item linking to [`/dashboard/security`](/dashboard/security).**)
 - [x] Security overview page
 - [x] **New:** Security Keys page ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) with data table for managing security keys. **Now fetches data from backend, includes global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive").**
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
