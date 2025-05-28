@@ -20,7 +20,7 @@ const montserrat = Montserrat({
 });
 
 export const metadata = {
-    title: 'Argus AI Authentication',
+    title: 'Argus AI Secure',
     description: 'Secure multi-factor authentication with WebAuthn',
 }
 
