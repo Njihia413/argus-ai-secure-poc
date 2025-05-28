@@ -34,7 +34,7 @@ def is_fido_device(device_info):
     product_string = device_info.get('product_string', "").lower()
 
     if vid == yubico_vid and pid in yubikey_fido_pids:
-        print(f"    -> Matched YubiKey by VID/PID: {vid:04x}/{pid:04x}")
+        # print(f"    -> Matched YubiKey by VID/PID: {vid:04x}/{pid:04x}") # Commented out to prevent repeated messages
         return True
     
     if "fido" in product_string:
