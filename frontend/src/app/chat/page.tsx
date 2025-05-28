@@ -53,6 +53,8 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
   const [securityKeyStatus, setSecurityKeyStatus] = useState<boolean>(false);
   const [isNormalUsbConnected, setIsNormalUsbConnected] = useState<boolean>(false);
+  const [isSecurityKeyHidConnected, setIsSecurityKeyHidConnected] = useState<boolean>(false);
+  const [connectedSecurityKeyHidDetails, setConnectedSecurityKeyHidDetails] = useState<{vendorId: number, productId: number, path: string} | null>(null);
   const [isHelperAppConnected, setIsHelperAppConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const securityKeyDetectionInterval = useRef<NodeJS.Timeout | null>(null);
@@ -135,95 +137,157 @@ export default function ChatPage() {
     }
   }, [availableModels, selectedModel]);
 
-  // WebSocket connection to Python helper for Normal USB detection
+  // WebSocket connection to Python helper for USB detection
   useEffect(() => {
-    console.log("WebSocket useEffect triggered. UserData:", userData ? "Exists" : "null", "wsRef.current:", wsRef.current ? wsRef.current.readyState : "null"); // DEBUG LOG
-
     if (!userData) {
       if (wsRef.current) {
-        console.log("No user data, ensuring old WebSocket is closed.");
         wsRef.current.close();
+        wsRef.current = null; // Ensure it's cleared
       }
       return;
     }
 
-    if (wsRef.current && wsRef.current.readyState < WebSocket.CLOSING) {
-      console.log("WebSocket connection attempt skipped: already exists or connecting.");
-      return;
-    }
-    
-    console.log("Attempting to connect to Normal USB helper WebSocket...");
-    const socket = new WebSocket("ws://localhost:12345");
-    wsRef.current = socket;
+    let connectTimeoutId: NodeJS.Timeout | null = null;
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryDelay = 3000; // 3 seconds
 
-    let initialConnectionFailed = true;
+    function connectWebSocket() {
+      // If already connected or connecting, don't try again
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        console.log("WebSocket connection attempt skipped: already open or connecting.");
+        return;
+      }
 
-    socket.onopen = () => {
-      initialConnectionFailed = false;
-      console.log("Connected to Normal USB helper WebSocket.");
-      setIsHelperAppConnected(true);
-      toast.success("USB Helper: Connected");
-    };
+      console.log(`Attempting to connect to USB helper WebSocket (Attempt: ${retryCount + 1})...`);
+      const socket = new WebSocket("ws://localhost:12345");
+      wsRef.current = socket; // Assign immediately
 
-    socket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data as string);
-        console.log("Message from Normal USB helper:", message);
-        if (message.event === "NORMAL_USB_CONNECTED") {
-          console.log("setIsNormalUsbConnected called with true");
-          setIsNormalUsbConnected(true);
-        } else if (message.event === "NORMAL_USB_DISCONNECTED") {
-          console.log("setIsNormalUsbConnected called with false");
-          setIsNormalUsbConnected(false);
+      let hasConnectedSuccessfully = false; // Track if onopen was ever called for this attempt
+
+      socket.onopen = () => {
+        hasConnectedSuccessfully = true;
+        retryCount = 0; // Reset retry count on successful connection
+        if (connectTimeoutId) clearTimeout(connectTimeoutId); // Clear any pending retry timeout
+        console.log("Connected to USB helper WebSocket.");
+        setIsHelperAppConnected(true);
+        toast.success("USB Helper: Connected");
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data as string);
+          console.log("Message from USB helper:", message); // General log
+
+          switch (message.event) {
+            case "NORMAL_USB_CONNECTED":
+              console.log("FRONTEND: Processing NORMAL_USB_CONNECTED");
+              setIsNormalUsbConnected(true);
+              break;
+            case "NORMAL_USB_DISCONNECTED":
+              console.log("FRONTEND: Processing NORMAL_USB_DISCONNECTED");
+              setIsNormalUsbConnected(false);
+              break;
+            case "SECURITY_KEY_HID_CONNECTED":
+              console.log("FRONTEND: Processing SECURITY_KEY_HID_CONNECTED event:", message);
+              setIsSecurityKeyHidConnected(true);
+              setConnectedSecurityKeyHidDetails({
+                vendorId: message.vendorId,
+                productId: message.productId,
+                path: message.path
+              });
+              toast.success(`Security Key (HID) Connected: VID=${message.vendorId.toString(16)}, PID=${message.productId.toString(16)}`);
+              break;
+            case "SECURITY_KEY_HID_DISCONNECTED":
+              console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
+              // Check if the disconnected key is the one we are tracking
+              if (connectedSecurityKeyHidDetails && connectedSecurityKeyHidDetails.path === message.path) {
+                setIsSecurityKeyHidConnected(false);
+                setConnectedSecurityKeyHidDetails(null);
+                toast.error(`Tracked Security Key (HID) Disconnected: VID=${message.vendorId?.toString(16)}, PID=${message.productId?.toString(16)}`);
+              } else if (isSecurityKeyHidConnected && !connectedSecurityKeyHidDetails && message.path) {
+                // If we thought a HID key was connected but didn't have specific details,
+                // and now a specific key disconnects, update our state.
+                setIsSecurityKeyHidConnected(false);
+                // No specific details to clear if connectedSecurityKeyHidDetails was already null
+                toast.error(`A Security Key (HID) Disconnected: VID=${message.vendorId?.toString(16)}, PID=${message.productId?.toString(16)} (Path: ${message.path})`);
+              } else if (isSecurityKeyHidConnected && !message.path) {
+                // Generic disconnect if path isn't provided by older detector or some other scenario
+                setIsSecurityKeyHidConnected(false);
+                setConnectedSecurityKeyHidDetails(null);
+                toast.error("A Security Key (HID) was disconnected (generic).");
+              }
+              break;
+            default:
+              console.warn("Received unknown message event from USB helper:", message);
+          }
+        } catch (error) {
+          console.error("Failed to parse message from USB helper:", error);
         }
-      } catch (error) {
-        console.error("Failed to parse message from Normal USB helper:", error);
-      }
-    };
+      };
 
-    socket.onerror = (error) => {
-      console.error("Normal USB helper WebSocket error:", error);
-      if (initialConnectionFailed && wsRef.current === socket) {
-          toast.error("USB Helper: Failed to connect.");
-      } else if (isHelperAppConnected) {
-          toast.error("USB Helper: Connection error.");
-      }
-    };
+      socket.onerror = (error) => {
+        console.error("USB helper WebSocket error:", error);
+        // Don't show "failed to connect" if onopen was called, as it might be a subsequent error
+        if (!hasConnectedSuccessfully) {
+            // toast.error("USB Helper: Connection error."); // This might be too noisy if it retries
+        }
+      };
 
-    socket.onclose = () => {
-      console.log("Disconnected from Normal USB helper WebSocket.");
-      if (isHelperAppConnected && !initialConnectionFailed) {
-         toast.info("USB Helper: Disconnected.");
-      }
-      
-      setIsHelperAppConnected(false);
-      setIsNormalUsbConnected(false);
-      
-      if (wsRef.current === socket) {
-        wsRef.current = null;
-      }
-    };
+      socket.onclose = (event) => {
+        console.log(`Disconnected from USB helper WebSocket. Code: ${event.code}, Reason: ${event.reason}, Clean: ${event.wasClean}`);
+        if (isHelperAppConnected && hasConnectedSuccessfully) { // Only show disconnected if it was previously connected
+           toast.info("USB Helper: Disconnected.");
+        }
+        
+        setIsHelperAppConnected(false);
+        setIsNormalUsbConnected(false);
+        setIsSecurityKeyHidConnected(false);
+        setConnectedSecurityKeyHidDetails(null);
+        
+        if (wsRef.current === socket) { // Ensure we are clearing the correct ref
+          wsRef.current = null;
+        }
+
+        // Attempt to reconnect if not a clean close and user is still on page
+        if (userData && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Will attempt to reconnect in ${retryDelay / 1000}s (Attempt: ${retryCount}).`);
+          if (connectTimeoutId) clearTimeout(connectTimeoutId); // Clear previous timeout
+          connectTimeoutId = setTimeout(connectWebSocket, retryDelay);
+        } else if (retryCount >= maxRetries) {
+            console.log("Max WebSocket reconnection retries reached.");
+            toast.error("USB Helper: Max reconnection attempts failed. Please ensure the helper app is running and refresh the page.");
+        }
+      };
+    }
+
+    connectWebSocket(); // Initial connection attempt
 
     return () => {
-      console.log("Cleaning up WebSocket effect for Normal USB helper.");
-      if (socket) {
-        console.log(`Closing WebSocket (readyState: ${socket.readyState}) in cleanup.`);
-        socket.onopen = null;
-        socket.onmessage = null;
-        socket.onerror = null;
-        socket.onclose = null;
-        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-          socket.close();
+      console.log("Cleaning up WebSocket effect for USB helper.");
+      if (connectTimeoutId) clearTimeout(connectTimeoutId);
+      if (wsRef.current) {
+        console.log(`Closing WebSocket (readyState: ${wsRef.current.readyState}) in cleanup.`);
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onclose = null; // Important to prevent onclose from triggering retries after component unmount
+        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+          wsRef.current.close(1000, "Component unmounting"); // Clean close
         }
+        wsRef.current = null;
       }
-      if (wsRef.current === socket) {
-          wsRef.current = null;
-      }
+      // Reset states on cleanup
+      setIsHelperAppConnected(false);
+      setIsNormalUsbConnected(false);
+      setIsSecurityKeyHidConnected(false);
+      setConnectedSecurityKeyHidDetails(null);
     };
-  }, [userData]);
+  }, [userData]); // Rerun if userData changes (e.g., on login/logout)
 
   // Combined logic for setting availableModels
-  useEffect(() => {
+ useEffect(() => {
     if (!userData) {
       if (JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
         setAvailableModels(RESTRICTED_MODELS);
@@ -234,57 +298,64 @@ export default function ChatPage() {
     const loggedInWithSecurityKeyAtAuthTime = userData.securityKeyAuthenticated === true;
     let newAvailableModels = RESTRICTED_MODELS;
     let toastMessage: { type: 'success' | 'error' | 'info'; message: string } | null = null;
+    let reasonForChange = "Default: Restricted models.";
 
     console.log(
-      "Combined logic check:",
+      "Model Availability Check:",
       { loggedInWithSecurityKeyAtAuthTime },
-      { securityKeyStatus },
+      { securityKeyStatus }, // Browser API status
       { isNormalUsbConnected },
+      { isSecurityKeyHidConnected }, // Physical HID status
       { isHelperAppConnected },
-      { currentAvailableModels: JSON.stringify(availableModels) }
+      { currentModels: Object.keys(availableModels) }
     );
 
     if (loggedInWithSecurityKeyAtAuthTime) {
-      if (securityKeyStatus) {
+      // User authenticated with a security key
+      if (isSecurityKeyHidConnected) { // Check physical HID connection
         newAvailableModels = ALL_MODELS;
+        reasonForChange = "Logged in with WebAuthn & Security Key (HID) is connected.";
       } else {
         newAvailableModels = RESTRICTED_MODELS;
+        reasonForChange = "Logged in with WebAuthn, but Security Key (HID) is NOT connected.";
       }
     } else {
-      if (isNormalUsbConnected && isHelperAppConnected) {
+      // User authenticated with email/password
+      if (isSecurityKeyHidConnected && isHelperAppConnected) {
         newAvailableModels = ALL_MODELS;
-        if (JSON.stringify(availableModels) !== JSON.stringify(ALL_MODELS)) {
-            toastMessage = { type: 'success', message: "Normal USB Detected: Full model access enabled." };
-        }
+        reasonForChange = "Security Key (HID) connected (email/password login).";
+      } else if (isNormalUsbConnected && isHelperAppConnected) {
+        newAvailableModels = ALL_MODELS;
+        reasonForChange = "Normal USB connected (email/password login).";
       } else {
         newAvailableModels = RESTRICTED_MODELS;
-        if (JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
-            if (isHelperAppConnected && initialLoadComplete.current && !isNormalUsbConnected) { // Check initialLoadComplete
-                toastMessage = { type: 'error', message: "Normal USB Disconnected/Not Found: Model access restricted." };
-            }
+        if (!isHelperAppConnected && initialLoadComplete.current) {
+            reasonForChange = "USB Helper not connected. Model access restricted.";
+        } else if (isHelperAppConnected && !isNormalUsbConnected && !isSecurityKeyHidConnected && initialLoadComplete.current) {
+            reasonForChange = "No recognized USB device connected. Model access restricted.";
+        } else {
+            reasonForChange = "Default for email/password login without recognized USB device.";
         }
       }
     }
     
     if (JSON.stringify(availableModels) !== JSON.stringify(newAvailableModels)) {
-        console.log("Setting new available models:", newAvailableModels);
+        console.log(`Setting new available models due to: ${reasonForChange}. New models: ${Object.keys(newAvailableModels).join(', ')}`);
         setAvailableModels(newAvailableModels);
-        if (toastMessage) {
-            toast[toastMessage.type](toastMessage.message);
+        // Determine toast message based on the change
+        if (JSON.stringify(newAvailableModels) === JSON.stringify(ALL_MODELS) && JSON.stringify(availableModels) !== JSON.stringify(ALL_MODELS)) {
+            toast.success("Full model access enabled. " + reasonForChange);
+        } else if (JSON.stringify(newAvailableModels) === JSON.stringify(RESTRICTED_MODELS) && JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
+            toast.error("Model access restricted. " + reasonForChange);
         }
     } else {
-      if (toastMessage && JSON.stringify(availableModels) === JSON.stringify(newAvailableModels)) {
-           console.log("Models unchanged, but showing toast:", toastMessage.message);
-           toast[toastMessage.type](toastMessage.message);
-      } else {
-           console.log("Available models did not change, no toast needed.", availableModels);
-      }
+         console.log(`Available models did not change (${Object.keys(availableModels).join(', ')}). Reason: ${reasonForChange}`);
     }
 
-  }, [userData, securityKeyStatus, isNormalUsbConnected, isHelperAppConnected, availableModels, initialLoadComplete]); // Added initialLoadComplete
+  }, [userData, securityKeyStatus, isNormalUsbConnected, isSecurityKeyHidConnected, isHelperAppConnected, availableModels, initialLoadComplete]);
 
 
-  // Monitor security key connection status
+  // Monitor security key connection status (WebAuthn browser API based)
   useEffect(() => {
     if (!userData?.hasSecurityKey || !userData?.securityKeyAuthenticated) {
       return; // Don't monitor if user doesn't have a security key or didn't authenticate with one
