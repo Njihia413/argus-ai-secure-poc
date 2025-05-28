@@ -119,7 +119,7 @@
     *   [ ] Test chart color palette usability in both themes.
     *   Review all data tables for column relevance.
     *   User experience for the local Python USB helper application (e.g., clear instructions if it's not running, connection status indication).
-    *   [x] Chat Page: Prevented repeated WebSocket connection error logging by changing `console.error` to `console.warn` (to avoid Next.js overlay) and halting reconnection attempts after the first warning, thus silencing further console messages.
+    *   [x] Chat Page: WebSocket `onclose` handler now always attempts reconnection if the user is logged in and the connection was not closed cleanly, restoring detection of the helper app if started after page load. The `onerror` handler still logs a `console.warn` once to prevent initial error toast/overlay spam.
 
 ## Next Steps
 1.  Short Term
