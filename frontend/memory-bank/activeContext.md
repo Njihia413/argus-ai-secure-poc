@@ -93,6 +93,7 @@ Based on open files and recent activity, development is focused on security mana
         *   Displays toast notifications for HID connect ("Security Key (HID) Connected") and disconnect ("Security Key (HID) Disconnected", with variations for specific vs. generic disconnects) events.
         *   Dynamically updates `availableModels` based on `hidKey.isConnected` (and other factors like login method, helper app connection status), granting full model access when a recognized key is present and restricting it otherwise.
         *   Corrected WebSocket `useEffect` dependency array to `[userData]` to prevent connection loops.
+        *   **Fixed an issue where WebSocket connection errors were logged repeatedly: the error is now logged as a `console.warn` (to prevent the Next.js error overlay) by the application only once, and subsequent reconnection attempts are halted to prevent further browser-native error messages in the console for that session.**
 
 ## Recent Decisions
 1.  Using data tables for security information display.

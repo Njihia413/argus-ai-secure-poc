@@ -47,6 +47,7 @@
     - Users logged in via WebAuthn security keys retain full model access irrespective of normal USB status (though physical presence of the key, now detected via HID, is also a factor for model availability).
     - Resolved Python `websockets` library v15.0.1 API incompatibilities.
     - [x] **HID FIDO Security Key Detection: `usb_detector.py` now continuously monitors for HID FIDO keys, sending connect/disconnect events to the frontend. The chat page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)) uses this to adjust model availability in real-time, leveraging a consolidated `hidKey` state object and `useRef` for robust state access in WebSocket handlers. Toast notifications for these events have been simplified.**
+    - [x] **Chat Page ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1)): Fixed repeated WebSocket connection error logging. The application now logs a `console.warn` (to prevent Next.js error overlay) once, and then halts reconnection attempts for that session to prevent further browser-native error messages in the console.**
 
 ### UI/UX Enhancements
 - [x] Implemented Dark/Light Theme:
@@ -118,6 +119,7 @@
     *   [ ] Test chart color palette usability in both themes.
     *   Review all data tables for column relevance.
     *   User experience for the local Python USB helper application (e.g., clear instructions if it's not running, connection status indication).
+    *   [x] Chat Page: Prevented repeated WebSocket connection error logging by changing `console.error` to `console.warn` (to avoid Next.js overlay) and halting reconnection attempts after the first warning, thus silencing further console messages.
 
 ## Next Steps
 1.  Short Term

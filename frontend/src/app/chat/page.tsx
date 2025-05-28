@@ -77,6 +77,7 @@ export default function ChatPage() {
   const keyCheckInProgress = useRef<boolean>(false);
   const initialLoadComplete = useRef<boolean>(false);
   const webUSBSupported = useRef<boolean>(false);
+  const hasLoggedWebSocketErrorRef = useRef<boolean>(false);
 
   const {
     messages,
@@ -156,6 +157,8 @@ export default function ChatPage() {
       let hasConnectedSuccessfully = false;
 
       socket.onopen = () => {
+        // Removed: hasLoggedWebSocketErrorRef.current = false;
+        // Now, the error will only be logged once per component lifecycle if it occurs.
         hasConnectedSuccessfully = true;
         if (connectTimeoutId) clearTimeout(connectTimeoutId);
         console.log("Connected to USB helper WebSocket.");
@@ -227,7 +230,10 @@ export default function ChatPage() {
       };
 
       socket.onerror = (error) => {
-        console.error("USB helper WebSocket error:", error);
+        if (!hasLoggedWebSocketErrorRef.current) {
+          console.warn("USB helper WebSocket warning (error downgraded to prevent overlay):", error);
+          hasLoggedWebSocketErrorRef.current = true;
+        }
       };
 
       socket.onclose = (event) => {
@@ -243,10 +249,16 @@ export default function ChatPage() {
         if (wsRef.current === socket) {
           wsRef.current = null;
         }
-        if (userData && event.code !== 1000) { 
-          console.log(`Will attempt to reconnect in ${retryDelay / 1000}s.`);
-          if (connectTimeoutId) clearTimeout(connectTimeoutId);
-          connectTimeoutId = setTimeout(connectWebSocket, retryDelay);
+        if (userData && event.code !== 1000) { // If not a clean, intentional close
+          if (!hasLoggedWebSocketErrorRef.current) { // And if our app hasn't logged a persistent error yet
+            console.log(`Will attempt to reconnect in ${retryDelay / 1000}s.`);
+            if (connectTimeoutId) clearTimeout(connectTimeoutId);
+            connectTimeoutId = setTimeout(connectWebSocket, retryDelay);
+          } else {
+            // Our app has logged an error, so stop retrying to prevent console spam
+            console.log("USB helper WebSocket error previously logged. Halting further reconnection attempts for this session.");
+            if (connectTimeoutId) clearTimeout(connectTimeoutId); // Ensure any pending retry is cancelled
+          }
         }
       };
     }
