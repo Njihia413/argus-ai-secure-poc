@@ -588,6 +588,21 @@ export default function DashboardPage() {
                   )}
                 </ChartErrorBoundary>
               </div>
+              {/* Custom Legend for Risk Score Colors */}
+              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
+                  Low Risk
+                </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
+                  Medium Risk
+                </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
+                  High Risk
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -809,28 +824,28 @@ export default function DashboardPage() {
                   )}
                 </ChartErrorBoundary>
               </div>
-              {/* Custom Legend for Severity Colors */}
+              {/* Custom Legend for Location Severity Colors */}
               <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                  Low Risk
+                  {'Low (<= 5 attempts)'}
                 </div>
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                  Medium Risk
+                  {'Medium (<= 15 attempts)'}
                 </div>
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                  High Risk
+                 {'High (> 15 attempts)'}
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Optional: Security Keys Management Section  */}
-        {/* Uncomment this section if you want to add direct key management to the dashboard */}
-        {/*
+        {/* Optional: Security Keys Management Section
+        Uncomment this section if you want to add direct key management to the dashboard
+      
       <div className="mt-8">
         <h3 className="text-xl font-bold mb-4">Security Keys Management</h3>
         <div className="grid gap-4">
@@ -860,7 +875,8 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
-      */}
+      */} {/* Closing the comment started on line 846 */}
       </div>
   )
 }
+
