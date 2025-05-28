@@ -43,12 +43,18 @@ const items: NavItem[] = [
   },
   {
     title: "Security",
+    url: "/dashboard/security",
     icon: Shield,
-    // url: "/dashboard/security", // Can be a top-level page or just a toggle
-    subItems: [
-      { title: "Audit Logs", url: "/dashboard/audit-logs", icon: ClipboardList },
-      { title: "Security Keys", url: "/dashboard/security-keys", icon: KeyRound },
-    ],
+  },
+  {
+    title: "Audit Logs",
+    url: "/dashboard/audit-logs",
+    icon: ClipboardList,
+  },
+  {
+    title: "Security Keys",
+    url: "/dashboard/security-keys",
+    icon: KeyRound,
   },
   {
     title: "Settings",
