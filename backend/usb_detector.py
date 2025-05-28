@@ -142,8 +142,8 @@ async def hid_security_key_monitor():
                 
                 await send_to_all({
                     "event": "SECURITY_KEY_HID_CONNECTED",
-                    "vendorId": info['vendor_id'],
-                    "productId": info['product_id'],
+                    "vendorId": f"{info['vendor_id']:04x}",
+                    "productId": f"{info['product_id']:04x}",
                     "path": path
                 })
                 
@@ -172,8 +172,8 @@ async def hid_security_key_monitor():
                 await send_to_all({
                     "event": "SECURITY_KEY_HID_DISCONNECTED",
                     "path": path_disconnected,
-                    "vendorId": disconnected_info.get('vendor_id'),
-                    "productId": disconnected_info.get('product_id')
+                    "vendorId": f"{disconnected_info.get('vendor_id', 0):04x}",
+                    "productId": f"{disconnected_info.get('product_id', 0):04x}"
                 })
                 
                 try:
