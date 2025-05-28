@@ -101,7 +101,7 @@ async def hid_security_key_monitor():
             if is_fido_device(dev_info):
                 path = dev_info['path'].decode('utf-8') if isinstance(dev_info['path'], bytes) else dev_info['path']
                 current_hid_devices_initial_scan[path] = {
-                    'vendor_id': dev_info['vendor_id'], 
+                    'vendor_id': dev_info['vendor_id'],
                     'product_id': dev_info['product_id'],
                     'product_string': dev_info.get('product_string', 'N/A')
                 }
@@ -124,9 +124,9 @@ async def hid_security_key_monitor():
                 if is_fido_device(dev_info_loop):
                     path = dev_info_loop['path'].decode('utf-8') if isinstance(dev_info_loop['path'], bytes) else dev_info_loop['path']
                     current_active_fido_devices_in_this_scan[path] = {
-                        'vendor_id': dev_info_loop['vendor_id'], 
+                        'vendor_id': dev_info_loop['vendor_id'],
                         'product_id': dev_info_loop['product_id'],
-                        'product_string': dev_info_loop.get('product_string', 'N/A') 
+                        'product_string': dev_info_loop.get('product_string', 'N/A')
                     }
         except Exception as e:
             print(f"Python hid_security_key_monitor: Error during HID enumeration loop: {e}")
@@ -148,7 +148,12 @@ async def hid_security_key_monitor():
                 })
                 
                 try:
-                    payload = {'vendor_id': f"{info['vendor_id']:04x}", 'product_id': f"{info['product_id']:04x}", 'path': path, 'status': 'connected'}
+                    payload = {
+                        'vendor_id': f"{info['vendor_id']:04x}",
+                        'product_id': f"{info['product_id']:04x}",
+                        'path': path,
+                        'status': 'connected'
+                    }
                     response = requests.post(FLASK_API_URL, json=payload, timeout=5)
                     print(f"Python hid_security_key_monitor: Notified Flask of connection: {payload}, Response: {response.status_code}")
                 except requests.exceptions.RequestException as e:
@@ -177,9 +182,12 @@ async def hid_security_key_monitor():
                 })
                 
                 try:
-                    payload = {'path': path_disconnected, 'status': 'disconnected',
-                               'vendor_id': f"{disconnected_info.get('vendor_id', 0):04x}",
-                               'product_id': f"{disconnected_info.get('product_id', 0):04x}"}
+                    payload = {
+                        'path': path_disconnected,
+                        'status': 'disconnected',
+                        'vendor_id': f"{disconnected_info.get('vendor_id', 0):04x}",
+                        'product_id': f"{disconnected_info.get('product_id', 0):04x}"
+                    }
                     response = requests.post(FLASK_API_URL, json=payload, timeout=5)
                     print(f"Python hid_security_key_monitor: Notified Flask of disconnection: {payload}, Response: {response.status_code}")
                 except requests.exceptions.RequestException as e:
@@ -214,10 +222,10 @@ async def handler(websocket):  # Single argument for websockets v15+
         for path, info in known_hid_security_keys.items():
             await websocket.send(json.dumps({
                 "event": "SECURITY_KEY_HID_CONNECTED",
-                "vendorId": info['vendor_id'],
-                "productId": info['product_id'],
+                "vendorId": f"{info['vendor_id']:04x}", # Ensure formatting
+                "productId": f"{info['product_id']:04x}", # Ensure formatting
                 "path": path,
-                "initial_state": True 
+                "initial_state": True
             }))
 
         print(f"Python Handler: Initial state sent to client {client_id_str}.")
