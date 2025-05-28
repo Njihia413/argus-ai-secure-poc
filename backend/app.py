@@ -251,7 +251,9 @@ class SecurityKey(db.Model):
     model = db.Column(db.String(100), nullable=True)
     type = db.Column(db.String(100), nullable=True)
     serial_number = db.Column(db.String(100), nullable=True)
-    pin = db.Column(db.String(500), nullable=True)  
+    pin = db.Column(db.String(500), nullable=True)
+    product_id = db.Column(db.String(100), nullable=True)
+    vendor_id = db.Column(db.String(100), nullable=True)
     
     # Relationships
     user = db.relationship('Users', backref=db.backref('security_keys', lazy=True))
