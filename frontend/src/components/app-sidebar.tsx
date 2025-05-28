@@ -1,25 +1,36 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList, Lock, KeyRound } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon } from "lucide-react"
+import React, { useState } from "react" // Added useState
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter, // Added SidebarFooter
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar, // Import useSidebar
+  useSidebar,
+  // SidebarFooter was imported but will be removed
 } from "@/components/ui/sidebar"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip" // Import Tooltip components
+} from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button" // Added Button
 
-const items = [
+interface NavItem {
+  title: string
+  url?: string // Optional for parent items that only toggle
+  icon: LucideIcon
+  subItems?: NavItem[]
+}
+
+const items: NavItem[] = [
   {
     title: "Overview",
     url: "/dashboard",
@@ -32,18 +43,12 @@ const items = [
   },
   {
     title: "Security",
-    url: "/dashboard/security",
     icon: Shield,
-  },
-  {
-    title: "Audit Logs",
-    url: "/dashboard/audit-logs",
-    icon: ClipboardList,
-  },
-  {
-    title: "Security Keys",
-    url: "/dashboard/security-keys",
-    icon: KeyRound,
+    // url: "/dashboard/security", // Can be a top-level page or just a toggle
+    subItems: [
+      { title: "Audit Logs", url: "/dashboard/audit-logs", icon: ClipboardList },
+      { title: "Security Keys", url: "/dashboard/security-keys", icon: KeyRound },
+    ],
   },
   {
     title: "Settings",
@@ -54,51 +59,106 @@ const items = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { state } = useSidebar() // Get sidebar state
+  const { state } = useSidebar()
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({})
 
-  const isItemActive = (itemUrl: string) => {
-    // For nested routes, make sure it's an exact match for overview
+  const toggleSubmenu = (title: string) => {
+    setOpenSubmenus((prev) => ({ ...prev, [title]: !prev[title] }))
+  }
+
+  const isItemActive = (itemUrl?: string): boolean => {
+    if (!itemUrl) return false
     if (itemUrl === '/dashboard' && pathname !== '/dashboard') {
       return false
     }
-    // For other routes, check if the pathname starts with the item URL and is followed by '/' or end of string
     return pathname.startsWith(itemUrl) && (pathname === itemUrl || pathname.charAt(itemUrl.length) === '/')
   }
 
+  const isParentActive = (item: NavItem): boolean => {
+    if (!item.subItems) return false
+    return item.subItems.some(subItem => isItemActive(subItem.url))
+  }
+
   return (
-    <Sidebar collapsible="icon"> {/* Enable icon collapse */}
-      <SidebarContent>
-        <SidebarGroup>
-          {/* Updated text size for label */}
-          <SidebarGroupLabel className="text-base">Argus AI</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isItemActive(item.url)}
-                        className={state === "collapsed" ? "justify-center" : ""}
-                      >
-                        <a href={item.url} className={`flex items-center ${state === "expanded" ? "gap-2" : "justify-center w-full"}`}>
-                          <item.icon className="h-4 w-4" />
-                          <span className={`text-sm ${state === "expanded" ? "opacity-100" : "opacity-0 w-0 hidden"}`}>{item.title}</span>
-                        </a>
-                      </SidebarMenuButton>
-                    </TooltipTrigger>
-                    {state === "collapsed" && (
-                      <TooltipContent side="right">
-                        <p>{item.title}</p>
-                      </TooltipContent>
+    <Sidebar collapsible="icon" variant="floating" className="rounded-xl"> {/* Changed variant and added rounded-xl */}
+      <SidebarContent className="flex flex-col">
+        <div className="flex-grow">
+          <SidebarGroup>
+            <SidebarGroupLabel className="px-2 py-1 text-xl font-bold mb-6">Argus AI Secure</SidebarGroupLabel> {/* Increased mb-2 to mb-6 for spacing */}
+            {/* <SidebarGroupLabel className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground tracking-wider">Dashboards</SidebarGroupLabel> */}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {items.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    {item.subItems ? (
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton
+                              onClick={() => toggleSubmenu(item.title)}
+                              isActive={isParentActive(item) || (item.url ? isItemActive(item.url) : false)}
+                              className={`flex w-full items-center justify-between ${state === "collapsed" ? "justify-center" : ""}`}
+                            >
+                              <div className={`flex items-center ${state === "expanded" ? "gap-2" : "justify-center w-full"}`}>
+                                <item.icon className="h-4 w-4" />
+                                {state === "expanded" && <span className="text-sm">{item.title}</span>}
+                              </div>
+                              {state === "expanded" && (
+                                openSubmenus[item.title] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+                              )}
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          {state === "collapsed" && (
+                            <TooltipContent side="right"><p>{item.title}</p></TooltipContent>
+                          )}
+                        </Tooltip>
+                        {state === "expanded" && openSubmenus[item.title] && (
+                          <SidebarMenu className="pl-6 pt-1">
+                            {item.subItems.map((subItem) => (
+                              <SidebarMenuItem key={subItem.title}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <SidebarMenuButton
+                                      asChild
+                                      isActive={isItemActive(subItem.url)}
+                                    >
+                                      <a href={subItem.url} className="flex items-center gap-2 text-sm">
+                                        {subItem.title}
+                                      </a>
+                                    </SidebarMenuButton>
+                                  </TooltipTrigger>
+                                </Tooltip>
+                              </SidebarMenuItem>
+                            ))}
+                          </SidebarMenu>
+                        )}
+                      </>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={isItemActive(item.url)}
+                            className={state === "collapsed" ? "justify-center" : ""}
+                          >
+                            <a href={item.url} className={`flex items-center ${state === "expanded" ? "gap-2" : "justify-center w-full"}`}>
+                              <item.icon className="h-4 w-4" />
+                              <span className={`text-sm ${state === "expanded" ? "opacity-100" : "opacity-0 w-0 hidden"}`}>{item.title}</span>
+                            </a>
+                          </SidebarMenuButton>
+                        </TooltipTrigger>
+                        {state === "collapsed" && (
+                          <TooltipContent side="right"><p>{item.title}</p></TooltipContent>
+                        )}
+                      </Tooltip>
                     )}
-                  </Tooltip>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
+        {/* SidebarFooter removed */}
       </SidebarContent>
     </Sidebar>
   )
