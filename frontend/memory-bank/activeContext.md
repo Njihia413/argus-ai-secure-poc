@@ -61,7 +61,12 @@ Based on open files and recent activity, development is focused on security mana
         *   Ensured `AreaChart` `data` prop uses the fetched `loginAttempts` state.
         *   Corrected tooltip `labelFormatter` to remove `year: "numeric"` to prevent incorrect year display.
 
-8.  **Previously Documented (and still relevant):**
+
+8.  **Login Page UI ([`src/app/login/page.tsx`](src/app/login/page.tsx:1))**
+    *   The "OR" divider between password login and security key login buttons was updated to `<div class="flex items-center gap-3"><div class="w-full border-t"></div><span class="text-muted-foreground shrink-0 text-sm">or continue with</span><div class="w-full border-t"></div></div>`.
+    *   The "Login with Security Key" button background was changed to `bg-input` to match the style of input fields.
+
+9.  **Previously Documented (and still relevant):**
     *   Security key management interface (Security Keys Table & Details pages).
     *   Refined logic for "Register Key" and "Reset Key" actions.
     *   Security Key Audit Log UI and Backend enhancements.
@@ -80,7 +85,8 @@ Based on open files and recent activity, development is focused on security mana
     *   Overview cards on the dashboard now use a "to top" gradient based on the primary theme color, with borders matching the sidebar background. Card border radius increased to `rounded-2xl`. Text colors adjusted for visibility.
     *   Removed white borders from pie charts in dark mode.
     *   Login Attempts chart refactored to use shadcn `ChartContainer` and `Select` for filters, with styling and functionality aligned with the provided interactive example.
-3.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients and card borders to ensure theme adaptability.
+3.  **Login Page UI:** The "OR" divider on the login page was updated for clarity and modern styling. The "Login with Security Key" button background was also updated to match input fields.
+4.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients and card borders to ensure theme adaptability.
 
 ## Active Technical Patterns
 1.  **Data Table Pattern:** Consistent use for displaying security-related information, with features like filtering, pagination, and standardized action handling.

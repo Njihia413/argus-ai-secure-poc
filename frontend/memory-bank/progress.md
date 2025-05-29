@@ -4,6 +4,8 @@
 
 ### Authentication
 - [x] Login page implementation
+    - [x] Updated "OR" divider styling on login page ([`src/app/login/page.tsx`](src/app/login/page.tsx:1)).
+    - [x] Updated "Login with Security Key" button background to match input fields ([`src/app/login/page.tsx`](src/app/login/page.tsx:1)).
 - [x] Signup page implementation
 - [x] WebAuthn integration
 - [x] Authentication flows
