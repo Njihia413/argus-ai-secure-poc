@@ -88,13 +88,13 @@ export const columns: ColumnDef<User, unknown>[] = [
         )
       } else if (keyStatus === "inactive") {
         return (
-            <Badge variant="outline" className="text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+            <Badge variant="outline" className="text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
               Inactive
             </Badge>
         )
       } else {
         return (
-            <Badge variant="outline" className="text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
+            <Badge variant="outline" className="text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
               None
             </Badge>
         )
