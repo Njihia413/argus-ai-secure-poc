@@ -277,6 +277,12 @@ export const registerSecurityKey = async (
         console.log('Completing registration with server');
         console.log('Including forceRegistration flag:', forceRegistration);
         console.log('Including keyId:', keyDetails?.keyId);
+
+        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+        const headers: Record<string, string> = {};
+        if (userInfo && userInfo.authToken) {
+            headers['Authorization'] = `Bearer ${userInfo.authToken}`;
+        }
         
         const completeResponse = await axios.post(`${API_URL}/webauthn/register/complete`, {
             registrationToken,
@@ -286,7 +292,7 @@ export const registerSecurityKey = async (
             keyId: keyDetails?.keyId, // Pass key ID for existing keys
             ...(keyDetails || {}), // Include the security key details
             ...getBindingData()
-        }) as { data: { status: string, message?: string, error?: string, keyId?: number, keyName?: string } };
+        }, { headers }) as { data: { status: string, message?: string, error?: string, keyId?: number, keyName?: string } };
 
         console.log('Registration complete response:', completeResponse.data);
 
