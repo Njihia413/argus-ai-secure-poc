@@ -98,6 +98,8 @@ export default function SecurityPage() {
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
   const [table, setTable] = useState<Table<SecurityAlert> | null>(null)
+  const [severityFilterValue, setSeverityFilterValue] = useState<string>("all");
+  const [typeFilterValue, setTypeFilterValue] = useState<string>("all");
 
   // Column definitions with appropriate icons for each alert type
   const columns: ColumnDef<SecurityAlert>[] = [
@@ -184,19 +186,13 @@ export default function SecurityPage() {
         const alert = row.original
         return (
             <Badge
-                variant={
-                  alert.severity === "High"
-                      ? "destructive"
-                      : alert.severity === "Medium"
-                          ? "outline"
-                          : "outline"
-                }
+                variant="outline"
                 className={
                   alert.severity === "High"
-                      ? "bg-red-50 text-red-700 border-red-200"
+                      ? "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700"
                       : alert.severity === "Medium"
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-green-50 text-green-700 border-green-200"
+                          ? "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
+                          : "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700"
                 }
             >
               {alert.severity}
@@ -350,13 +346,13 @@ export default function SecurityPage() {
                 {stats?.alertStats?.total || alerts.length || 0}
               </div>
               <div className="mt-2 flex gap-2">
-                <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                <Badge variant="outline" className="text-xs text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">
                   {stats?.alertStats?.bySeverity?.High || alerts.filter(a => a.severity === "High").length || 0} High
                 </Badge>
-                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                <Badge variant="outline" className="text-xs text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
                   {stats?.alertStats?.bySeverity?.Medium || alerts.filter(a => a.severity === "Medium").length || 0} Medium
                 </Badge>
-                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                <Badge variant="outline" className="text-xs text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">
                   {stats?.alertStats?.bySeverity?.Low || alerts.filter(a => a.severity === "Low").length || 0} Low
                 </Badge>
               </div>
@@ -417,16 +413,16 @@ export default function SecurityPage() {
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div className="flex flex-wrap space-x-2 gap-y-2">
                       <Select
-                          value={(table?.getColumn("severity")?.getFilterValue() as string) ?? "all"}
+                          value={severityFilterValue}
                           onValueChange={(value) => {
-                            // Adjust filter logic to handle "all" value
+                            setSeverityFilterValue(value);
                             const column = table?.getColumn("severity");
                             if (column) {
                               column.setFilterValue(value === "all" ? undefined : value);
                             }
                           }}
                       >
-                        <SelectTrigger className="w-[180px]">
+                        <SelectTrigger className="w-[180px] border border-input">
                           <SelectValue placeholder="Filter by severity" />
                         </SelectTrigger>
                         <SelectContent>
@@ -438,16 +434,16 @@ export default function SecurityPage() {
                       </Select>
 
                       <Select
-                          value={(table?.getColumn("type")?.getFilterValue() as string) ?? "all"}
+                          value={typeFilterValue}
                           onValueChange={(value) => {
-                            // Adjust filter logic to handle "all" value
+                            setTypeFilterValue(value);
                             const column = table?.getColumn("type");
                             if (column) {
                               column.setFilterValue(value === "all" ? undefined : value);
                             }
                           }}
                       >
-                        <SelectTrigger className="w-[180px]">
+                        <SelectTrigger className="w-[180px] border border-input">
                           <SelectValue placeholder="Filter by type" />
                         </SelectTrigger>
                         <SelectContent>
