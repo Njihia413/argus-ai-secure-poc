@@ -600,17 +600,13 @@ export default function LoginPage() {
                         </Button>
 
                         {/* OR Divider */}
-                        <div className="flex items-center">
-                            <div className="flex-grow border-t border-gray-300"></div>
-                            <span className="px-4 text-gray-500 text-sm">or</span>
-                            <div className="flex-grow border-t border-gray-300"></div>
-                        </div>
+                        <div className="flex items-center gap-3"><div className="w-full border-t"></div><span className="text-muted-foreground shrink-0 text-sm">or</span><div className="w-full border-t"></div></div>
 
                         {/* Login with Security Key Button */}
                         <Button
                             type="button"
                             variant="outline"
-                            className="w-full border-primary text-primary hover:bg-primary/10"
+                            className="w-full border-border text-primary bg-input hover:bg-primary/10"
                             onClick={handleSecurityKeyLogin}
                             disabled={isLoading}
                         >
