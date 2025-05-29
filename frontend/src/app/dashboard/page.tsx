@@ -334,13 +334,13 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* Overview Stats */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Logins</CardTitle>
-              <BarChart3 className="h-4 w-4 text-teal-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Logins</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalLogins || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.totalLogins || 0}</div>
               <p className="text-xs text-muted-foreground">
                 {stats?.loginChange !== undefined
                     ? `${stats.loginChange > 0 ? '+' : ''}${stats.loginChange}`
@@ -349,15 +349,15 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Security Score</CardTitle>
-              <Shield className="h-4 w-4 text-teal-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Security Score</CardTitle>
+              <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.securityScore || 0}%</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.securityScore || 0}%</div>
               <div className="mt-2">
-                <Progress value={stats?.securityScore || 0} className="h-2" />
+                <Progress value={stats?.securityScore || 0} className="h-2 bg-foreground/20 [&>div]:bg-foreground" />
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Based on security key adoption
@@ -365,25 +365,25 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Successful Logins</CardTitle>
-              <Bell className="h-4 w-4 text-teal-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Successful Logins</CardTitle>
+              <Bell className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.successRate || 0}%</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.successRate || 0}%</div>
               <div className="mt-2 flex gap-2">
                 <Badge
                     variant="outline"
                     className={`text-xs ${
                         stats?.successRate !== undefined ? (
                             stats.successRate >= 90
-                                ? 'text-green-700 border-green-700'
+                                ? 'text-green-500 border-green-500 dark:text-green-400 dark:border-green-400'
                                 : stats.successRate >= 70
-                                    ? 'text-amber-700 border-amber-700'
-                                    : 'text-red-700 border-red-700'
-                        ) : 'text-gray-700 border-gray-700'
-                    }`}
+                                    ? 'text-amber-500 border-amber-500 dark:text-amber-400 dark:border-amber-400'
+                                    : 'text-red-500 border-red-500 dark:text-red-400 dark:border-red-400'
+                        ) : 'text-muted-foreground border-muted-foreground'
+                    } bg-transparent`}
                 >
                   {stats?.successRate !== undefined ? (
                       stats.successRate >= 90 ? 'High' : stats.successRate >= 70 ? 'Medium' : 'Low'
@@ -393,13 +393,13 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Failed Attempts</CardTitle>
-              <ArrowDownRight className="h-4 w-4 text-green-500" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Failed Attempts</CardTitle>
+              <ArrowDownRight className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.failedAttempts || 0}</div>
+              <div className="text-2xl font-bold text-foreground">{stats?.failedAttempts || 0}</div>
               <p className="text-xs text-muted-foreground">
                 {stats?.failedChange !== undefined
                     ? `${stats.failedChange > 0 ? '+' : ''}${stats.failedChange}`
@@ -639,6 +639,7 @@ export default function DashboardPage() {
                               cx="50%"
                               cy="50%"
                               outerRadius={80}
+                              stroke="none" // Remove border from pie segments
                           >
                             {securityMetrics.map((entry, index) => (
                                 <Cell
@@ -652,7 +653,7 @@ export default function DashboardPage() {
                                 if (active && payload && payload.length) {
                                   const data = payload[0].payload as SecurityMetric; // Added type assertion
                                   return (
-                                      <div className="rounded-lg border bg-background p-2 shadow-sm text-sm text-foreground">
+                                      <div className="rounded-lg bg-background p-2 shadow-sm text-sm text-foreground">
                                         <p className="font-bold">{data.name}</p>
                                         <p>{data.value} users</p>
                                       </div>
@@ -715,6 +716,7 @@ export default function DashboardPage() {
                               cx="50%"
                               cy="50%"
                               outerRadius={80}
+                              stroke="none" // Remove border from pie segments
                           >
                             {deviceStats.map((entry, index) => {
                               const deviceName = entry.name ? entry.name.toLowerCase() : 'unknown';
