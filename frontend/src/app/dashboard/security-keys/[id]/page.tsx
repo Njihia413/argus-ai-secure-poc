@@ -177,7 +177,7 @@ export default function SecurityKeyDetailsPage() {
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Status</p>
-            <Badge variant="outline" className={`capitalize ${securityKey.isActive ? "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 bg-transparent" : "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-transparent"}`}>
+            <Badge variant="outline" className={`capitalize ${securityKey.isActive ? "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 bg-transparent" : "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700 bg-transparent"}`}>
               {securityKey.status}
             </Badge>
           </div>
