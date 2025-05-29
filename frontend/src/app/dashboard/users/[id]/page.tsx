@@ -559,7 +559,11 @@ const handleReassignKey = async () => {
     
   } catch (error: any) {
     console.error("Error reassigning key:", error);
-    toast.error(error.response?.data?.error || "Failed to reassign security key");
+    if (error.response?.data?.error === "New user already has an active security key. Cannot reassign.") {
+      toast.error("Failed to reassign key: The selected user already has an active security key.");
+    } else {
+      toast.error(error.response?.data?.error || "Failed to reassign security key");
+    }
   } finally {
     setIsReassigning(false);
     setShowReassignDialog(false);
