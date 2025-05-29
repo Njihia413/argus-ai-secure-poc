@@ -84,6 +84,7 @@
   --sidebar-ring: oklch(0.708 0 0);
   --card-border-light: var(--sidebar-bg-light);
   --card-border-themed: var(--card-border-light);
+  --login-page-background: var(--background); /* Default login page background */
 }
 
 .dark {
@@ -102,8 +103,8 @@
   --accent: oklch(0.15 0.002 302.75); /* Darker shade */
   --accent-foreground: oklch(0.95 0 0); /* Light Gray */
   --destructive: oklch(0.577 0.245 27.325 / 0.9); /* Red, slightly desaturated for dark mode */
-  --border: oklch(0.2 0.002 302.75); /* Visible border on dark background */
-  --input: oklch(0.2 0.002 302.75); /* Visible input background */
+  --border: #46442f; /* Input border dark mode */
+  --input: var(--sidebar); /* Input background dark mode to match sidebar */
   --ring: oklch(0.507 0.191 256.34 / 0.6); /* #2563eb with alpha for focus */
   --chart-1: oklch(0.80 0.12 256.34);    /* Lightest Blue */
   --chart-2: oklch(0.65 0.15 256.34);    /* Lighter Blue */
@@ -125,6 +126,8 @@
   --sidebar-ring: oklch(0.556 0 0);
   --card-border-dark: var(--sidebar-bg-dark);
   --card-border-themed: var(--card-border-dark);
+  --login-background-dark: #121212; /* Login page background dark mode */
+  --login-page-background: var(--login-background-dark); /* Dark mode login page background */
 }
 
 @layer base {
