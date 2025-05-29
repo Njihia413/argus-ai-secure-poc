@@ -47,6 +47,14 @@ The application follows Next.js 13+ App Router architecture with a clear separat
     -   Conditionally renders text labels based on the sidebar's state, with specific classes (`opacity-0 w-0 hidden`) to ensure proper hiding and layout in collapsed mode.
     -   Applies `justify-center` to `SidebarMenuButton` and its child `<a>` tag when collapsed to aid icon centering.
     -   Active sidebar links (`SidebarMenuButton` with `data-[active=true]`) are styled with `bg-primary`, `text-primary-foreground`, and `rounded-xl` via `sidebarMenuButtonVariants` in `src/components/ui/sidebar.tsx`.
+-   **Interactive Charts (e.g., Login Attempts in [`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1)):**
+    -   Utilize shadcn `ChartContainer` and associated components (`ChartTooltip`, `ChartLegend`, `ChartLegendContent`) for consistent styling and interactivity.
+    -   Employ `ChartConfig` to define series labels and colors (e.g., `color: "var(--chart-2)"` or specific hex values like `#8B5CF6`).
+    -   Use shadcn `Select` component for time-range filtering, updating a state variable that triggers data re-fetching.
+    -   Structure within a `Card` component, with `CardHeader` for title, description, and filters, and `CardContent` for the `ChartContainer`.
+    -   Employ `<defs>` with `<linearGradient>` for area fill opacity.
+    -   Omit explicit `<YAxis />` to allow Recharts to auto-configure based on data, for better visual balance.
+    -   Use `stackId` on `<Area>` components for stacked area charts when appropriate.
 
 ### 2. State Management
 -   React `useState` for local component state (e.g., dialog open/closed, loading states for actions).

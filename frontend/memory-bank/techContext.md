@@ -33,6 +33,7 @@
 - Lucide React for icons
 - Sonner for toast notifications (**Standardized for user feedback**)
 - `next-themes` for theme management (light/dark/system)
+- shadcn `chart` components (e.g., `ChartContainer`) used in conjunction with `Recharts` for interactive data visualizations.
 
 ### Authentication & Security
 - SimpleWebAuthn Browser SDK (v13.1.0)
