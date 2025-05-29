@@ -17,6 +17,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Area,
+  AreaChart,
   Line,
   LineChart,
   Pie,
@@ -30,8 +32,24 @@ import {
 } from "recharts"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 
 interface ChartErrorState {
   hasError: boolean;
@@ -119,6 +137,7 @@ export default function DashboardPage() {
   const [riskTrend, setRiskTrend] = useState<RiskTrendItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   // Add refresh trigger state for dashboard updates
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
@@ -234,7 +253,7 @@ export default function DashboardPage() {
         // Fetch login attempts data
         const loginResponse = await fetch(`${API_URL}/login-attempts`, { headers })
         if (!loginResponse.ok) {
-          throw new Error('Failed to fetch login attempts')
+          throw new Error(`Failed to fetch login attempts for range ${timeRange}`)
         }
         const loginData = await loginResponse.json()
         if (!loginData || !loginData.attempts) {
@@ -295,7 +314,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [refreshTrigger]) // Add refreshTrigger to dependency array to refresh on key changes
+  }, [refreshTrigger, timeRange]) // Add refreshTrigger and timeRange to dependency array
 
   const DEVICE_COLOR_MAP: { [key: string]: string } = {
     'windows pc': '#2563eb',
@@ -327,11 +346,25 @@ export default function DashboardPage() {
       return "N/A"
     }
   }
-
+ 
+  const loginAttemptsChartConfig = {
+    // Ensure 'name' is present if used as dataKey for XAxis in some contexts,
+    // or rely on direct dataKey in XAxis component.
+    // For series colors, ChartContainer will create CSS vars like --color-successful
+    successful: {
+      label: "Successful",
+      color: "#8B5CF6", // As per your feedback
+    },
+    failed: {
+      label: "Failed",
+      color: "var(--chart-4)", // Your existing theme variable for the second color
+    },
+  } satisfies ChartConfig;
+ 
   return (
     <div className="flex flex-col gap-6">
         <h2 className="text-2xl font-bold tracking-tight">Dashboard Overview</h2>
-
+ 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* Overview Stats */}
           <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
@@ -412,93 +445,172 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2">
           {/* Login Attempts Chart */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle>Login Attempts</CardTitle>
-              <CardDescription>Daily login attempts this month</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading login attempts data...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : loginAttempts.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No login attempts data available
-                      </div>
-                  ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                            data={loginAttempts.length > 0 ? loginAttempts : [{ name: 'No data', successful: 0, failed: 0 }]}
-                            margin={{
-                              top: 10,
-                              right: 10,
-                              left: 10,
-                              bottom: 0
-                            }}
-                        >
-                          <XAxis
-                              dataKey="name"
-                              stroke="#888888"
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                          />
-                          <YAxis
-                              stroke="#888888"
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                              tickFormatter={(value) => Math.round(value).toString()}
-                              allowDecimals={false}
-                              domain={[0, 'auto']}
-                          />
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <Legend
-                              verticalAlign="top"
-                              height={36}
-                              align="center"
-                              iconType="circle"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="successful"
-                            stroke="#2563eb"
-                            strokeWidth={2}
-                            dot={true}
-                              activeDot={{ r: 6 }}
-                              connectNulls={true}
-                              name="Successful"
-                              isAnimationActive={false}
-                          />
-                          <Tooltip
-                              formatter={(value) => [
-                                value.toString(),
-                                "Attempts"
-                              ]}
-                              labelFormatter={(label) => `${label}`}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="failed"
-                            stroke="#a6c4fc"
-                            strokeWidth={2}
-                            dot={true}
-                              activeDot={{ r: 6 }}
-                              connectNulls={true}
-                              name="Failed"
-                              isAnimationActive={false}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
+            {/* Using exact CardHeader structure from example */}
+            <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
+              <div className="grid flex-1 gap-1 text-center sm:text-left">
+                <CardTitle>Login Attempts</CardTitle>
+                <CardDescription>
+                  {timeRange === '7d' && 'Showing login attempts for the last 7 days'}
+                  {timeRange === '30d' && 'Showing login attempts for the last 30 days'}
+                  {timeRange === '90d' && 'Showing login attempts for the last 3 months'}
+                </CardDescription>
               </div>
+              <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
+                <SelectTrigger
+                  className="w-[160px] rounded-lg sm:ml-auto"
+                  aria-label="Select a time range"
+                >
+                  <SelectValue placeholder="Select time range" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="90d" className="rounded-lg">
+                    Last 3 months
+                  </SelectItem>
+                  <SelectItem value="30d" className="rounded-lg">
+                    Last 30 days
+                  </SelectItem>
+                  <SelectItem value="7d" className="rounded-lg">
+                    Last 7 days
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </CardHeader>
+            {/* Using exact CardContent structure and padding from example */}
+            <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+              <ChartErrorBoundary>
+                {isLoading ? (
+                  <div className="aspect-auto h-[250px] w-full flex items-center justify-center text-muted-foreground">
+                    Loading login attempts data...
+                  </div>
+                ) : error ? (
+                  <div className="aspect-auto h-[250px] w-full flex items-center justify-center text-red-500">
+                    {error}
+                  </div>
+                ) : loginAttempts.length === 0 ? (
+                  <div className="aspect-auto h-[250px] w-full flex items-center justify-center text-muted-foreground">
+                    No login attempts data available for the selected period.
+                  </div>
+                ) : (
+                  <ChartContainer
+                    config={loginAttemptsChartConfig}
+                    className="aspect-auto h-[250px] w-full"
+                  >
+                    <AreaChart
+                      accessibilityLayer
+                      data={loginAttempts} // Corrected to use loginAttempts
+                      margin={{ // Matching example margins
+                        left: 12,
+                        right: 12,
+                        top: 5,
+                        bottom: 5,
+                      }}
+                    >
+                      <defs>
+                        <linearGradient id="fillSuccessful" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-successful)" // Uses color from chartConfig
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-successful)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                        <linearGradient id="fillFailed" x1="0" y1="0" x2="0" y2="1">
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-failed)" // Uses color from chartConfig
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-failed)"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} /> {/* Matching example */}
+                      <XAxis
+                        dataKey="name" // Your data key for date/label
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        minTickGap={32} // Matching example
+                        tickFormatter={(value) => {
+                          try {
+                            const date = new Date(value);
+                            // Fallback for non-standard date strings if 'name' isn't directly parsable
+                            if (isNaN(date.getTime())) {
+                              // Attempt to parse if it's like "Mon DD"
+                              const parts = value.split(" ");
+                              if (parts.length === 2) {
+                                const monthDate = new Date(`${parts[0]} ${parts[1]}, ${new Date().getFullYear()}`);
+                                if (!isNaN(monthDate.getTime())) {
+                                   return monthDate.toLocaleDateString("en-US", {month: "short", day: "numeric"});
+                                }
+                              }
+                              return value; // Return original value if parsing fails
+                            }
+                            return date.toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            });
+                          } catch (e) {
+                            return value;
+                          }
+                        }}
+                      />
+                      {/* YAxis is omitted to let Recharts auto-configure, as in the example */}
+                      <ChartTooltip
+                        cursor={false} // Matching example
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) => { // Value here is the XAxis dataKey ('name')
+                              try {
+                                const date = new Date(value);
+                                if (isNaN(date.getTime())) {
+                                   const parts = value.split(" ");
+                                   if (parts.length === 2) {
+                                     const monthDate = new Date(`${parts[0]} ${parts[1]}, ${new Date().getFullYear()}`);
+                                     if (!isNaN(monthDate.getTime())) {
+                                       return monthDate.toLocaleDateString("en-US", {month: "short", day: "numeric"});
+                                     }
+                                   }
+                                  return value;
+                                }
+                                return date.toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                });
+                              } catch (e) {
+                                return value;
+                              }
+                            }}
+                            indicator="dot" // Matching example
+                          />
+                        }
+                      />
+                      <Area
+                        dataKey="successful" // Your data key
+                        type="natural"
+                        fill="url(#fillSuccessful)"
+                        stroke="var(--color-successful)"
+                        stackId="a" // For stacked areas, as in the example image
+                      />
+                      <Area
+                        dataKey="failed" // Your data key
+                        type="natural"
+                        fill="url(#fillFailed)"
+                        stroke="var(--color-failed)"
+                        stackId="a" // For stacked areas, as in the example image
+                      />
+                      <ChartLegend content={<ChartLegendContent />} />
+                    </AreaChart>
+                  </ChartContainer>
+                )}
+              </ChartErrorBoundary>
             </CardContent>
           </Card>
 
