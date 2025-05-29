@@ -84,7 +84,7 @@ export default function SignupPage() {
                 <div className="mx-auto w-full max-w-sm space-y-8">
                     <div className="space-y-2 text-center">
                         <div className="flex justify-center">
-                            <div className="rounded-full bg-primary/10 p-3">
+                            <div className="rounded-xl bg-primary/10 p-3">
                                 <ShieldCheck className="h-8 w-8 text-primary"/>
                             </div>
                         </div>

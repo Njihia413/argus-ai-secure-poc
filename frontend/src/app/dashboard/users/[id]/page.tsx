@@ -576,7 +576,7 @@ const handleReassignKey = async () => {
   if (isLoading) {
     return (
         <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+          <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-teal-600"></div>
         </div>
     )
   }
@@ -866,14 +866,14 @@ const handleReassignKey = async () => {
                     isKeyReassigned ? (
                       isUpdating ? (
                         <>
-                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                          <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                           Preparing...
                         </>
                       ) : "Continue to Registration"
                     ) : (
                       isUpdating ? (
                         <>
-                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                          <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                           Updating...
                         </>
                       ) : "Update"
@@ -933,7 +933,7 @@ const handleReassignKey = async () => {
               >
                 {isRegistering ? (
                     <>
-                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                      <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                       Registering...
                     </>
                 ) : (
@@ -992,7 +992,7 @@ const handleReassignKey = async () => {
               >
                 {isDeactivating ? (
                   <>
-                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                    <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                     Deactivating...
                   </>
                 ) : (
@@ -1034,7 +1034,7 @@ const handleReassignKey = async () => {
               >
                 {isDeleting ? (
                     <>
-                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                      <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                       Deleting...
                     </>
                 ) : (
@@ -1091,7 +1091,7 @@ const handleReassignKey = async () => {
             >
               {isResetting ? (
                 <>
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                   Resetting...
                 </>
               ) : (
@@ -1165,7 +1165,7 @@ const handleReassignKey = async () => {
             >
               {isReassigning ? (
                 <>
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
                   Reassigning...
                 </>
               ) : "Reassign Key"}

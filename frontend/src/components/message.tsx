@@ -72,7 +72,7 @@ export function ReasoningMessagePart({
           <div className="font-medium text-sm">Reasoned for a few seconds</div>
           <button
             className={cn(
-              "cursor-pointer rounded-full dark:hover:bg-zinc-800 hover:bg-zinc-200",
+              "cursor-pointer rounded-xl dark:hover:bg-zinc-800 hover:bg-zinc-200",
               {
                 "dark:bg-zinc-800 bg-zinc-200": isExpanded,
               },
@@ -141,7 +141,7 @@ const PurePreviewMessage = ({
           )}
         >
           {message.role === "assistant" && (
-            <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border bg-background">
+            <div className="size-8 flex items-center rounded-xl justify-center ring-1 shrink-0 ring-border bg-background">
               <div className="">
                 {/*<SparklesIcon size={14} />*/}
                 <img src="/assets/images/Logo-No-Bg.png" alt="Logo" className="h-6"/>
@@ -183,7 +183,7 @@ const PurePreviewMessage = ({
                       className="flex flex-col gap-2 p-2 mb-3 text-sm bg-zinc-50 dark:bg-zinc-900 rounded-md border border-zinc-200 dark:border-zinc-800"
                     >
                       <div className="flex-1 flex items-center justify-center">
-                        <div className="flex items-center justify-center w-8 h-8 bg-zinc-50 dark:bg-zinc-800 rounded-full">
+                        <div className="flex items-center justify-center w-8 h-8 bg-zinc-50 dark:bg-zinc-800 rounded-xl">
                           <PocketKnife className="h-4 w-4" />
                         </div>
                         <div className="flex-1">

@@ -29,7 +29,7 @@ export const Input = ({
         <button
           type="button"
           onClick={stop}
-          className="cursor-pointer absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors"
+          className="cursor-pointer absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors"
         >
           <div className="animate-spin h-4 w-4">
             <svg className="h-4 w-4 text-white" viewBox="0 0 24 24">
@@ -54,7 +54,7 @@ export const Input = ({
         <button
           type="submit"
           disabled={isLoading || !input.trim()}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors"
         >
           <ArrowUp className="h-4 w-4 text-white" />
         </button>

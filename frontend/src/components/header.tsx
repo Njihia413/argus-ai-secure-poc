@@ -204,7 +204,7 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
             {/* Profile Tab */}
             <TabsContent value="profile" className="space-y-4">
               <div className="flex flex-col items-center space-y-2">
-                <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-2xl font-bold">
+                <div className="h-20 w-20 rounded-xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-bold">
                   {userData?.firstName?.[0] || ""}
                   {userData?.lastName?.[0] || ""}
                 </div>
@@ -349,7 +349,7 @@ export const Header = () => {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <div className="cursor-pointer">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow bg-primary text-primary-foreground">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow bg-primary text-primary-foreground">
                         {userData?.firstName?.[0] || ""}
                         {userData?.lastName?.[0] || ""}
                       </div>

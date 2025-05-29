@@ -57,7 +57,7 @@ export const Textarea = ({
         <button
           type="button"
           onClick={stop}
-          className="cursor-pointer absolute right-2 bottom-2 rounded-full p-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 disabled:cursor-not-allowed transition-colors"
+          className="cursor-pointer absolute right-2 bottom-2 rounded-xl p-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 disabled:cursor-not-allowed transition-colors"
         >
           <div className="animate-spin h-4 w-4">
             <svg className="h-4 w-4 text-white" viewBox="0 0 24 24">
@@ -82,7 +82,7 @@ export const Textarea = ({
         <button
           type="submit"
           disabled={isLoading || !input.trim()}
-          className="absolute right-2 bottom-2 rounded-full p-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 disabled:cursor-not-allowed transition-colors"
+          className="absolute right-2 bottom-2 rounded-xl p-2 bg-primary hover:bg-primary/90 disabled:bg-primary/50 disabled:cursor-not-allowed transition-colors"
         >
           <ArrowUp className="h-4 w-4 text-primary-foreground" />
         </button>

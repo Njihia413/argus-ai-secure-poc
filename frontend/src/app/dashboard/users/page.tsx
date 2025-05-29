@@ -297,7 +297,7 @@ export default function UsersPage() {
             <CardContent>
               {isLoading ? (
                   <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
                     <span>Loading users...</span>
                   </div>
               ) : (
