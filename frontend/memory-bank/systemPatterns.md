@@ -93,7 +93,7 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 -   **Toggle Component:** A `src/components/theme-toggle-button.tsx` provides a UI for users to switch themes. This button is integrated into the main `src/components/header.tsx` (for chat UI) and directly into `src/app/dashboard/layout.tsx` (for dashboard visibility).
 -   **Styling Consistency:**
     -   Base UI components like `src/components/ui/button.tsx` (with updated `outline` variant for blue border/text) and `src/components/ui/input.tsx` are updated to use `rounded-xl` for a consistent look and feel.
-    -   Specific components like `src/components/textarea.tsx` (main container) are also updated to `rounded-xl`. The internal submit button remains `rounded-full` but uses the primary theme color.
+    -   Specific components like `src/components/textarea.tsx` (main container) are also updated to `rounded-xl`. The internal submit button remains `rounded-xl` but uses the primary theme color.
     -   "Cancel" buttons across various dialogs are now consistently styled using the updated `variant="outline"`.
 
 ## Technical Decisions

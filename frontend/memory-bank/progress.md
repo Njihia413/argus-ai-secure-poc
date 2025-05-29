@@ -8,17 +8,32 @@
 - [x] WebAuthn integration
 - [x] Authentication flows
 - [x] Backend account locking logic updated (manual admin unlock, locks at 5 attempts, `failed_login_attempts` are now reset to 0 upon admin unlock, `unlocked_by` stores admin username, added check for admin's username before unlock, migration script corrected)
+- [x] **Backend Key Reassignment Logic:** Updated [`reassign_security_key`](../backend/app.py:1497) in [`../backend/app.py`](../backend/app.py:1) to prevent reassignment to a user already possessing an active key.
+- [x] **Frontend Key Reassignment Toast:** Added specific toast notification in [`src/app/dashboard/users/[id]/page.tsx`](src/app/dashboard/users/[id]/page.tsx:1) for the "user already has an active key" error.
 
 ### Dashboard
 - [x] Main dashboard layout
+    - [x] **Search Input Styling:** In [`src/app/dashboard/layout.tsx`](src/app/dashboard/layout.tsx:1), search input border radius changed to `rounded-xl`.
+    - [x] **Sidebar Trigger Styling:** In [`src/app/dashboard/layout.tsx`](src/app/dashboard/layout.tsx:1), sidebar trigger button border radius changed to `rounded-full` and background set to `bg-sidebar`.
 - [x] Sidebar navigation (**"Security Keys" and "Audit Logs" are now top-level menu items. "Security" remains a top-level item linking to [`/dashboard/security`](/dashboard/security).**)
+    - [x] **Active Menu Item Styling:** In [`src/components/ui/sidebar.tsx`](src/components/ui/sidebar.tsx:1), active `SidebarMenuButton` now has `rounded-full` border radius.
 - [x] Security overview page
+    - [x] **Overview Cards Styling ([`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1)):**
+        - Applied a "to top" gradient background using new CSS variables (`--overview-card-gradient-from`, `--overview-card-gradient-to`) defined in [`src/app/globals.css`](src/app/globals.css) with `color-mix`.
+        - Adjusted text colors for visibility (`text-foreground`, `text-muted-foreground`).
+        - Updated Progress bar and Badge colors for theme consistency.
+    - [x] **Pie Chart Borders (Dark Mode) ([`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1)):** Removed white borders by adding `stroke="none"` to `Pie` components and removing border from custom tooltip.
 - [x] **New:** Security Keys page ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) with data table for managing security keys. **Now fetches data from backend, includes global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive").**
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
 - [x] Users management (**Enhanced with client-side search and dropdown filters for role & security key status. Filters are part of the `DataTable` via a `toolbar` prop. Filter controls use `font-montserrat`. Security key filter labels updated.**)
 - [x] Audit logs view
     - [x] **UI Fix:** Action badges in Security Key Audit Logs table ([`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1)) now have transparent backgrounds and theme-aware text/border colors for improved dark mode visibility.
 - [x] Settings page
+
+### UI Components
+- [x] **Card Component ([`src/components/ui/card.tsx`](src/components/ui/card.tsx:1)):**
+    - Border color updated to use `border-[var(--card-border-themed)]` (derived from sidebar background).
+    - Border radius increased to `rounded-2xl`.
 
 ### Security Features
 - [x] Security key management
@@ -54,9 +69,12 @@
     - Added `next-themes` for theme management.
     - Created `ThemeProvider` (with corrected `ThemeProviderProps` import) and `ThemeToggleButton` components.
     - Defined CSS variables in `globals.css` for light/dark modes, new primary color `#2563eb` (blue), dark background `#0b0a0a`, and a regenerated blue-based chart color palette.
+        - **Sidebar Background:** Light: `#F5F5F1`, Dark: `#1c1819`.
+        - **Card Gradient:** New variables `--overview-card-gradient-from` and `--overview-card-gradient-to` using `color-mix` for a "to top" gradient.
+        - **Card Border:** New variables `--card-border-themed` using sidebar background colors.
     - Integrated theme toggle into the main header (`src/components/header.tsx`) and dashboard layout (`src/app/dashboard/layout.tsx`) for universal visibility.
 - [x] Styling Consistency & Fixes:
-    - Applied `rounded-xl` to most `Button` and `Input` components globally.
+    - Applied `rounded-xl` to most `Button` and `Input` components globally (except dashboard search input).
     - Updated `Textarea` component wrapper to `rounded-xl`.
     - Chat textarea submit button (`src/components/textarea.tsx`) now uses the new primary blue color background and foreground text.
     - User-sent chat messages (`src/components/message.tsx`) now have the new primary blue color background and foreground text.
@@ -73,14 +91,14 @@
     - Sidebar now collapses to show only icons, with text labels hidden (using conditional rendering and opacity/width classes for robustness).
     - Tooltips display item names on hover when collapsed.
     - Added specific classes to `SidebarMenuButton` and its child `<a>` tag in `app-sidebar.tsx` to improve icon centering in collapsed view.
-    - Updated `SidebarMenuButton` in `src/components/ui/sidebar.tsx` to use `bg-primary`, `text-primary-foreground`, and `rounded-xl` for active links.
-
+    - Updated `SidebarMenuButton` in `src/components/ui/sidebar.tsx` to use `bg-primary`, `text-primary-foreground`, and `rounded-full` (was `rounded-xl`) for active links.
 - [x] Dashboard Chart Theming:
     - Updated "Login Attempts" chart in `src/app/dashboard/page.tsx` to use the new, more distinct theme colors (`--chart-2` and `--chart-4`) instead of previous theme colors.
     - Moved the custom legend (displaying "Low Risk", "Medium Risk", "High Risk") from the "Top Locations" chart to be under the "Risk Score Trend" chart in `src/app/dashboard/page.tsx`, and ensured it is correctly positioned within the `CardContent`.
     - Added a new custom legend for the "Top Locations" chart in `src/app/dashboard/page.tsx` to display "Low Severity (<= 5 attempts)", "Medium Severity (<= 15 attempts)", and "High Severity (> 15 attempts)" with corresponding colors, positioned correctly within its `CardContent`.
     - Corrected a malformed JSX comment block in `src/app/dashboard/page.tsx`.
     - Resolved linter errors on line 839 of `src/app/dashboard/page.tsx` by wrapping the `>` character in a JSX expression `{'>'}`.
+
 ## In Progress
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
