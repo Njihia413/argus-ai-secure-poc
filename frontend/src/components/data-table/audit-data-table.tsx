@@ -68,7 +68,6 @@ export function AuditDataTable<TData, TValue>({
     { value: "initial-register", label: "Initial Registration" },
     { value: "re-register", label: "Re-Registration" },
     { value: "deactivate", label: "Deactivate" },
-    { value: "activate", label: "Activate" },
     { value: "reassign", label: "Reassign" },
     { value: "reset", label: "Reset" },
   ];
