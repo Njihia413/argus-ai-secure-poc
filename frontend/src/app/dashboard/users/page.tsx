@@ -316,7 +316,6 @@ export default function UsersPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectGroup>
-                                {/* <SelectLabel>Role</SelectLabel> */}
                                 <SelectItem value="all">All Roles</SelectItem>
                                 <SelectItem value="admin">Admin</SelectItem>
                                 <SelectItem value="user">User</SelectItem>
@@ -329,7 +328,6 @@ export default function UsersPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectGroup>
-                                {/* <SelectLabel>Security Key</SelectLabel> */}
                                 <SelectItem value="all">All Security Keys</SelectItem>
                                 <SelectItem value="none">None</SelectItem>
                                 <SelectItem value="active">Active</SelectItem>
