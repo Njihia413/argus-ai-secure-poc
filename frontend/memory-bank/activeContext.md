@@ -48,6 +48,18 @@ Based on open files and recent activity, development is focused on security mana
     *   **Pie Chart Borders (Dark Mode):**
         *   Removed white border from "Security Metrics" and "Device Distribution" pie charts by adding `stroke="none"` to the `Pie` components.
         *   Removed `border` class from the custom tooltip content `div` for the "Security Metrics" chart.
+    *   **Login Attempts Chart (Refactored with shadcn Chart Components):**
+        *   Integrated `ChartContainer`, `ChartTooltip`, `ChartLegend` from `@/components/ui/chart`.
+        *   Time range filter now uses `Select` component from `@/components/ui/select`.
+        *   Defined `loginAttemptsChartConfig` for labels and colors (successful: `#8B5CF6`, failed: `var(--chart-4)`).
+        *   Implemented **stacked** areas with gradient fills (using `stackId="a"`) to match example code.
+        *   X-axis and tooltip labels format dates as "Month Day"; XAxis `type` prop removed.
+        *   Adjusted `AreaChart` margins to `{ left: 12, right: 12, top: 5, bottom: 5 }`.
+        *   Explicit `<YAxis />` component removed (Recharts auto-configures).
+        *   Legend displayed at the bottom.
+        *   Card description dynamically updates with selected time range.
+        *   Ensured `AreaChart` `data` prop uses the fetched `loginAttempts` state.
+        *   Corrected tooltip `labelFormatter` to remove `year: "numeric"` to prevent incorrect year display.
 
 8.  **Previously Documented (and still relevant):**
     *   Security key management interface (Security Keys Table & Details pages).
@@ -67,6 +79,7 @@ Based on open files and recent activity, development is focused on security mana
     *   Active sidebar menu items now have a `rounded-full` border radius.
     *   Overview cards on the dashboard now use a "to top" gradient based on the primary theme color, with borders matching the sidebar background. Card border radius increased to `rounded-2xl`. Text colors adjusted for visibility.
     *   Removed white borders from pie charts in dark mode.
+    *   Login Attempts chart refactored to use shadcn `ChartContainer` and `Select` for filters, with styling and functionality aligned with the provided interactive example.
 3.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients and card borders to ensure theme adaptability.
 
 ## Active Technical Patterns

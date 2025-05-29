@@ -93,7 +93,18 @@
     - Added specific classes to `SidebarMenuButton` and its child `<a>` tag in `app-sidebar.tsx` to improve icon centering in collapsed view.
     - Updated `SidebarMenuButton` in `src/components/ui/sidebar.tsx` to use `bg-primary`, `text-primary-foreground`, and `rounded-full` (was `rounded-xl`) for active links.
 - [x] Dashboard Chart Theming:
-    - Updated "Login Attempts" chart in `src/app/dashboard/page.tsx` to use the new, more distinct theme colors (`--chart-2` and `--chart-4`) instead of previous theme colors.
+    - Updated "Login Attempts" chart in `src/app/dashboard/page.tsx` (Refactored to use shadcn Chart Components):
+        - Integrated `ChartContainer`, `ChartTooltip`, `ChartLegend` from `@/components/ui/chart`.
+        - Time range filter now uses `Select` component from `@/components/ui/select`.
+        - Defined `loginAttemptsChartConfig` for labels and colors (successful: `#8B5CF6`, failed: `var(--chart-4)`).
+        - Implemented **stacked** areas with gradient fills (using `stackId="a"`) to match example code.
+        - X-axis and tooltip labels format dates as "Month Day"; XAxis `type` prop removed.
+        - Adjusted `AreaChart` margins to `{ left: 12, right: 12, top: 5, bottom: 5 }`.
+        - Explicit `<YAxis />` component removed (Recharts auto-configures).
+        - Legend displayed at the bottom.
+        - Card description dynamically updates with selected time range.
+        - Ensured `AreaChart` `data` prop uses the fetched `loginAttempts` state.
+        - Corrected tooltip `labelFormatter` to remove `year: "numeric"` to prevent incorrect year display.
     - Moved the custom legend (displaying "Low Risk", "Medium Risk", "High Risk") from the "Top Locations" chart to be under the "Risk Score Trend" chart in `src/app/dashboard/page.tsx`, and ensured it is correctly positioned within the `CardContent`.
     - Added a new custom legend for the "Top Locations" chart in `src/app/dashboard/page.tsx` to display "Low Severity (<= 5 attempts)", "Medium Severity (<= 15 attempts)", and "High Severity (> 15 attempts)" with corresponding colors, positioned correctly within its `CardContent`.
     - Corrected a malformed JSX comment block in `src/app/dashboard/page.tsx`.
