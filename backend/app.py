@@ -1186,6 +1186,11 @@ def deactivate_security_key_status(key_id):
     if not key:
         return jsonify({'error': 'Security key not found'}), 404
 
+    print(f"[DEACTIVATE_KEY] Initial key state for ID {key_id}: is_active={key.is_active}, reason='{key.deactivation_reason}'")
+    
+    reason_from_payload = request.json.get('reason') if request.json else "REQUEST_JSON_IS_NONE"
+    print(f"[DEACTIVATE_KEY] Reason from request payload for key ID {key_id}: '{reason_from_payload}'")
+
     # If trying to activate a deactivated key
     if not key.is_active and key.last_used:
         return jsonify({
@@ -1194,11 +1199,11 @@ def deactivate_security_key_status(key_id):
         }), 400
 
     # If activating a key, check if user already has another active key
-    if not key.is_active:  # If we're activating the key
+    if not key.is_active:  # If we're activating the key (current key.is_active is False, about to become True)
         other_active_key = SecurityKey.query.filter_by(
             user_id=key.user_id,
             is_active=True
-        ).first()
+        ).filter(SecurityKey.id != key_id).first() # Exclude the current key itself if it's somehow in this state
         if other_active_key:
             return jsonify({
                 'error': 'Active key exists',
@@ -1207,28 +1212,31 @@ def deactivate_security_key_status(key_id):
 
     # Create an audit log entry first
     previous_state = {
-        'is_active': key.is_active,
+        'is_active': key.is_active, # This is the state *before* toggle
         'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
-        'deactivation_reason': key.deactivation_reason
+        'deactivation_reason': key.deactivation_reason # This is the reason *before* update
     }
+    print(f"[DEACTIVATE_KEY] Previous state for audit for key ID {key_id}: {previous_state}")
 
     # Toggle the status and set deactivation details
-    key.is_active = not key.is_active
+    key.is_active = not key.is_active # key.is_active is now the new state
     
     # When deactivating, set deactivation details
-    if not key.is_active:
+    if not key.is_active: # This means the key was active, and is now being made inactive
         key.deactivated_at = datetime.now(timezone.utc)
-        key.deactivation_reason = request.json.get('reason')
-    else:
-        # Clear deactivation details when activating
+        key.deactivation_reason = reason_from_payload # Use the captured reason from request
+        print(f"[DEACTIVATE_KEY] Deactivating key ID {key_id}. Set deactivation_reason to: '{key.deactivation_reason}'")
+    else: # This means the key was inactive, and is now being made active
         key.deactivated_at = None
         key.deactivation_reason = None
+        print(f"[DEACTIVATE_KEY] Activating key ID {key_id}. Cleared deactivation_reason.")
 
     new_state = {
-        'is_active': key.is_active,
+        'is_active': key.is_active, # This is the new state *after* toggle
         'deactivated_at': key.deactivated_at.isoformat() if key.deactivated_at else None,
-        'deactivation_reason': key.deactivation_reason
+        'deactivation_reason': key.deactivation_reason # This is the new reason *after* update
     }
+    print(f"[DEACTIVATE_KEY] New state for audit for key ID {key_id}: {new_state}")
 
     # Create audit log
     audit_log = SecurityKeyAudit(
@@ -1439,8 +1447,8 @@ def reset_security_key(key_id):
         
         # Mark as inactive for reassignment
         key.is_active = False
-        key.deactivated_at = datetime.now(timezone.utc)
-        key.deactivation_reason = "Reset by admin"
+        # DO NOT update deactivated_at here; it's set during explicit deactivation.
+        # DO NOT update deactivation_reason here; it's set during explicit deactivation.
         
         # Clear credential if needed
         key.credential_id = None
@@ -1932,34 +1940,57 @@ def webauthn_register_complete():
         return jsonify({'error': 'User not found'}), 404
 
     # Determine the actor_id (who is performing this registration)
-    actor_id = user.id  # Default to the user themselves (self-registration)
+    # 'user' is the user for whom the key is being registered.
+    
+    actor_id = user.id  # Default to the target user (for self-registration scenarios)
+    admin_performing_action = None # Will hold the admin User object if identified from header
 
-    if auth_token:
-        # Validate binding if nonce is also present
-        if binding_nonce and not validate_token_binding(auth_token, binding_nonce, request):
-            return jsonify({'error': 'Invalid session or connection during token binding validation'}), 400
+    print(f"[REGISTER_COMPLETE] Initial actor_id set to target user.id: {user.id} for user '{user.username}'. force_registration={force_registration}")
 
-        cleaned_token = auth_token.replace('Bearer ', '')
-        acting_session = AuthenticationSession.query.filter_by(session_token=cleaned_token).first()
-        
-        if acting_session:
-            potential_admin_user = Users.query.get(acting_session.user_id)
-            if potential_admin_user and potential_admin_user.role == 'admin':
-                actor_id = potential_admin_user.id
-                print(f"Admin user (ID: {actor_id}) is performing this registration for user {user.username} (ID: {user.id}).")
-            else:
-                # Token provided but not for a valid admin, or session user is not an admin.
-                # If token belongs to the target user, it's still self-registration.
-                # If token belongs to another non-admin, this is an edge case, but actor_id remains user.id.
-                if potential_admin_user and potential_admin_user.id != user.id :
-                     print(f"Warning: Auth token provided by user {potential_admin_user.id} who is not an admin, for registering key for user {user.id}. Logging as performed by target user.")
-                # If potential_admin_user is None, the session is invalid or user deleted.
-                # actor_id correctly remains user.id
+    # Attempt to identify an admin from the Authorization header
+    header_auth_token_str = request.headers.get('Authorization')
+    if header_auth_token_str and header_auth_token_str.startswith('Bearer '):
+        cleaned_header_token = header_auth_token_str.replace('Bearer ', '')
+        header_session = AuthenticationSession.query.filter_by(session_token=cleaned_header_token).first()
+        if header_session:
+            potential_admin_from_header = Users.query.get(header_session.user_id)
+            if potential_admin_from_header and potential_admin_from_header.role == 'admin':
+                admin_performing_action = potential_admin_from_header
+                actor_id = admin_performing_action.id  # This is the admin performing the action
+                print(f"[REGISTER_COMPLETE] Admin actor (ID: {actor_id}, Username: {admin_performing_action.username}) identified from Authorization header.")
+            elif potential_admin_from_header: # User in header is not an admin
+                 print(f"[REGISTER_COMPLETE] User (ID: {potential_admin_from_header.id}, Role: {potential_admin_from_header.role}) found in Authorization header, but is not an admin.")
+            else: # No user found for the session token in header
+                print(f"[REGISTER_COMPLETE] No user found for session token in Authorization header.")
+        else: # No session found for the token in header
+            print(f"[REGISTER_COMPLETE] No session found for token in Authorization header.")
+    else: # No Authorization: Bearer token in header
+        print(f"[REGISTER_COMPLETE] No 'Authorization: Bearer ...' token found in headers.")
+
+    # If force_registration is true (re-register), an admin MUST be the actor identified from the Authorization header.
+    if force_registration:
+        if not admin_performing_action:
+            print(f"[REGISTER_COMPLETE] AUDIT FAIL: force_registration=True for user '{user.username}', but no admin actor was identified from the Authorization header. This is an admin-driven flow and requires admin authentication via header.")
+            return jsonify({'error': 'Admin authorization token in header is required for re-registering a key.'}), 403
+        # If admin_performing_action is set, actor_id is already correctly the admin's ID.
+        print(f"[REGISTER_COMPLETE] AUDIT: Re-registration flow for user '{user.username}'. Actor is Admin ID: {actor_id} (Username: {admin_performing_action.username}).")
+    else: # Not force_registration (this is an initial registration)
+        if admin_performing_action:
+            # An admin is in the header. This could be an admin registering their *own* first key,
+            # or an admin initiating the *first* key registration for another user.
+            # In both these cases, the admin from the header is the correct actor.
+            print(f"[REGISTER_COMPLETE] AUDIT: Initial registration. Admin actor (ID: {actor_id}, Username: {admin_performing_action.username}) present in header. Target user: '{user.username}'.")
         else:
-            # No valid session found for the provided auth_token
-            # This could be an expired/invalid admin token, or a user token passed incorrectly.
-            # For audit purposes, if we can't confirm an admin, log as performed by target user.
-            print(f"Warning: Auth token provided but no valid session found. Logging as performed by target user {user.id}.")
+            # No admin in header, this is a true self-registration by the target user.
+            # actor_id remains user.id (the target user).
+            print(f"[REGISTER_COMPLETE] AUDIT: Initial self-registration for user '{user.username}'. Actor is Target User ID: {actor_id}.")
+    
+    # The `auth_token` variable (from `data.get('auth_token')`) is used for binding validation if present.
+    # It is NOT used to determine the `actor_id` for audit logging in `force_registration` cases.
+    # The `auth_token` from the body is distinct from the `header_auth_token_str` from `request.headers.get('Authorization')`.
+    # `auth_token` here is the variable defined at the start of the function from `data.get('auth_token')`.
+    if binding_nonce and auth_token and not validate_token_binding(auth_token, binding_nonce, request):
+        return jsonify({'error': 'Invalid session or connection during token binding validation'}), 400
 
     challenge_record = db.session.query(WebAuthnChallenge).filter(
         WebAuthnChallenge.user_id == user.id,
@@ -3518,67 +3549,6 @@ def update_user(user_id):
                 'middlename': user.middle_name,
                 'lastName': user.last_name,
                 'email': user.email,
-                'role': user.role
-            }
-        })
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-    
-
-    # Get the admin's auth token for authorization
-    admin_token = request.headers.get('Authorization')
-    if not admin_token:
-        return jsonify({'error': 'Admin authorization required'}), 401
-
-    # Verify the admin token
-    admin_token = admin_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
-
-    if not auth_session:
-        return jsonify({'error': 'Invalid admin token'}), 401
-
-    # Get the admin user
-    admin_user = Users.query.get(auth_session.user_id)
-    if not admin_user or admin_user.role != 'admin':
-        return jsonify({'error': 'Admin privileges required'}), 403
-
-    # Get the user to update
-    user = Users.query.get(user_id)
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    data = request.get_json()
-
-    # Update user fields
-    if 'firstName' in data:
-        user.first_name = data['firstName']
-    if 'lastName' in data:
-        user.last_name = data['lastName']
-    if 'role' in data:
-        # Validate role
-        valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
-        if data['role'] not in valid_roles:
-            return jsonify({'error': 'Invalid role specified'}), 400
-        user.role = data['role']
-    if 'username' in data:
-        # Check if username is already taken by another user
-        existing_user = Users.query.filter_by(username=data['username']).first()
-        if existing_user and existing_user.id != user_id:
-            return jsonify({'error': 'Username already exists'}), 409
-        user.username = data['username']
-    if 'password' in data and data['password']:
-        user.set_password(data['password'])
-
-    try:
-        db.session.commit()
-        return jsonify({
-            'message': 'User updated successfully',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'firstName': user.first_name,
-                'lastName': user.last_name,
                 'role': user.role
             }
         })
