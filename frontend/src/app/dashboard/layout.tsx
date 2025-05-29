@@ -64,7 +64,7 @@ export default function DashboardLayout({
         <AppSidebar />
         <SidebarInset>
           <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 px-4 backdrop-blur-xl lg:h-[60px]"> {/* Removed border-b */}
-            <SidebarTrigger className="size-9 p-0 flex items-center justify-center border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 rounded-md" /> {/* Removed md:hidden */}
+            <SidebarTrigger className="size-9 p-0 flex items-center justify-center border border-sidebar-border bg-sidebar shadow-xs hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 rounded-full" /> {/* Removed md:hidden, changed to rounded-xl and bg-sidebar */}
 
             {/* Search Section */}
             <div className="ms-auto lg:ms-0 lg:flex-1"> {/* Adjusted for alignment */}
@@ -73,7 +73,7 @@ export default function DashboardLayout({
                 <Input
                   type="search"
                   placeholder="Search..."
-                  className="h-9 w-full cursor-pointer rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground placeholder:text-sidebar-foreground/70 pr-4 pl-10 text-sm shadow-xs dark:border-input" // Changed to bg-sidebar, added text/placeholder colors
+                  className="h-9 w-full cursor-pointer rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground placeholder:text-sidebar-foreground/70 pr-4 pl-10 text-sm shadow-xs dark:border-input" // Changed to rounded-xl, bg-sidebar, added text/placeholder colors
                 />
                 {/* Command K shortcut - visual only for now */}
                 <div className="absolute top-1/2 right-2 hidden -translate-y-1/2 items-center gap-0.5 rounded-sm bg-zinc-200 p-1 font-mono text-xs font-medium sm:flex dark:bg-neutral-700">
@@ -94,7 +94,7 @@ export default function DashboardLayout({
               <ThemeToggleButton />
               <Button variant="outline" size="icon" className="size-9 border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 relative">
                 <Bell className="h-4 w-4" />
-                <span className="bg-destructive absolute -end-0.5 -top-0.5 block size-2 shrink-0 rounded-full"></span>
+                <span className="bg-destructive absolute -end-0.5 -top-0.5 block size-2 shrink-0 rounded-xl"></span>
                 <span className="sr-only">Notifications</span>
               </Button>
               <Button variant="outline" size="icon" className="size-9 border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50">
@@ -103,7 +103,7 @@ export default function DashboardLayout({
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full">
+                  <Button variant="ghost" size="icon" className="rounded-xl">
                     <Avatar>
                       <AvatarFallback className="bg-primary text-white">SA</AvatarFallback>
                     </Avatar>
