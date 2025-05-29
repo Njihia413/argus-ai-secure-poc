@@ -124,8 +124,8 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
         // Consistent with user details page: text-green-700 dark:text-green-400 border-green-300 dark:border-green-700
         badgeClassName = "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 bg-transparent";
       } else if (status === "inactive") {
-        // Consistent with user details page: text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700
-        badgeClassName = "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-transparent";
+        // Consistent with user details page (Security Key Status: Inactive uses red)
+        badgeClassName = "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700 bg-transparent";
       }
       return <Badge variant="outline" className={`capitalize ${badgeClassName}`}>{status}</Badge>;
     },
