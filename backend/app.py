@@ -1534,6 +1534,11 @@ def reassign_security_key(key_id):
         
         if not new_owner:
             return jsonify({'error': 'New user not found'}), 404
+
+        # Check if the new owner already has an active security key
+        existing_active_key = SecurityKey.query.filter_by(user_id=new_owner.id, is_active=True).first()
+        if existing_active_key:
+            return jsonify({'error': 'New user already has an active security key. Cannot reassign.'}), 400
         
         # Update the key record
         # Create an audit log entry
