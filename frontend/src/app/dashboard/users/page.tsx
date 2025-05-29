@@ -90,6 +90,7 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState("all") // 'all', 'admin', 'user'
   const [securityKeyFilter, setSecurityKeyFilter] = useState("all") // 'all', 'none', 'active', 'inactive'
+  const [accountStatusFilter, setAccountStatusFilter] = useState("all") // 'all', 'locked', 'unlocked'
 
   // Initial load
   useEffect(() => {
@@ -235,7 +236,14 @@ export default function UsersPage() {
       matchesSecurityKey = user.hasSecurityKey && user.securityKeyStatus === "inactive";
     }
 
-    return matchesSearch && matchesRole && matchesSecurityKey;
+    let matchesAccountStatus = true;
+    if (accountStatusFilter === "locked") {
+      matchesAccountStatus = user.account_locked === true;
+    } else if (accountStatusFilter === "unlocked") {
+      matchesAccountStatus = user.account_locked === false;
+    }
+
+    return matchesSearch && matchesRole && matchesSecurityKey && matchesAccountStatus;
   });
 
   const handleUnlockUserAccount = async () => {
@@ -332,6 +340,18 @@ export default function UsersPage() {
                                 <SelectItem value="none">None</SelectItem>
                                 <SelectItem value="active">Active</SelectItem>
                                 <SelectItem value="inactive">Inactive</SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <Select value={accountStatusFilter} onValueChange={setAccountStatusFilter}>
+                            <SelectTrigger className="w-[220px] border border-input">
+                              <SelectValue placeholder="Filter by Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectItem value="all">All Acount Statuses</SelectItem>
+                                <SelectItem value="locked">Locked</SelectItem>
+                                <SelectItem value="unlocked">Unlocked</SelectItem>
                               </SelectGroup>
                             </SelectContent>
                           </Select>
