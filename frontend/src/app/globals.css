@@ -69,7 +69,11 @@
   --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
   --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
   --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
-  --sidebar-bg-light: #f2f0f1; /* New light mode sidebar background */
+  --overview-card-gradient-from-light: color-mix(in oklab, var(--primary) 10%, transparent);
+  --overview-card-gradient-to-light: color-mix(in oklab, var(--primary) 2%, transparent);
+  --overview-card-gradient-from: var(--overview-card-gradient-from-light);
+  --overview-card-gradient-to: var(--overview-card-gradient-to-light);
+  --sidebar-bg-light: #F5F5F1; /* New light mode sidebar background */
   --sidebar: var(--sidebar-bg-light); /* Use the new light mode variable */
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -78,6 +82,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --card-border-light: var(--sidebar-bg-light);
+  --card-border-themed: var(--card-border-light);
 }
 
 .dark {
@@ -104,7 +110,11 @@
   --chart-3: oklch(0.58 0.17 256.34);    /* Medium Blue */
   --chart-4: oklch(0.507 0.191 256.34);   /* Base Blue (#2563eb) */
   --chart-5: oklch(0.40 0.21 256.34);    /* Darker Blue */
-  --sidebar-bg-dark: #272526; /* New dark mode sidebar background */
+  --overview-card-gradient-from-dark: color-mix(in oklab, var(--primary) 15%, var(--card));
+  --overview-card-gradient-to-dark: var(--card);
+  --overview-card-gradient-from: var(--overview-card-gradient-from-dark);
+  --overview-card-gradient-to: var(--overview-card-gradient-to-dark);
+  --sidebar-bg-dark: #191a16; /* New dark mode sidebar background */
   --sidebar: var(--sidebar-bg-dark); /* Use the new dark mode variable */
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376); /* Keeping a distinct sidebar primary for dark mode for now */
@@ -113,6 +123,8 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --card-border-dark: var(--sidebar-bg-dark);
+  --card-border-themed: var(--card-border-dark);
 }
 
 @layer base {
@@ -154,3 +166,4 @@
   font-family: var(--font-montserrat);
   font-weight: 700;
 }
+
