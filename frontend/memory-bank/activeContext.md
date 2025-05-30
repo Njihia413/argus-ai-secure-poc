@@ -22,10 +22,12 @@ Based on open files and recent activity, development is focused on security mana
             *   `--overview-card-gradient-to-dark: var(--card);`
             *   General purpose `--overview-card-gradient-from` and `--overview-card-gradient-to` are set based on the current theme.
     *   **Card Borders:**
-        *   Added new CSS variables to use sidebar background colors for card borders:
+        *   Added new CSS variables to use sidebar background colors for card borders.
             *   `--card-border-light: var(--sidebar-bg-light);`
-            *   `--card-border-dark: var(--sidebar-bg-dark);`
+            *   `--card-border-dark: #252521;` /* Final dark mode card border */
             *   `--card-border-themed` (points to the theme-specific variable).
+    *   **Input Borders:**
+        *   Dark mode input border (`--border`) reverted to `#46442f`.
 
 4.  **Dashboard Layout ([`src/app/dashboard/layout.tsx`](src/app/dashboard/layout.tsx:1))**
     *   Search Input: The `Input` component for search now has a `rounded-xl` class.
@@ -35,7 +37,7 @@ Based on open files and recent activity, development is focused on security mana
     *   Active Menu Item: The `sidebarMenuButtonVariants` were updated. Active items (`data-[active=true]`) now have `rounded-full`. Non-active items retain `rounded-xl`.
 
 6.  **Card Component ([`src/components/ui/card.tsx`](src/components/ui/card.tsx:1))**
-    *   Border Color: Updated to use `border-[var(--card-border-themed)]`.
+    *   Border Styling: Updated to use explicit classes `border border-solid border-[var(--card-border-themed)]` to ensure correct application of themed border color.
     *   Border Radius: Changed from `rounded-xl` to `rounded-2xl`.
 
 7.  **Dashboard Overview Page ([`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1))**
@@ -82,11 +84,11 @@ Based on open files and recent activity, development is focused on security mana
     *   Sidebar background colors updated for both light (`#F5F5F1`) and dark (`#1c1819`) modes.
     *   Dashboard search input and sidebar trigger button styling refined (border radius, background).
     *   Active sidebar menu items now have a `rounded-full` border radius.
-    *   Overview cards on the dashboard now use a "to top" gradient based on the primary theme color, with borders matching the sidebar background. Card border radius increased to `rounded-2xl`. Text colors adjusted for visibility.
+    *   Overview cards on the dashboard now use a "to top" gradient based on the primary theme color. Card border color in dark mode is now `#252521`. Card component styling updated for explicit border application. Card border radius increased to `rounded-2xl`. Text colors adjusted for visibility.
     *   Removed white borders from pie charts in dark mode.
     *   Login Attempts chart refactored to use shadcn `ChartContainer` and `Select` for filters, with styling and functionality aligned with the provided interactive example.
 3.  **Login Page UI:** The "OR" divider on the login page was updated for clarity and modern styling. The "Login with Security Key" button background was also updated to match input fields.
-4.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients and card borders to ensure theme adaptability.
+4.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients. Card border color for dark mode set to `#252521`. Input border color for dark mode reverted to `#46442f`.
 
 ## Active Technical Patterns
 1.  **Data Table Pattern:** Consistent use for displaying security-related information, with features like filtering, pagination, and standardized action handling.

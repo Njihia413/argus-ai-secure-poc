@@ -34,7 +34,7 @@
 
 ### UI Components
 - [x] **Card Component ([`src/components/ui/card.tsx`](src/components/ui/card.tsx:1)):**
-    - Border color updated to use `border-[var(--card-border-themed)]` (derived from sidebar background).
+    - Border styling updated to use explicit `border border-solid border-[var(--card-border-themed)]` for robust color application.
     - Border radius increased to `rounded-2xl`.
 
 ### Security Features
@@ -73,7 +73,8 @@
     - Defined CSS variables in `globals.css` for light/dark modes, new primary color `#2563eb` (blue), dark background `#0b0a0a`, and a regenerated blue-based chart color palette.
         - **Sidebar Background:** Light: `#F5F5F1`, Dark: `#1c1819`.
         - **Card Gradient:** New variables `--overview-card-gradient-from` and `--overview-card-gradient-to` using `color-mix` for a "to top" gradient.
-        - **Card Border:** New variables `--card-border-themed` using sidebar background colors.
+        - **Card Border:** New variables `--card-border-themed` defined. Dark mode card border (`--card-border-dark`) set to `#252521`.
+        - **Input Border:** Dark mode input border (`--border`) reverted to `#46442f`.
     - Integrated theme toggle into the main header (`src/components/header.tsx`) and dashboard layout (`src/app/dashboard/layout.tsx`) for universal visibility.
 - [x] Styling Consistency & Fixes:
     - Applied `rounded-xl` to most `Button` and `Input` components globally (except dashboard search input).
