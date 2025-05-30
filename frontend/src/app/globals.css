@@ -124,7 +124,7 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  --card-border-dark: var(--sidebar-bg-dark);
+  --card-border-dark: #252521; /* Card border for dark mode */
   --card-border-themed: var(--card-border-dark);
   --login-background-dark: #121212; /* Login page background dark mode */
   --login-page-background: var(--login-background-dark); /* Dark mode login page background */
@@ -169,4 +169,5 @@
   font-family: var(--font-montserrat);
   font-weight: 700;
 }
+
 
