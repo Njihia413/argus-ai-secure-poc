@@ -344,6 +344,7 @@ function getPayloadConfigFromPayload(
 }
 
 export {
+  useChart, // Added useChart export
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
