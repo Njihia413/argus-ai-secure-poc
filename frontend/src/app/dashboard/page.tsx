@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import React from "react"
 import { API_URL } from "@/app/utils/constants"
+import type { Payload, VerticalAlignmentType } from "recharts/types/component/DefaultLegendContent"; // Added for custom legend
 import {
   BarChart3,
   Shield,
@@ -50,6 +51,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { useChart } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 
 interface ChartErrorState {
   hasError: boolean;
@@ -360,6 +363,148 @@ export default function DashboardPage() {
       color: "var(--chart-4)", // Your existing theme variable for the second color
     },
   } satisfies ChartConfig;
+
+  // Extracted tooltip label formatter
+  const tooltipLabelFormatter = (value: string) => {
+    if (!value) return ""; // Handle undefined or null value
+    try {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        const parts = value.split(" ");
+        if (parts.length === 2) {
+          const monthDate = new Date(`${parts[0]} ${parts[1]}, ${new Date().getFullYear()}`);
+          if (!isNaN(monthDate.getTime())) {
+            return monthDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          }
+        }
+        return value;
+      }
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    } catch (e) {
+      return value;
+    }
+  };
+
+  // Custom Tooltip Content to control item order
+  const CustomTooltipContent = ({ active, payload, label, indicator }: any) => {
+    const { config } = useChart(); // Config from ChartContainer
+  
+    if (active && payload && payload.length && config) {
+      // Use loginAttemptsChartConfig to define the desired order
+      const desiredOrder = Object.keys(loginAttemptsChartConfig);
+  
+      const sortedPayload = [...payload].sort((a: any, b: any) => {
+        // a.name and b.name are the dataKeys like "successful", "failed"
+        const aIndex = desiredOrder.indexOf(a.name);
+        const bIndex = desiredOrder.indexOf(b.name);
+        return aIndex - bIndex;
+      });
+  
+      return (
+        <div className="rounded-lg border bg-background p-2 shadow-sm text-sm">
+          <div className="pb-1">
+             {tooltipLabelFormatter(label)}
+          </div>
+          <div className="grid gap-1">
+            {sortedPayload.map((item: any, index: number) => {
+              const itemConfig = config[item.name as keyof typeof config];
+              // Use itemConfig.color to ensure it matches the legend's color source.
+              // Fallback to item.color if itemConfig.color is not defined.
+              const colorForIndicator = itemConfig?.color || item.color;
+  
+              return (
+                <div
+                  key={index} // Using index as key for mapped items
+                  className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2"
+                >
+                  <div
+                    className="w-2.5 h-2.5 shrink-0 rounded-[2px]" // Simplified classes
+                    style={{ backgroundColor: colorForIndicator }} // Direct style application
+                  />
+                  <span className="text-muted-foreground">{itemConfig?.label || item.name}</span>
+                  <span className="font-medium text-right">
+                    {item.value}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Custom Legend Content to control item order
+  const CustomLegendContent = React.forwardRef<
+    HTMLDivElement,
+    React.ComponentProps<"div"> & {
+      payload?: Payload[];
+      verticalAlign?: VerticalAlignmentType;
+      hideIcon?: boolean;
+    }
+  >(({ className, hideIcon = false, payload, verticalAlign = "bottom" }, ref) => {
+    const { config } = useChart(); // Config from ChartContainer
+    
+    // Ensure config (which is loginAttemptsChartConfig) is available
+    if (!config || Object.keys(config).length === 0) {
+      return null;
+    }
+
+    // Use the keys from loginAttemptsChartConfig to define the exact order and items for the legend
+    const desiredOrder = Object.keys(loginAttemptsChartConfig);
+    
+    const legendItems = desiredOrder
+      .map(key => {
+        const itemConf = config[key as keyof typeof config];
+        return itemConf ? { key, ...itemConf } : null;
+      })
+      .filter(item => item && (item.label || item.icon));
+
+    if (!legendItems.length) {
+      return null;
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5",
+          verticalAlign === "top" && "pb-3",
+          verticalAlign === "bottom" && "pt-3",
+          className
+        )}
+      >
+        {legendItems.map((itemConfig: any) => {
+          const color = itemConfig?.color;
+          return (
+            <div
+              key={itemConfig.key}
+              className={cn(
+                "flex items-center gap-1.5 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:text-muted-foreground"
+              )}
+            >
+              {itemConfig.icon && !hideIcon ? (
+                <itemConfig.icon />
+              ) : (
+                !hideIcon && color && ( // Added check for color
+                  <div
+                    className="w-2.5 h-2.5 shrink-0 rounded-[2px]"
+                    style={{ backgroundColor: color }}
+                  />
+                )
+              )}
+              {itemConfig.label}
+            </div>
+          );
+        })}
+      </div>
+    );
+  });
+  CustomLegendContent.displayName = "CustomLegendContent";
  
   return (
     <div className="flex flex-col gap-6">
@@ -538,6 +683,7 @@ export default function DashboardPage() {
                         axisLine={false}
                         tickMargin={8}
                         minTickGap={32} // Matching example
+                        interval="preserveStartEnd" // Ensure first and last ticks are shown
                         tickFormatter={(value) => {
                           try {
                             const date = new Date(value);
@@ -566,38 +712,11 @@ export default function DashboardPage() {
                       <ChartTooltip
                         cursor={false} // Matching example
                         content={
-                          <ChartTooltipContent
-                            labelFormatter={(value) => { // Value here is the XAxis dataKey ('name')
-                              try {
-                                const date = new Date(value);
-                                if (isNaN(date.getTime())) {
-                                   const parts = value.split(" ");
-                                   if (parts.length === 2) {
-                                     const monthDate = new Date(`${parts[0]} ${parts[1]}, ${new Date().getFullYear()}`);
-                                     if (!isNaN(monthDate.getTime())) {
-                                       return monthDate.toLocaleDateString("en-US", {month: "short", day: "numeric"});
-                                     }
-                                   }
-                                  return value;
-                                }
-                                return date.toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                });
-                              } catch (e) {
-                                return value;
-                              }
-                            }}
-                            indicator="dot" // Matching example
+                          <CustomTooltipContent // Using the custom component again
+                            indicator="dot"
+                            // labelFormatter is handled inside CustomTooltipContent by calling tooltipLabelFormatter
                           />
                         }
-                      />
-                      <Area
-                        dataKey="successful" // Your data key
-                        type="natural"
-                        fill="url(#fillSuccessful)"
-                        stroke="var(--color-successful)"
-                        stackId="a" // For stacked areas, as in the example image
                       />
                       <Area
                         dataKey="failed" // Your data key
@@ -606,7 +725,14 @@ export default function DashboardPage() {
                         stroke="var(--color-failed)"
                         stackId="a" // For stacked areas, as in the example image
                       />
-                      <ChartLegend content={<ChartLegendContent />} />
+                      <Area
+                        dataKey="successful" // Your data key
+                        type="natural"
+                        fill="url(#fillSuccessful)"
+                        stroke="var(--color-successful)"
+                        stackId="a" // For stacked areas, as in the example image
+                      />
+                      <ChartLegend content={<CustomLegendContent />} />
                     </AreaChart>
                   </ChartContainer>
                 )}
