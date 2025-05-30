@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import React from "react"
 import { API_URL } from "@/app/utils/constants"
-import type { Payload, VerticalAlignmentType } from "recharts/types/component/DefaultLegendContent"; // Added for custom legend
+import type { Payload, VerticalAlignmentType } from "recharts/types/component/DefaultLegendContent";
+import { Label, Pie, PieChart, Sector } from "recharts" // Added Label, Sector, updated Pie, PieChart
+import { PieSectorDataItem } from "recharts/types/polar/Pie" // Added for activeShape
 import {
   BarChart3,
   Shield,
@@ -22,8 +24,7 @@ import {
   AreaChart,
   Line,
   LineChart,
-  Pie,
-  PieChart,
+  // Pie, PieChart, // Already imported above with Label and Sector
   XAxis,
   YAxis,
   ResponsiveContainer,
@@ -31,6 +32,7 @@ import {
   Tooltip,
   Cell
 } from "recharts"
+
 
 import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -50,6 +52,7 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
+  ChartStyle, // Added ChartStyle
 } from "@/components/ui/chart"
 import { useChart } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
@@ -387,6 +390,57 @@ export default function DashboardPage() {
       return value;
     }
   };
+
+  // Config and data for the interactive Security Metrics Pie Chart
+  const securityMetricsChartId = "security-metrics-interactive-pie";
+
+  const securityMetricsChartConfig = React.useMemo(() => {
+    const config: ChartConfig = {
+      value: { label: "Users" }, // Corresponds to dataKey
+    };
+    (securityMetrics || []).forEach(metric => {
+      const configKey = metric.name.toLowerCase().replace(/\s+/g, '');
+      config[configKey] = {
+        label: metric.name,
+        color: metric.color || "#6B7280", // Use existing color or a fallback
+      };
+    });
+    return config;
+  }, [securityMetrics]);
+
+  const securityPieChartData = React.useMemo(() => {
+    return (securityMetrics || []).map(metric => {
+      const configKey = metric.name.toLowerCase().replace(/\s+/g, '');
+      return {
+        name: metric.name,
+        value: metric.value,
+        fill: `var(--color-${configKey})`,
+      };
+    });
+  }, [securityMetrics]);
+
+  const metricOptions = React.useMemo(() => {
+    return (securityMetrics || []).map(m => ({
+      name: m.name,
+      configKey: m.name.toLowerCase().replace(/\s+/g, '')
+    }));
+  }, [securityMetrics]);
+
+  const [activeMetricConfigKey, setActiveMetricConfigKey] = React.useState(
+    metricOptions.length > 0 ? metricOptions[0].configKey : ''
+  );
+
+  useEffect(() => {
+    if (metricOptions.length > 0 && !activeMetricConfigKey) {
+      setActiveMetricConfigKey(metricOptions[0].configKey);
+    }
+  }, [metricOptions, activeMetricConfigKey]);
+
+
+  const activeIndexSecurityMetrics = React.useMemo(
+    () => securityPieChartData.findIndex((item) => item.name.toLowerCase().replace(/\s+/g, '') === activeMetricConfigKey),
+    [activeMetricConfigKey, securityPieChartData]
+  );
 
   // Custom Tooltip Content to control item order
   const CustomTooltipContent = ({ active, payload, label, indicator }: any) => {
@@ -888,79 +942,126 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Security Metrics Pie Chart */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle>Security Metrics</CardTitle>
-              <CardDescription>Distribution of security keys across users</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading security metrics...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : securityMetrics.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No security metrics data available
-                      </div>
-                  ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                          <Pie
-                              data={securityMetrics}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              stroke="none" // Remove border from pie segments
-                          >
-                            {securityMetrics.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={entry.color || "#6B7280"} // Use the color from our data
-                                />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                              content={({ active, payload, label }) => {
-                                if (active && payload && payload.length) {
-                                  const data = payload[0].payload as SecurityMetric; // Added type assertion
-                                  return (
-                                      <div className="rounded-lg bg-background p-2 shadow-sm text-sm text-foreground">
-                                        <p className="font-bold">{data.name}</p>
-                                        <p>{data.value} users</p>
-                                      </div>
-                                  );
-                                }
-                                return null;
+          <Card data-chart={securityMetricsChartId} className="shadow-sm hover:shadow-md transition-shadow flex flex-col">
+            <ChartStyle id={securityMetricsChartId} config={securityMetricsChartConfig} />
+            <CardHeader className="flex-row items-start space-y-0 pb-0">
+              <div className="grid gap-1">
+                <CardTitle>Security Metrics</CardTitle>
+                <CardDescription>Distribution of security keys across users</CardDescription>
+              </div>
+              {metricOptions.length > 0 && (
+                <Select value={activeMetricConfigKey} onValueChange={setActiveMetricConfigKey}>
+                  <SelectTrigger
+                    className="ml-auto h-7 w-[150px] rounded-lg pl-2.5"
+                    aria-label="Select a metric"
+                  >
+                    <SelectValue placeholder="Select metric" />
+                  </SelectTrigger>
+                  <SelectContent align="end" className="rounded-xl">
+                    {metricOptions.map((option) => {
+                      const config = securityMetricsChartConfig[option.configKey as keyof typeof securityMetricsChartConfig];
+                      if (!config || typeof config === 'string' || !config.label) { // type guard
+                        return null;
+                      }
+                      return (
+                        <SelectItem
+                          key={option.configKey}
+                          value={option.configKey}
+                          className="rounded-lg [&_span]:flex"
+                        >
+                          <div className="flex items-center gap-2 text-xs">
+                            <span
+                              className="flex h-3 w-3 shrink-0 rounded-sm"
+                              style={{
+                                backgroundColor: config.color,
                               }}
                             />
-                        </PieChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
-              </div>
-              {/* Custom Legend with colored boxes */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                  Active Keys
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                  Inactive Keys
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                  No Keys
-                </div>
-              </div>
+                            {config.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+            </CardHeader>
+            <CardContent className="flex flex-1 justify-center pb-0">
+              <ChartErrorBoundary>
+                {isLoading ? (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">Loading security metrics...</div>
+                ) : error ? (
+                  <div className="h-[300px] flex items-center justify-center text-red-500">{error}</div>
+                ) : securityPieChartData.length === 0 ? (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">No security metrics data available</div>
+                ) : (
+                  <ChartContainer
+                    id={securityMetricsChartId}
+                    config={securityMetricsChartConfig}
+                    className="mx-auto aspect-square w-full max-w-[300px]"
+                  >
+                    <PieChart>
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent hideLabel />}
+                      />
+                      <Pie
+                        data={securityPieChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={60}
+                        strokeWidth={5}
+                        stroke="hsl(var(--card))" // For segment separation
+                        activeIndex={activeIndexSecurityMetrics}
+                        activeShape={({
+                          outerRadius = 0,
+                          ...props
+                        }: PieSectorDataItem) => (
+                          <g>
+                            <Sector {...props} outerRadius={outerRadius + 10} />
+                            <Sector
+                              {...props}
+                              outerRadius={outerRadius + 25}
+                              innerRadius={outerRadius + 12}
+                            />
+                          </g>
+                        )}
+                      >
+                        <Label
+                          content={({ viewBox }) => {
+                            if (viewBox && "cx" in viewBox && "cy" in viewBox && securityPieChartData[activeIndexSecurityMetrics]) {
+                              return (
+                                <text
+                                  x={viewBox.cx}
+                                  y={viewBox.cy}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                >
+                                  <tspan
+                                    x={viewBox.cx}
+                                    y={viewBox.cy}
+                                    className="fill-foreground text-3xl font-bold"
+                                  >
+                                    {securityPieChartData[activeIndexSecurityMetrics].value.toLocaleString()}
+                                  </tspan>
+                                  <tspan
+                                    x={viewBox.cx}
+                                    y={(viewBox.cy || 0) + 24}
+                                    className="fill-muted-foreground"
+                                  >
+                                    {typeof securityMetricsChartConfig.value === 'object' ? securityMetricsChartConfig.value.label : "Users"}
+                                  </tspan>
+                                </text>
+                              )
+                            }
+                            return null;
+                          }}
+                        />
+                        {/* Cells are implicitly created by Pie and colored by 'fill' in data */}
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                )}
+              </ChartErrorBoundary>
             </CardContent>
           </Card>
 
