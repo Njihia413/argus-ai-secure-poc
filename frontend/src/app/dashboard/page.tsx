@@ -32,7 +32,7 @@ import {
   Cell
 } from "recharts"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -349,7 +349,7 @@ export default function DashboardPage() {
       return "N/A"
     }
   }
- 
+
   const loginAttemptsChartConfig = {
     // Ensure 'name' is present if used as dataKey for XAxis in some contexts,
     // or rely on direct dataKey in XAxis component.
@@ -391,18 +391,18 @@ export default function DashboardPage() {
   // Custom Tooltip Content to control item order
   const CustomTooltipContent = ({ active, payload, label, indicator }: any) => {
     const { config } = useChart(); // Config from ChartContainer
-  
+
     if (active && payload && payload.length && config) {
       // Use loginAttemptsChartConfig to define the desired order
       const desiredOrder = Object.keys(loginAttemptsChartConfig);
-  
+
       const sortedPayload = [...payload].sort((a: any, b: any) => {
         // a.name and b.name are the dataKeys like "successful", "failed"
         const aIndex = desiredOrder.indexOf(a.name);
         const bIndex = desiredOrder.indexOf(b.name);
         return aIndex - bIndex;
       });
-  
+
       return (
         <div className="rounded-lg border bg-background p-2 shadow-sm text-sm">
           <div className="pb-1">
@@ -414,7 +414,7 @@ export default function DashboardPage() {
               // Use itemConfig.color to ensure it matches the legend's color source.
               // Fallback to item.color if itemConfig.color is not defined.
               const colorForIndicator = itemConfig?.color || item.color;
-  
+
               return (
                 <div
                   key={index} // Using index as key for mapped items
@@ -448,7 +448,7 @@ export default function DashboardPage() {
     }
   >(({ className, hideIcon = false, payload, verticalAlign = "bottom" }, ref) => {
     const { config } = useChart(); // Config from ChartContainer
-    
+
     // Ensure config (which is loginAttemptsChartConfig) is available
     if (!config || Object.keys(config).length === 0) {
       return null;
@@ -456,7 +456,7 @@ export default function DashboardPage() {
 
     // Use the keys from loginAttemptsChartConfig to define the exact order and items for the legend
     const desiredOrder = Object.keys(loginAttemptsChartConfig);
-    
+
     const legendItems = desiredOrder
       .map(key => {
         const itemConf = config[key as keyof typeof config];
@@ -505,11 +505,11 @@ export default function DashboardPage() {
     );
   });
   CustomLegendContent.displayName = "CustomLegendContent";
- 
+
   return (
     <div className="flex flex-col gap-6">
         <h2 className="text-2xl font-bold tracking-tight">Dashboard Overview</h2>
- 
+
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* Overview Stats */}
           <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
@@ -587,10 +587,9 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-3"> 
           {/* Login Attempts Chart */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            {/* Using exact CardHeader structure from example */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2"> 
             <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
               <div className="grid flex-1 gap-1 text-center sm:text-left">
                 <CardTitle>Login Attempts</CardTitle>
@@ -740,108 +739,150 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Risk Score Chart */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+           {/* Risk Score Chart */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-1"> {/* Spans 1 column */}
             <CardHeader>
               <CardTitle>Risk Score Trend</CardTitle>
               <CardDescription>Average risk assessment score trend</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading risk score trend...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : riskTrend?.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No risk score data available
-                      </div>
-                  ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                            data={riskTrend?.length > 0 ? riskTrend.map(item => ({
-                              ...item,
-                              riskScore: item.riskScore || 0 // Ensure riskScore is a number
-                            })) : [{ name: 'No Data', riskScore: 0 }]}
-                            margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-                        >
-                          <XAxis
-                              dataKey="name"
-                              stroke="#888888"
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                          />
-                          <YAxis
-                              stroke="#888888"
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                              tickFormatter={(value) => Math.round(value).toString()}
-                              allowDecimals={false}
-                              domain={[0, 100]} // Risk score is 0-100
-                          />
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <Bar dataKey="riskScore" name="Avg Risk Score">
-                            {(riskTrend || []).map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={getRiskColor(entry.riskScore || 0)}
-                                />
-                            ))}
-                          </Bar>
-                          <Tooltip
-                            formatter={(value: number | string | Array<number | string>) => [
-                              formatRiskScore(value),
-                              "Avg Risk Score"
-                            ]}
-                            labelFormatter={(label) => `${label}`}
-                            content={({ active, payload, label }) => {
-                              if (active && payload && payload.length) {
-                                const data = payload[0].payload as RiskTrendItem;
-                                return (
-                                  <div className="rounded-lg border bg-background p-2 shadow-sm text-sm text-foreground">
-                                    <div className="font-bold">{label}</div>
-                                    <div>
-                                      Avg Risk: <span style={{ color: getRiskColor(data.riskScore) }}>{formatRiskScore(data.riskScore)}</span>
-                                    </div>
-                                    {data.attemptCount !== undefined && (
-                                      <div className="text-xs text-muted-foreground">
-                                        Attempts: {data.attemptCount}
-                                      </div>
-                                    )}
+              <ChartErrorBoundary>
+                {isLoading ? (
+                  <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                    Loading risk score trend...
+                  </div>
+                ) : error ? (
+                  <div className="h-[250px] flex items-center justify-center text-red-500">
+                    {error}
+                  </div>
+                ) : riskTrend?.length === 0 ? (
+                  <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                    No risk score data available
+                  </div>
+                ) : (
+                  <ChartContainer
+                    config={{
+                      riskScore: {
+                        label: "Risk Score",
+                      },
+                    }}
+                    className="h-[250px] w-full" // Added w-full
+                  >
+                    <BarChart
+                      accessibilityLayer
+                      layout="vertical" // Correct layout for horizontal bars
+                      data={riskTrend?.length > 0 ? riskTrend.map(item => ({
+                        ...item,
+                        riskScore: item.riskScore || 0,
+                        fill: getRiskColor(item.riskScore || 0) // Ensure fill is in data
+                      })) : [{ name: 'No Data', riskScore: 0, fill: '#9CA3AF' }]}
+                      margin={{
+                        top: 5,
+                        right: 30, // Margin for X-axis values
+                        left: 80,  // Increased left margin for Y-axis category labels
+                        bottom: 5,
+                      }}
+                    >
+                      {/* <CartesianGrid strokeDasharray="3 3" /> Removed to match example */}
+                      {/* YAxis for categories (name) */}
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        stroke="#888888"
+                        fontSize={12}
+                        tickMargin={10} // As per example
+                        // width={80} // Let Recharts determine width or adjust if needed
+                      />
+                      {/* XAxis for values (riskScore) */}
+                      <XAxis
+                        type="number"
+                        dataKey="riskScore"
+                        tickLine={false}
+                        axisLine={false}
+                        stroke="#888888"
+                        fontSize={12}
+                        tickFormatter={(value) => Math.round(value).toString()}
+                        allowDecimals={false}
+                        domain={[0, 100]}
+                        // hide={true} // Optionally hide as per example
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload as RiskTrendItem;
+                            return (
+                              <div className="rounded-lg border bg-background p-2 shadow-sm text-sm">
+                                <div className="font-medium">{label}</div> {/* 'label' is the category from YAxis */}
+                                <div className="grid gap-1">
+                                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2">
+                                    <div
+                                      className="w-2.5 h-2.5 shrink-0 rounded-[2px]"
+                                      style={{ backgroundColor: getRiskColor(data.riskScore) }} // Color from data
+                                    />
+                                    <span className="text-muted-foreground">Risk Score</span>
+                                    <span className="font-medium text-right">
+                                      {formatRiskScore(data.riskScore)}
+                                    </span>
                                   </div>
-                                );
-                              }
-                              return null;
-                            }}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
+                                  {data.attemptCount !== undefined && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Attempts: {data.attemptCount}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar
+                        dataKey="riskScore"
+                        layout="vertical" // Add layout="vertical" to Bar
+                        radius={4}       // Add radius back
+                        // The 'fill' prop for each bar segment will come from the 'fill' key in the data objects
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </ChartErrorBoundary>
+            </CardContent>
+            <CardFooter className="flex-col items-center gap-2 text-sm"> {/* Changed items-start to items-center */}
+              <div className="flex w-full justify-center gap-2 font-medium leading-none"> {/* Added w-full and justify-center */}
+                {riskTrend && riskTrend.length > 0 && (
+                  <>
+                    Latest risk score: {formatRiskScore(riskTrend[riskTrend.length - 1]?.riskScore)}
+                    {riskTrend.length > 1 && (
+                      <>
+                        {riskTrend[riskTrend.length - 1]?.riskScore > riskTrend[riskTrend.length - 2]?.riskScore ? (
+                          <ArrowUpRight className="h-4 w-4 text-red-500" />
+                        ) : (
+                          <ArrowDownRight className="h-4 w-4 text-green-500" />
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </div>
-              {/* Custom Legend for Risk Score Colors */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
+              {/* Legend moved to footer */}
+              <div className="mt-2 flex w-full justify-center space-x-4 text-xs"> {/* Added w-full */}
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                  Low Risk
+                  Low Risk (0-40)
                 </div>
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                  Medium Risk
+                  Medium Risk (41-75)
                 </div>
                 <div className="flex items-center">
                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                  High Risk
+                  High Risk (76-100)
                 </div>
               </div>
-            </CardContent>
+            </CardFooter>
           </Card>
         </div>
 
@@ -1085,7 +1126,7 @@ export default function DashboardPage() {
 
         {/* Optional: Security Keys Management Section
         Uncomment this section if you want to add direct key management to the dashboard
-      
+
       <div className="mt-8">
         <h3 className="text-xl font-bold mb-4">Security Keys Management</h3>
         <div className="grid gap-4">
