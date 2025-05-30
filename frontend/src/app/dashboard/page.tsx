@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/chart"
 import { useChart } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { RecentUsersTable } from "@/components/data-table/recent-users-table"; // Added import
 
 interface ChartErrorState {
   hasError: boolean;
@@ -941,8 +942,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Security Metrics Pie Chart */}
-          <Card data-chart={securityMetricsChartId} className="shadow-sm hover:shadow-md transition-shadow flex flex-col">
+          {/* Security Metrics Pie Chart - Spanning 1 column */}
+          <Card data-chart={securityMetricsChartId} className="shadow-sm hover:shadow-md transition-shadow flex flex-col md:col-span-1"> {/* Ensure it takes 1 span */}
             <ChartStyle id={securityMetricsChartId} config={securityMetricsChartConfig} />
             <CardHeader className="flex-row items-start space-y-0 pb-0">
               <div className="grid gap-1">
@@ -1065,8 +1066,15 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Device Breakdown */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          {/* Recent Users Table - Spanning 2 columns */}
+          <div className="md:col-span-2 h-full">
+            <RecentUsersTable />
+          </div>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3 mt-6">
+          {/* Device Distribution Pie Chart - Spanning 1 column */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-1">
             <CardHeader>
               <CardTitle>Device Distribution</CardTitle>
               <CardDescription>Login attempts by device type</CardDescription>
@@ -1144,8 +1152,8 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Location Statistics */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          {/* Top Locations Bar Chart - Spanning 2 columns */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2">
             <CardHeader>
               <CardTitle>Top Locations</CardTitle>
               <CardDescription>Login attempts by location</CardDescription>
