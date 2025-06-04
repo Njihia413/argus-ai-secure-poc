@@ -574,7 +574,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* Overview Stats */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
+          <Card className="bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Logins</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -589,7 +589,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
+          <Card className="bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Security Score</CardTitle>
               <Shield className="h-4 w-4 text-muted-foreground" />
@@ -605,7 +605,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
+          <Card className="bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Successful Logins</CardTitle>
               <Bell className="h-4 w-4 text-muted-foreground" />
@@ -633,7 +633,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
+          <Card className="bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Failed Attempts</CardTitle>
               <ArrowDownRight className="h-4 w-4 text-muted-foreground" />
@@ -651,7 +651,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-3"> 
           {/* Login Attempts Chart */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2"> 
+          <Card className="md:col-span-2">
             <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
               <div className="grid flex-1 gap-1 text-center sm:text-left">
                 <CardTitle>Login Attempts</CardTitle>
@@ -663,7 +663,7 @@ export default function DashboardPage() {
               </div>
               <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
                 <SelectTrigger
-                  className="h-9 w-[150px] bg-input border border-[var(--border)] rounded-3xl sm:ml-auto"
+                  className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl sm:ml-auto"
                   aria-label="Select a time range"
                 >
                   <SelectValue placeholder="Select time range" />
@@ -802,7 +802,7 @@ export default function DashboardPage() {
           </Card>
 
            {/* Risk Score Chart */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-1"> {/* Spans 1 column */}
+          <Card className="md:col-span-1"> {/* Spans 1 column */}
             <CardHeader>
               <CardTitle>Risk Score Trend</CardTitle>
               <CardDescription>Average risk assessment score trend</CardDescription>
@@ -950,7 +950,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Security Metrics Pie Chart - Spanning 1 column */}
-          <Card data-chart={securityMetricsChartId} className="shadow-sm hover:shadow-md transition-shadow flex flex-col md:col-span-1"> {/* Ensure it takes 1 span */}
+          <Card data-chart={securityMetricsChartId} className="flex flex-col md:col-span-1"> {/* Ensure it takes 1 span */}
             <ChartStyle id={securityMetricsChartId} config={securityMetricsChartConfig} />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0">
               <div className="space-y-1">
@@ -960,7 +960,7 @@ export default function DashboardPage() {
               {metricOptions.length > 0 && (
                 <Select value={activeMetricConfigKey} onValueChange={setActiveMetricConfigKey}>
                   <SelectTrigger
-                    className="h-9 w-[150px] bg-input border border-[var(--border)] rounded-3xl"
+                    className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl"
                     aria-label="Select a metric"
                   >
                     <SelectValue placeholder="Select metric" />
@@ -1081,7 +1081,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-3 mt-6">
           {/* Top Locations Bar Chart - Spanning 2 columns */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2">
+          <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Top Locations</CardTitle>
               <CardDescription>Login attempts by location</CardDescription>
@@ -1184,7 +1184,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Device Distribution Pie Chart - Spanning 1 column */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-1">
+          <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Device Distribution</CardTitle>
               <CardDescription>Login attempts by device type</CardDescription>
