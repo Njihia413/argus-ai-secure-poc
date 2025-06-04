@@ -953,7 +953,7 @@ export default function DashboardPage() {
               {metricOptions.length > 0 && (
                 <Select value={activeMetricConfigKey} onValueChange={setActiveMetricConfigKey}>
                   <SelectTrigger
-                    className="ml-auto h-7 w-[150px] rounded-lg pl-2.5"
+                    className="ml-auto h-7 w-[200px] rounded-lg pl-2.5 border-[var(--card-border-themed)]"
                     aria-label="Select a metric"
                   >
                     <SelectValue placeholder="Select metric" />
