@@ -112,7 +112,7 @@ export function AuditDataTable<TData, TValue>({
           </SelectContent>
         </Select>
       </div>
-      <div className="rounded-md border">
+      <div className="rounded-md border border-solid border-[var(--card-border-themed)]">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
