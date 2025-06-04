@@ -227,7 +227,6 @@ export function RecentUsersTable(): React.ReactElement {
       const fullName = `${user.firstName} ${user.middlename ? user.middlename + ' ' : ''}${user.lastName}`.toLowerCase()
       return (
         fullName.includes(term) ||
-        user.nationalId.toLowerCase().includes(term) ||
         user.email.toLowerCase().includes(term) ||
         user.role.toLowerCase().includes(term)
       )
@@ -262,7 +261,6 @@ export function RecentUsersTable(): React.ReactElement {
             <CardDescription>Latest 5 users in the system</CardDescription>
           </div>
           <Button onClick={() => router.push('/dashboard/users')}>
-            <UserPlus className="h-4 w-4 mr-2" />
             View all users
           </Button>
         </div>
