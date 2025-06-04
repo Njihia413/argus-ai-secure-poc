@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react"
 import {
+  ColumnFiltersState,
+  SortingState,
+  VisibilityState,
+} from "@tanstack/react-table"
+import {
   AlertTriangle,
   Shield,
   Clock,
@@ -12,8 +17,15 @@ import {
   Lock,
   Globe,
   AlertCircle,
-  ArrowDownUp
+  ArrowDownUp,
+  ChevronDown
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { API_URL } from "@/app/utils/constants"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -90,16 +102,33 @@ const alertTypeOptions = [
   { label: "Admin Account Login", value: "Admin Account Login" }
 ]
 
+interface TableInstance {
+  getColumn: (id: string) => {
+    setFilterValue: (value: string | undefined) => void;
+  } | undefined;
+  getAllColumns: () => {
+    id: string;
+    getCanHide: () => boolean;
+    getIsVisible: () => boolean;
+    toggleVisibility: (value: boolean) => void;
+  }[];
+}
+
 export default function SecurityPage() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [stats, setStats] = useState<SecurityStats>(emptyStats)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pageIndex, setPageIndex] = useState(0)
-  const [pageSize, setPageSize] = useState(10)
-  const [table, setTable] = useState<Table<SecurityAlert> | null>(null)
-  const [severityFilterValue, setSeverityFilterValue] = useState<string>("all");
-  const [typeFilterValue, setTypeFilterValue] = useState<string>("all");
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [rowSelection, setRowSelection] = useState({})
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+  })
+  const [severityFilterValue, setSeverityFilterValue] = useState<string>("all")
+  const [typeFilterValue, setTypeFilterValue] = useState<string>("all")
 
   // Column definitions with appropriate icons for each alert type
   const columns: ColumnDef<SecurityAlert>[] = [
@@ -218,7 +247,9 @@ export default function SecurityPage() {
   ]
 
   // Handle table reference
-  const handleTableInit = (tableInstance: Table<SecurityAlert>) => {
+  const [table, setTable] = useState<TableInstance | null>(null)
+
+  const handleTableInit = (tableInstance: TableInstance) => {
     if (!tableInstance) return;
     setTable(tableInstance)
   }
@@ -285,7 +316,7 @@ export default function SecurityPage() {
     }
 
     fetchData()
-  }, [pageIndex, pageSize])
+  }, [pagination.pageIndex, pagination.pageSize])
 
   // Function to export alerts as CSV
   const exportAlerts = () => {
@@ -318,11 +349,6 @@ export default function SecurityPage() {
   };
 
   // Calculate total pages safely
-  const getTotalPages = () => {
-    // Use alerts length as fallback if stats is not available
-    const totalItems = stats?.alertStats?.total || alerts.length || 0;
-    return Math.max(1, Math.ceil(totalItems / pageSize));
-  };
 
   return (
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -410,8 +436,7 @@ export default function SecurityPage() {
             ) : (
                 <div className="space-y-4">
                   {/* Filters for the DataTable */}
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                    <div className="flex flex-wrap space-x-2 gap-y-2">
+                  <div className="flex items-center space-x-4 w-full font-montserrat">
                       <Select
                           value={severityFilterValue}
                           onValueChange={(value) => {
@@ -422,7 +447,7 @@ export default function SecurityPage() {
                             }
                           }}
                       >
-                        <SelectTrigger className="w-[180px] border border-input">
+                        <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                           <SelectValue placeholder="Filter by severity" />
                         </SelectTrigger>
                         <SelectContent>
@@ -443,7 +468,7 @@ export default function SecurityPage() {
                             }
                           }}
                       >
-                        <SelectTrigger className="w-[180px] border border-input">
+                        <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                           <SelectValue placeholder="Filter by type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -452,20 +477,53 @@ export default function SecurityPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-
-                    {table && alerts.length > 0 && (
-                        <div className="text-sm text-muted-foreground">
-                          Showing {table.getFilteredRowModel().rows.length} of {alerts.length} alerts
-                        </div>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                          Columns <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="rounded-xl">
+                        {table
+                          ?.getAllColumns()
+                          .filter((column) => column.getCanHide())
+                          .map((column) => (
+                            <DropdownMenuCheckboxItem
+                              key={column.id}
+                              className="capitalize"
+                              checked={column.getIsVisible()}
+                              onCheckedChange={(value) =>
+                                column.toggleVisibility(!!value)
+                              }
+                            >
+                              {column.id}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* DataTable */}
-                  <DataTable<SecurityAlert, unknown>
+                  <DataTable
                       columns={columns}
                       data={alerts}
                       onTableInit={handleTableInit}
+                      state={{
+                        sorting,
+                        columnFilters,
+                        columnVisibility,
+                        rowSelection,
+                        pagination
+                      }}
+                      onSortingChange={setSorting}
+                      onColumnFiltersChange={setColumnFilters}
+                      onColumnVisibilityChange={setColumnVisibility}
+                      onRowSelectionChange={setRowSelection}
+                      onPaginationChange={setPagination}
+                      enableRowSelection={true}
+                      getPaginationRowModel={true}
+                      getSortedRowModel={true}
+                      getFilteredRowModel={true}
                   />
 
                   {alerts.length === 0 && !loading && (
