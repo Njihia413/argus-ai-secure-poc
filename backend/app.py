@@ -3208,58 +3208,69 @@ def get_dashboard_stats():
         if not auth_session:
             return jsonify({'error': 'Invalid auth token'}), 401
 
-        # Get current time and time ranges
+        # Get current time and time ranges for month-over-month comparison
         now = datetime.now(timezone.utc)
         current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
 
-        # Get current month's attempts
-        current_month_attempts = AuthenticationAttempt.query.filter(
-            AuthenticationAttempt.timestamp >= current_month_start
-        ).all()
+        # Get all-time attempts
+        all_attempts = AuthenticationAttempt.query.all()
 
-        # Get last month's attempts
-        last_month_attempts = AuthenticationAttempt.query.filter(
-            AuthenticationAttempt.timestamp >= last_month_start,
-            AuthenticationAttempt.timestamp < current_month_start
-        ).all()
+        # Convert timestamps to UTC for comparison
+        def to_utc(dt):
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
 
-        # Calculate totals and changes
-        current_total_logins = len(current_month_attempts)
-        last_total_logins = len(last_month_attempts)
+        # Get current month's attempts for comparison
+        current_month_attempts = [a for a in all_attempts
+                                  if to_utc(a.timestamp) >= current_month_start]
 
-        login_change = 0
-        if last_total_logins > 0:
-            login_change = round(((current_total_logins - last_total_logins) / last_total_logins) * 100, 1)
+        # Get last month's attempts for comparison
+        last_month_attempts = [a for a in all_attempts
+                               if last_month_start <= to_utc(a.timestamp) < current_month_start]
 
-        # Calculate security score
-        total_users = Users.query.count()
-        users_with_keys = Users.query.filter(Users.credential_id.isnot(None)).count()
-        security_score = round((users_with_keys / total_users * 100) if total_users > 0 else 0, 1)
+        # Calculate all-time totals
+        total_logins = len(all_attempts)
+        successful_logins = sum(1 for attempt in all_attempts if attempt.success)
+        failed_attempts = sum(1 for attempt in all_attempts if not attempt.success)
 
-        # Calculate success rate
-        successful_logins = sum(1 for attempt in current_month_attempts if attempt.success)
-        success_rate = round((successful_logins / current_total_logins * 100) if current_total_logins > 0 else 0, 1)
-
-        # Calculate failed attempts
+        # Calculate month-over-month changes
+        current_total = len(current_month_attempts)
+        last_total = len(last_month_attempts)
         current_failed = sum(1 for attempt in current_month_attempts if not attempt.success)
         last_failed = sum(1 for attempt in last_month_attempts if not attempt.success)
+
+        # Calculate percentage changes
+        login_change = 0
+        if last_total > 0:
+            login_change = round(((current_total - last_total) / last_total) * 100, 1)
 
         failed_change = 0
         if last_failed > 0:
             failed_change = round(((current_failed - last_failed) / last_failed) * 100, 1)
 
+        # Calculate security score (remains the same as it's already all-time)
+        total_users = Users.query.count()
+        users_with_keys = Users.query.filter(Users.credential_id.isnot(None)).count()
+        security_score = round((users_with_keys / total_users * 100) if total_users > 0 else 0, 1)
+
+        # Calculate all-time success rate
+        success_rate = round((successful_logins / total_logins * 100) if total_logins > 0 else 0, 1)
+
         return jsonify({
-            'totalLogins': current_total_logins,
+            'totalLogins': total_logins,
             'loginChange': login_change,
             'securityScore': security_score,
             'successRate': success_rate,
-            'failedAttempts': current_failed,
+            'failedAttempts': failed_attempts,
             'failedChange': failed_change
         })
 
     except Exception as e:
         print(f"Error getting dashboard stats: {str(e)}")
+        import traceback
+        print(traceback.format_exc())  # Print full stack trace for debugging
         return jsonify({'error': 'Internal server error'}), 500
 
 
