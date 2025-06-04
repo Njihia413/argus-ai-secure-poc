@@ -3281,51 +3281,78 @@ def get_login_attempts():
         if not auth_session:
             return jsonify({'error': 'Invalid auth token'}), 401
 
-        # Get the start of the current month
-        now = datetime.now(timezone.utc)
-        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Get the time range from query parameters (default to 30d)
+        time_range = request.args.get('range', '30d')
+        print(f"Received time range: {time_range}")  # Debug log
 
-        # Query all authentication attempts for the current month
+        # Calculate the start date based on the time range
+        now = datetime.now(timezone.utc)
+        if time_range == '7d':
+            start_date = now - timedelta(days=7)
+        elif time_range == '90d':
+            start_date = now - timedelta(days=90)
+        else:  # Default to 30d
+            start_date = now - timedelta(days=30)
+
+        # Normalize start_date to start of day
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        print(f"Calculated start date: {start_date}")  # Debug log
+
+        # Query authentication attempts for the selected time range
         attempts = AuthenticationAttempt.query.filter(
-            AuthenticationAttempt.timestamp >= current_month_start
+            AuthenticationAttempt.timestamp >= start_date
         ).order_by(
             AuthenticationAttempt.timestamp
         ).all()
 
-        # Group attempts by day
+        print(f"Found {len(attempts)} attempts since {start_date}")  # Debug log
+
+        # Group attempts by day and initialize all days in the range
         attempts_by_day = {}
+        current_date = start_date
+        while current_date <= now:
+            day = current_date.strftime('%b %d')
+            attempts_by_day[day] = {
+                'name': day,
+                'successful': 0,
+                'failed': 0,
+                'riskScore': 0,
+                'count': 0
+            }
+            current_date += timedelta(days=1)
+
+        # Fill in the actual attempts data
         for attempt in attempts:
             day = attempt.timestamp.strftime('%b %d')
-            if day not in attempts_by_day:
-                attempts_by_day[day] = {
-                    'name': day,
-                    'successful': 0,
-                    'failed': 0,
-                    'riskScore': 0,
-                    'count': 0
-                }
-
             if attempt.success:
                 attempts_by_day[day]['successful'] += 1
             else:
                 attempts_by_day[day]['failed'] += 1
+            attempts_by_day[day]['count'] += 1
 
-            # Simply use the stored risk score from the attempt
-            attempts_by_day[day]['riskScore'] = max(attempts_by_day[day]['riskScore'], attempt.risk_score or 0)
+            # Update risk score (take the highest risk score for the day)
+            attempts_by_day[day]['riskScore'] = max(
+                attempts_by_day[day]['riskScore'],
+                attempt.risk_score or 0
+            )
 
         # Convert to list and round risk scores
         formatted_attempts = []
         for day_data in attempts_by_day.values():
-            formatted_attempts.append({
-                'name': day_data['name'],
-                'successful': day_data['successful'],
-                'failed': day_data['failed'],
-                'riskScore': round(day_data['riskScore'], 1)
-            })
+            if day_data['count'] > 0:  # Only include days with attempts
+                formatted_attempts.append({
+                    'name': day_data['name'],
+                    'successful': day_data['successful'],
+                    'failed': day_data['failed'],
+                    'riskScore': round(day_data['riskScore'], 1)
+                })
 
         # Sort by date
-        formatted_attempts.sort(key=lambda x: datetime.strptime(x['name'], '%b %d'))
+        formatted_attempts.sort(
+            key=lambda x: datetime.strptime(x['name'], '%b %d')
+        )
 
+        print(f"Returning {len(formatted_attempts)} days of data")  # Debug log
         return jsonify({'attempts': formatted_attempts})
 
     except Exception as e:
