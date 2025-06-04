@@ -3,7 +3,12 @@
 import { useState, useEffect } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
-import { UserPlus, Eye, EyeOff, LockOpen } from "lucide-react"
+import { CirclePlus, Eye, EyeOff, LockOpen, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  ColumnFiltersState,
+  SortingState,
+  VisibilityState,
+} from "@tanstack/react-table"
 import axios from "axios"
 import { toast } from "sonner"
 import { DataTable } from "@/components/data-table/data-table"
@@ -35,6 +40,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
 import {
   Select,
@@ -82,12 +88,20 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isUnlockAccountDialogOpen, setIsUnlockAccountDialogOpen] = useState(false) // New state for unlock dialog
+  const [isUnlockAccountDialogOpen, setIsUnlockAccountDialogOpen] = useState(false)
   const router = useRouter()
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [rowSelection, setRowSelection] = useState({})
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+  })
   const [roleFilter, setRoleFilter] = useState("all") // 'all', 'admin', 'user'
   const [securityKeyFilter, setSecurityKeyFilter] = useState("all") // 'all', 'none', 'active', 'inactive'
   const [accountStatusFilter, setAccountStatusFilter] = useState("all") // 'all', 'locked', 'unlocked'
@@ -287,13 +301,13 @@ export default function UsersPage() {
         <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
           <h2 className="text-2xl font-bold tracking-tight">Users</h2>
           <Button onClick={() => setIsAddUserDialogOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />
+            <CirclePlus className="h-4 w-4" />
             Add User
           </Button>
         </div>
 
         <div className="px-4 py-4">
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <Card>
             <CardContent>
               {isLoading ? (
                   <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
@@ -308,55 +322,95 @@ export default function UsersPage() {
                         setSelectedUser,
                         setIsDeleteDialogOpen,
                         setIsEditUserDialogOpen,
-                        setIsUnlockAccountDialogOpen, // Pass setter to DataTable
+                        setIsUnlockAccountDialogOpen,
                       }}
-                      toolbar={
+                      state={{
+                        sorting,
+                        columnFilters,
+                        columnVisibility,
+                        rowSelection,
+                        pagination,
+                      }}
+                      onSortingChange={(sorting) => setSorting(sorting)}
+                      onColumnFiltersChange={(filters) => setColumnFilters(filters)}
+                      onColumnVisibilityChange={(visibility) => setColumnVisibility(visibility)}
+                      onRowSelectionChange={(selection) => setRowSelection(selection)}
+                      onPaginationChange={setPagination}
+                      enableRowSelection={true}
+                      getPaginationRowModel={true}
+                      getSortedRowModel={true}
+                      getFilteredRowModel={true}
+                      toolbar={(table) => (
                         <div className="flex items-center space-x-4 w-full font-montserrat">
-                          <Input
-                            placeholder="Search users..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="max-w-sm"
-                          />
-                          <Select value={roleFilter} onValueChange={setRoleFilter}>
-                            <SelectTrigger className="w-[180px] border border-input">
-                              <SelectValue placeholder="Filter by role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                <SelectItem value="all">All Roles</SelectItem>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="user">User</SelectItem>
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                          <Select value={securityKeyFilter} onValueChange={setSecurityKeyFilter}>
-                            <SelectTrigger className="w-[220px] border border-input">
-                              <SelectValue placeholder="Filter by Security Key" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                <SelectItem value="all">All Security Keys</SelectItem>
-                                <SelectItem value="none">None</SelectItem>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                          <Select value={accountStatusFilter} onValueChange={setAccountStatusFilter}>
-                            <SelectTrigger className="w-[220px] border border-input">
-                              <SelectValue placeholder="Filter by Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                <SelectItem value="all">All Acount Statuses</SelectItem>
-                                <SelectItem value="locked">Locked</SelectItem>
-                                <SelectItem value="unlocked">Unlocked</SelectItem>
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
+                           <Input
+                              placeholder="Search users..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="max-w-sm"
+                            />
+                            <Select value={roleFilter} onValueChange={setRoleFilter}>
+                              <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                                <SelectValue placeholder="Filter by role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectItem value="all">All Roles</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                  <SelectItem value="user">User</SelectItem>
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <Select value={securityKeyFilter} onValueChange={setSecurityKeyFilter}>
+                              <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                                <SelectValue placeholder="Filter by Security Key" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectItem value="all">All Security Keys</SelectItem>
+                                  <SelectItem value="none">None</SelectItem>
+                                  <SelectItem value="active">Active</SelectItem>
+                                  <SelectItem value="inactive">Inactive</SelectItem>
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <Select value={accountStatusFilter} onValueChange={setAccountStatusFilter}>
+                              <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                                <SelectValue placeholder="Filter by Status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectItem value="all">All Accounts</SelectItem>
+                                  <SelectItem value="locked">Locked</SelectItem>
+                                  <SelectItem value="unlocked">Unlocked</SelectItem>
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                                  Columns <ChevronDown className="ml-2 h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="rounded-xl">
+                                {table
+                                  .getAllColumns()
+                                  .filter((column) => column.getCanHide())
+                                  .map((column) => (
+                                    <DropdownMenuCheckboxItem
+                                      key={column.id}
+                                      className="capitalize"
+                                      checked={column.getIsVisible()}
+                                      onCheckedChange={(value) =>
+                                        column.toggleVisibility(!!value)
+                                      }
+                                    >
+                                      {column.id === "fullName" ? "Full Name" : column.id}
+                                    </DropdownMenuCheckboxItem>
+                                  ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
-                      }
+                      )}
                   />
               )}
             </CardContent>
