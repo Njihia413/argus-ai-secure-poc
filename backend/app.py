@@ -557,13 +557,11 @@ def get_risk_score_trend():
         if not auth_session:
             return jsonify({'error': 'Invalid auth token'}), 401
 
-        # Get the start of the current month
         now = datetime.now(timezone.utc)
-        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         try:
             # Group authentication attempts by day and calculate average risk score
-            # Using corrected syntax for the case() function in newer SQLAlchemy versions
+            # Removed the current_month_start filter to get all-time data
             results = db.session.query(
                 func.date(AuthenticationAttempt.timestamp).label('date'),
                 func.avg(
@@ -573,8 +571,6 @@ def get_risk_score_trend():
                     )
                 ).label('avg_risk_score'),
                 func.count(AuthenticationAttempt.id).label('attempt_count')
-            ).filter(
-                AuthenticationAttempt.timestamp >= current_month_start
             ).group_by(
                 func.date(AuthenticationAttempt.timestamp)
             ).order_by(
@@ -632,6 +628,7 @@ def get_risk_score_trend():
         import traceback
         print(traceback.format_exc())
         return jsonify({'error': 'Failed to fetch risk score trend'}), 500
+
 
 
 # Simple route to test if the server is running
@@ -3765,16 +3762,12 @@ def get_location_stats():
         if not auth_session:
             return jsonify({'error': 'Invalid auth token'}), 401
 
-        # Get the start of the current month
-        now = datetime.now(timezone.utc)
-        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
         # Query authentication attempts grouped by location
+        # Removed the current_month_start filter to get all-time data
         location_stats = db.session.query(
             AuthenticationAttempt.location,
             func.count(AuthenticationAttempt.id).label('attempt_count')
         ).filter(
-            AuthenticationAttempt.timestamp >= current_month_start,
             AuthenticationAttempt.location.isnot(None)  # Filter out null locations
         ).group_by(
             AuthenticationAttempt.location
@@ -3800,6 +3793,7 @@ def get_location_stats():
     except Exception as e:
         print(f"Error getting location stats: {str(e)}")
         return jsonify({'error': 'Failed to fetch location stats'}), 500
+
 
 
 def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
