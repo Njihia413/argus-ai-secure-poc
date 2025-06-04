@@ -945,15 +945,15 @@ export default function DashboardPage() {
           {/* Security Metrics Pie Chart - Spanning 1 column */}
           <Card data-chart={securityMetricsChartId} className="shadow-sm hover:shadow-md transition-shadow flex flex-col md:col-span-1"> {/* Ensure it takes 1 span */}
             <ChartStyle id={securityMetricsChartId} config={securityMetricsChartConfig} />
-            <CardHeader className="flex-row items-start space-y-0 pb-0">
-              <div className="grid gap-1">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0">
+              <div className="space-y-1">
                 <CardTitle>Security Metrics</CardTitle>
                 <CardDescription>Distribution of security keys across users</CardDescription>
               </div>
               {metricOptions.length > 0 && (
                 <Select value={activeMetricConfigKey} onValueChange={setActiveMetricConfigKey}>
                   <SelectTrigger
-                    className="ml-auto h-7 w-[200px] rounded-lg pl-2.5 border-[var(--card-border-themed)]"
+                    className="h-9 w-[150px] bg-input border border-[var(--border)] rounded-3xl"
                     aria-label="Select a metric"
                   >
                     <SelectValue placeholder="Select metric" />
