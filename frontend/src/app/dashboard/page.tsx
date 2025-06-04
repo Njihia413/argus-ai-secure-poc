@@ -144,7 +144,7 @@ export default function DashboardPage() {
   const [riskTrend, setRiskTrend] = useState<RiskTrendItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   // Add refresh trigger state for dashboard updates
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
@@ -669,14 +669,14 @@ export default function DashboardPage() {
                   <SelectValue placeholder="Select time range" />
                 </SelectTrigger>
                 <SelectContent className="rounded-3xl">
-                  <SelectItem value="90d" className="rounded-lg">
-                    Last 3 months
+                  <SelectItem value="7d" className="rounded-lg">
+                    Last 7 days
                   </SelectItem>
                   <SelectItem value="30d" className="rounded-lg">
                     Last 30 days
                   </SelectItem>
-                  <SelectItem value="7d" className="rounded-lg">
-                    Last 7 days
+                  <SelectItem value="90d" className="rounded-lg">
+                    Last 3 months
                   </SelectItem>
                 </SelectContent>
               </Select>
