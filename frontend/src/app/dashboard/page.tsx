@@ -663,12 +663,12 @@ export default function DashboardPage() {
               </div>
               <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
                 <SelectTrigger
-                  className="w-[160px] rounded-3xl sm:ml-auto"
+                  className="h-9 w-[150px] bg-input border border-[var(--border)] rounded-3xl sm:ml-auto"
                   aria-label="Select a time range"
                 >
                   <SelectValue placeholder="Select time range" />
                 </SelectTrigger>
-                <SelectContent className="rounded-3xl">
+                <SelectContent align="end" className="rounded-3xl">
                   <SelectItem value="7d" className="rounded-lg">
                     Last 7 days
                   </SelectItem>
