@@ -598,7 +598,7 @@ const handleReassignKey = async () => {
           <Button
               onClick={() => router.push("/dashboard/users")}
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-4 w-4" />
             Back to Users
           </Button>
         </div>
