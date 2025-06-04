@@ -3390,9 +3390,9 @@ def get_security_metrics():
 
         # Create metrics data with colors
         metrics_data = [
-            {'name': 'Active Security Keys', 'value': users_with_active_keys, 'color': '#2563eb'},
-            {'name': 'Inactive Security Keys', 'value': users_with_inactive_keys, 'color': '#a6c4fc'},
-            {'name': 'No Security Keys', 'value': users_without_keys, 'color': '#8B5CF6'}
+            {'name': 'Active Keys', 'value': users_with_active_keys, 'color': '#2563eb'},
+            {'name': 'Inactive Keys', 'value': users_with_inactive_keys, 'color': '#a6c4fc'},
+            {'name': 'No Keys', 'value': users_without_keys, 'color': '#8B5CF6'}
         ]
 
         # Return the data
