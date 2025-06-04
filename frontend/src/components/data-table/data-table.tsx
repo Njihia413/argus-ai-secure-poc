@@ -72,7 +72,7 @@ export function DataTable<TData, TValue>({
   return (
     <div>
       {toolbar && <div className="flex items-center py-4">{toolbar}</div>}
-      <div className="rounded-md border">
+      <div className="rounded-md border border-solid border-[var(--card-border-themed)]">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
