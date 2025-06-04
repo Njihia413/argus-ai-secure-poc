@@ -258,7 +258,14 @@ export default function DashboardPage() {
         setStats(statsData)
 
         // Fetch login attempts data
-        const loginResponse = await fetch(`${API_URL}/login-attempts`, { headers })
+        console.log('Fetching login attempts with range:', timeRange)
+        const loginResponse = await fetch(`${API_URL}/login-attempts?range=${timeRange}`, {
+          headers: {
+            ...headers,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        })
         if (!loginResponse.ok) {
           throw new Error(`Failed to fetch login attempts for range ${timeRange}`)
         }
@@ -656,12 +663,12 @@ export default function DashboardPage() {
               </div>
               <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
                 <SelectTrigger
-                  className="w-[160px] rounded-lg sm:ml-auto"
+                  className="w-[160px] rounded-3xl sm:ml-auto"
                   aria-label="Select a time range"
                 >
                   <SelectValue placeholder="Select time range" />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl">
+                <SelectContent className="rounded-3xl">
                   <SelectItem value="90d" className="rounded-lg">
                     Last 3 months
                   </SelectItem>
@@ -1073,6 +1080,109 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-3 mt-6">
+          {/* Top Locations Bar Chart - Spanning 2 columns */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2">
+            <CardHeader>
+              <CardTitle>Top Locations</CardTitle>
+              <CardDescription>Login attempts by location</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ChartErrorBoundary>
+                  {isLoading ? (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        Loading location data...
+                      </div>
+                  ) : error ? (
+                      <div className="h-full flex items-center justify-center text-red-500">
+                        {error}
+                      </div>
+                  ) : locationStats.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        No location data available
+                      </div>
+                  ) : (
+                      <ChartContainer
+                        config={{
+                          high: {
+                            label: "High",
+                            color: "#8B5CF6"
+                          },
+                          medium: {
+                            label: "Medium",
+                            color: "#2563eb"
+                          },
+                          low: {
+                            label: "Low",
+                            color: "#a6c4fc"
+                          }
+                        }}
+                        className="h-[300px] w-full"
+                      >
+                        <LineChart
+                          data={locationStats.map(stat => ({
+                            name: stat.name,
+                            high: stat.severity === 'high' ? stat.value : 0,
+                            medium: stat.severity === 'medium' ? stat.value : 0,
+                            low: stat.severity === 'low' ? stat.value : 0
+                          }))}
+                          margin={{
+                            left: 12,
+                            right: 12,
+                          }}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="name"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                          />
+                          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                          <Line
+                            type="monotone"
+                            dataKey="high"
+                            stroke="var(--color-high)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="medium"
+                            stroke="var(--color-medium)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="low"
+                            stroke="var(--color-low)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ChartContainer>
+                  )}
+                </ChartErrorBoundary>
+              </div>
+              {/* Custom Legend for Location Severity Colors */}
+               <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
+                 <div className="flex items-center">
+                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
+                   {'Low (<= 5 attempts)'}
+                 </div>
+                 <div className="flex items-center">
+                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
+                   {'Medium (<= 15 attempts)'}
+                 </div>
+                 <div className="flex items-center">
+                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
+                   {'High (> 15 attempts)'}
+                 </div>
+               </div>
+            </CardContent>
+          </Card>
+
           {/* Device Distribution Pie Chart - Spanning 1 column */}
           <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-1">
             <CardHeader>
@@ -1149,86 +1259,6 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Top Locations Bar Chart - Spanning 2 columns */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow md:col-span-2">
-            <CardHeader>
-              <CardTitle>Top Locations</CardTitle>
-              <CardDescription>Login attempts by location</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading location data...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : locationStats.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No location data available
-                      </div>
-                  ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                            data={locationStats}
-                            margin={{ top: 5, right: 30, left: 30, bottom: 20 }}
-                        >
-                          <XAxis
-                              dataKey="name"
-                              tick={{ fontSize: 12 }}
-                              interval={0}
-                              angle={-45}
-                              textAnchor="end"
-                          />
-                          <YAxis
-                              type="number"
-                              allowDecimals={false}
-                              domain={[0, 'auto']}
-                              tickFormatter={(value) => Math.round(value).toString()}
-                          />
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <Bar dataKey="value" name="Attempts">
-                            {locationStats.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={entry.severity === 'high'
-                                        ? '#8B5CF6' // High severity - Purple
-                                        : entry.severity === 'medium'
-                                            ? '#2563eb' // Medium severity - Primary Blue
-                                            : '#a6c4fc'   // Low severity - Light Blue
-                                    }
-                                />
-                            ))}
-                          </Bar>
-                          <Tooltip
-                              formatter={(value) => [`${value} attempts`, 'Count']}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
-              </div>
-              {/* Custom Legend for Location Severity Colors */}
-              <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                  {'Low (<= 5 attempts)'}
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                  {'Medium (<= 15 attempts)'}
-                </div>
-                <div className="flex items-center">
-                  <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                 {'High (> 15 attempts)'}
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
