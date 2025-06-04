@@ -253,7 +253,7 @@ export function RecentUsersTable(): React.ReactElement {
   })
 
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
@@ -263,7 +263,7 @@ export function RecentUsersTable(): React.ReactElement {
           <Button
             variant="outline"
             onClick={() => router.push('/dashboard/users')}
-            className="bg-input border border-[var(--border)] rounded-3xl"
+            className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
           >
             View all users <ChevronRight className="h-4 w-4" />
           </Button>
@@ -286,7 +286,7 @@ export function RecentUsersTable(): React.ReactElement {
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="ml-auto bg-input border border-[var(--border)] rounded-3xl">
+                  <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                     Columns <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -366,7 +366,7 @@ export function RecentUsersTable(): React.ReactElement {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8 p-0 border-[var(--card-border-themed)]"
+                  className="h-8 w-8 p-0 border border-[var(--card-border-themed)]"
                   onClick={() => table.previousPage()}
                   disabled={!table.getCanPreviousPage()}
                 >
@@ -376,7 +376,7 @@ export function RecentUsersTable(): React.ReactElement {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8 p-0 border-[var(--card-border-themed)]"
+                  className="h-8 w-8 p-0 border border-[var(--card-border-themed)]"
                   onClick={() => table.nextPage()}
                   disabled={!table.getCanNextPage()}
                 >
