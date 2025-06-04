@@ -258,10 +258,14 @@ export function RecentUsersTable(): React.ReactElement {
         <div className="flex justify-between items-center">
           <div>
             <CardTitle>Recent Users</CardTitle>
-            <CardDescription>Latest 5 users in the system</CardDescription>
+            {/* <CardDescription>Latest 5 users in the system</CardDescription> */}
           </div>
-          <Button onClick={() => router.push('/dashboard/users')}>
-            View all users
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard/users')}
+            className="bg-input border border-[var(--border)] rounded-3xl"
+          >
+            View all users <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
@@ -275,14 +279,14 @@ export function RecentUsersTable(): React.ReactElement {
           <div className="space-y-4">
             <div className="flex items-center py-4">
               <Input
-                placeholder="Filter users..."
+                placeholder="Search users..."
                 value={searchTerm}
                 onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(event.target.value)}
                 className="max-w-sm"
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="ml-auto border-[var(--card-border-themed)] rounded-xl">
+                  <Button variant="outline" className="ml-auto bg-input border border-[var(--border)] rounded-3xl">
                     Columns <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
