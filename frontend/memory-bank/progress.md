@@ -25,6 +25,13 @@
         - Adjusted text colors for visibility (`text-foreground`, `text-muted-foreground`).
         - Updated Progress bar and Badge colors for theme consistency.
     - [x] **Pie Chart Borders (Dark Mode) ([`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx:1)):** Removed white borders by adding `stroke="none"` to `Pie` components and removing border from custom tooltip.
+    - [x] **Security Table UI ([`src/app/dashboard/security/page.tsx`](src/app/dashboard/security/page.tsx:1)):**
+        - Matches users table layout with sticky header and consistent padding.
+        - Organized filters with Type filter before Severity.
+        - Fixed loading state spinner styling.
+        - Row selection text properly positioned.
+        - Empty state message styling consistent with other tables.
+        - Fixed card structure and nesting.
 - [x] **New:** Security Keys page ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) with data table for managing security keys. **Now fetches data from backend, includes global search ("Search...") and status filter (button text: "All Statuses", "Active", "Inactive").**
 - [x] Locked accounts view (**UI refined: single search filter with increased width (`max-w-md`), styling aligned with other tables, sonner toasts for notifications, "Action" column header, standardized button style, "Unlock Account" button now has a confirmation dialog styled with `font-montserrat`, "Successful Attempts" column removed**)
 - [x] Users management (**Enhanced with client-side search and dropdown filters for role & security key status. Filters are part of the `DataTable` via a `toolbar` prop. Filter controls use `font-montserrat`. Security key filter labels updated.**)
@@ -85,10 +92,16 @@
     - Ensured buttons on Users, Locked Accounts, Security, and User Details dashboard pages use the default primary blue styling (action buttons) or blue outline styling ("Cancel" buttons) by removing/adjusting explicit classes and variants, and updated backgrounds to be theme-aware.
     - [x] User Details Page Modals: Ensured important instructional text within Register/Reset/Reassign Key modals is visible in dark mode (theme-aware text/border, transparent background in dark mode for instructional containers) in `src/app/dashboard/users/[id]/page.tsx`.
 - [x] Data Table Enhancements:
-    - Loading spinners in Users and Locked Accounts tables are now blue.
+    - Loading spinners in Users, Security, and Locked Accounts tables now use consistent blue styling.
     - Removed duplicate pagination controls from the Security page.
     - [x] Users Table: Fixed dark mode visibility for "role", "loginAttempts", "failedAttempts", and "securityKeyStatus" badges in `src/components/data-table/columns.tsx`.
     - [x] User Details Security Keys Table: Fixed dark mode visibility for "Status" badge in `src/components/data-table/security-key-columns.tsx`. **Dropdown action logic updated for deactivation/reset/re-registration flow with conditional rendering.**
+    - [x] Security Table: Implemented consistent layout with `toolbar` prop for filters:
+        - Type and Severity filters with proper ordering and styling
+        - Row selection text properly positioned
+        - Loading state with consistent spinner
+        - Empty state message with consistent styling
+        - Card structure matches Users table
 - [x] Dashboard Sidebar Enhancement:
     - Updated `src/components/app-sidebar.tsx` to use `collapsible="icon"` mode.
     - Sidebar now collapses to show only icons, with text labels hidden (using conditional rendering and opacity/width classes for robustness).
@@ -117,9 +130,10 @@
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
     *   Real-time updates
-    *   Enhanced filtering (User table now has specific filters. Review if other tables need similar specific filters or if global search is sufficient).
+    *   [x] Enhanced filtering (User and Security tables now demonstrate consistent filter patterns using `toolbar` prop. Review if other tables need similar specific filters).
     *   [x] Generic `DataTable` component now supports a `toolbar` prop for custom filter controls.
     *   [x] Generic `DataTable` component now includes pagination.
+    *   [x] Standardized table layout with proper sticky headers, card structure, and loading states.
 
 2.  Locked Accounts Management
     *   Bulk actions implementation
@@ -145,7 +159,8 @@
     *   Mobile responsiveness refinements
     *   Loading state improvements (standardized spinner, loading state for dialog buttons)
     *   Error handling enhancements (standardized sonner toasts)
-    *   Ensure consistent search/filter patterns and input sizing across all data tables (User table filters implemented via `toolbar` prop).
+    *   [x] Ensure consistent search/filter patterns and input sizing across all data tables (User and Security tables now use consistent filter layout via `toolbar` prop).
+    *   [x] Standardize table layouts (User and Security tables demonstrate consistent structure with sticky headers, proper card nesting, loading states, and empty states).
     *   Ensure consistent use of confirmation dialogs (styling and behavior) for critical actions across the application.
     *   [x] Verify new dark/light theme consistency across all components and pages (Initial fixes applied based on feedback).
     *   [ ] Test chart color palette usability in both themes.
@@ -158,7 +173,7 @@
     *   Optimize data table performance
     *   Enhance mobile responsiveness
     *   Implement rate limiting
-    *   Review and standardize search/filter UX and input sizing across all data tables (User table is a good example with `toolbar` prop).
+    *   [x] Review and standardize search/filter UX and input sizing across all data tables (User and Security tables now demonstrate consistent filter layout with `toolbar` prop).
     *   [x] Add pagination to all relevant data tables (Generic `DataTable` now has pagination).
     *   Review other critical actions for potential confirmation dialogs and consistent styling.
     *   Review column selection in all data tables for relevance.
