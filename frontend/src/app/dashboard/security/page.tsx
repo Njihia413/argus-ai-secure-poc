@@ -6,20 +6,7 @@ import {
   SortingState,
   VisibilityState,
 } from "@tanstack/react-table"
-import {
-  AlertTriangle,
-  Shield,
-  Clock,
-  MapPin,
-  Laptop,
-  UserX,
-  User,
-  Lock,
-  Globe,
-  AlertCircle,
-  ArrowDownUp,
-  ChevronDown
-} from "lucide-react"
+import { Shield, ChevronDown } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -31,20 +18,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/data-table/data-table"
-import { ColumnDef, Table } from "@tanstack/react-table"
+import { Table } from "@tanstack/react-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-
-// Types for our API responses
-type SecurityAlert = {
-  id: number
-  type: string
-  user: string
-  details: string
-  time: string
-  severity: "High" | "Medium" | "Low"
-  resolved: boolean
-}
+import { SecurityAlert, columns } from "@/components/data-table/security-alert-columns"
 
 type SecurityStats = {
   alertStats: {
@@ -130,121 +107,6 @@ export default function SecurityPage() {
   const [severityFilterValue, setSeverityFilterValue] = useState<string>("all")
   const [typeFilterValue, setTypeFilterValue] = useState<string>("all")
 
-  // Column definitions with appropriate icons for each alert type
-  const columns: ColumnDef<SecurityAlert>[] = [
-    {
-      accessorKey: "type",
-      header: "Type",
-      filterFn: (row, id, filterValue) => {
-        if (typeof filterValue !== 'string') return true;
-        // Adjust filter logic for "all" value
-        return filterValue === "all" || row.getValue(id) === filterValue
-      },
-      cell: ({ row }) => {
-        const alert = row.original
-
-        // Select the appropriate icon based on the alert type
-        const getAlertIcon = (type: string) => {
-          switch(type) {
-            case "Failed Login":
-              return <UserX className="h-4 w-4 mr-2 text-red-500" />
-            case "New IP Address":
-              return <Globe className="h-4 w-4 mr-2 text-blue-500" />
-            case "Suspicious IP":
-              return <AlertTriangle className="h-4 w-4 mr-2 text-red-500" />
-            case "Account Lockout":
-              return <Lock className="h-4 w-4 mr-2 text-red-500" />
-            case "New Device":
-              return <Laptop className="h-4 w-4 mr-2 text-blue-500" />
-            case "Unusual Time":
-              return <Clock className="h-4 w-4 mr-2 text-amber-500" />
-            case "Location Change":
-              return <MapPin className="h-4 w-4 mr-2 text-amber-500" />
-            case "Rapid Travel":
-              return <ArrowDownUp className="h-4 w-4 mr-2 text-red-500" />
-            case "High Risk Login":
-              return <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
-            case "Moderate Risk Login":
-              return <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
-            case "Admin Account Login":
-              return <User className="h-4 w-4 mr-2 text-blue-500" />
-            default:
-              return <Shield className="h-4 w-4 mr-2 text-gray-500" />
-          }
-        }
-
-        return (
-            <div className="flex items-center">
-              {getAlertIcon(alert.type)}
-              {alert.type}
-            </div>
-        )
-      }
-    },
-    {
-      accessorKey: "user",
-      header: "User"
-    },
-    {
-      accessorKey: "details",
-      header: "Details",
-    },
-    {
-      accessorKey: "time",
-      header: "Time",
-      cell: ({ row }) => {
-        // Format the timestamp for better readability
-        const isoTime = row.getValue<string>("time");
-        try {
-          const date = new Date(isoTime);
-          return date.toLocaleString();
-        } catch (e) {
-          return isoTime;
-        }
-      }
-    },
-    {
-      accessorKey: "severity",
-      header: "Severity",
-      filterFn: (row, id, filterValue) => {
-        if (typeof filterValue !== 'string') return true;
-        // Adjust filter logic for "all" value
-        return filterValue === "all" || row.getValue(id) === filterValue
-      },
-      cell: ({ row }) => {
-        const alert = row.original
-        return (
-            <Badge
-                variant="outline"
-                className={
-                  alert.severity === "High"
-                      ? "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700"
-                      : alert.severity === "Medium"
-                          ? "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
-                          : "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700"
-                }
-            >
-              {alert.severity}
-            </Badge>
-        )
-      }
-    },
-    // {
-    //   accessorKey: "resolved",
-    //   header: "Status",
-    //   cell: ({ row }: { row: { original: SecurityAlert } }) => {
-    //     const alert = row.original
-    //     return (
-    //         <Badge
-    //             variant="outline"
-    //             className={alert.resolved ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}
-    //         >
-    //           {alert.resolved ? "Resolved" : "Unresolved"}
-    //         </Badge>
-    //     )
-    //   }
-    // }
-  ]
 
   // Handle table reference
   const [table, setTable] = useState<TableInstance | null>(null)
@@ -435,75 +297,6 @@ export default function SecurityPage() {
                 <div className="text-center py-8 text-red-500">{error}</div>
             ) : (
                 <div className="space-y-4">
-                  {/* Filters for the DataTable */}
-                  <div className="flex items-center space-x-4 w-full font-montserrat">
-                      <Select
-                          value={severityFilterValue}
-                          onValueChange={(value) => {
-                            setSeverityFilterValue(value);
-                            const column = table?.getColumn("severity");
-                            if (column) {
-                              column.setFilterValue(value === "all" ? undefined : value);
-                            }
-                          }}
-                      >
-                        <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
-                          <SelectValue placeholder="Filter by severity" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Severities</SelectItem>
-                          <SelectItem value="High">High</SelectItem>
-                          <SelectItem value="Medium">Medium</SelectItem>
-                          <SelectItem value="Low">Low</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      <Select
-                          value={typeFilterValue}
-                          onValueChange={(value) => {
-                            setTypeFilterValue(value);
-                            const column = table?.getColumn("type");
-                            if (column) {
-                              column.setFilterValue(value === "all" ? undefined : value);
-                            }
-                          }}
-                      >
-                        <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
-                          <SelectValue placeholder="Filter by type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {alertTypeOptions.map(option => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
-                          Columns <ChevronDown className="ml-2 h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="rounded-xl">
-                        {table
-                          ?.getAllColumns()
-                          .filter((column) => column.getCanHide())
-                          .map((column) => (
-                            <DropdownMenuCheckboxItem
-                              key={column.id}
-                              className="capitalize"
-                              checked={column.getIsVisible()}
-                              onCheckedChange={(value) =>
-                                column.toggleVisibility(!!value)
-                              }
-                            >
-                              {column.id}
-                            </DropdownMenuCheckboxItem>
-                          ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* DataTable */}
                   <DataTable
                       columns={columns}
                       data={alerts}
@@ -524,6 +317,74 @@ export default function SecurityPage() {
                       getPaginationRowModel={true}
                       getSortedRowModel={true}
                       getFilteredRowModel={true}
+                      toolbar={(table) => (
+                        <div className="flex items-center space-x-4 w-full font-montserrat">
+                          <Select
+                            value={severityFilterValue}
+                            onValueChange={(value) => {
+                              setSeverityFilterValue(value);
+                              const column = table?.getColumn("severity");
+                              if (column) {
+                                column.setFilterValue(value === "all" ? undefined : value);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                              <SelectValue placeholder="Filter by severity" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Severities</SelectItem>
+                              <SelectItem value="High">High</SelectItem>
+                              <SelectItem value="Medium">Medium</SelectItem>
+                              <SelectItem value="Low">Low</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={typeFilterValue}
+                            onValueChange={(value) => {
+                              setTypeFilterValue(value);
+                              const column = table?.getColumn("type");
+                              if (column) {
+                                column.setFilterValue(value === "all" ? undefined : value);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                              <SelectValue placeholder="Filter by type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {alertTypeOptions.map(option => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                                Columns <ChevronDown className="ml-2 h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl">
+                              {table
+                                ?.getAllColumns()
+                                .filter((column) => column.getCanHide())
+                                .map((column) => (
+                                  <DropdownMenuCheckboxItem
+                                    key={column.id}
+                                    className="capitalize"
+                                    checked={column.getIsVisible()}
+                                    onCheckedChange={(value) =>
+                                      column.toggleVisibility(!!value)
+                                    }
+                                  >
+                                    {column.id}
+                                  </DropdownMenuCheckboxItem>
+                                ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
                   />
 
                   {alerts.length === 0 && !loading && (
