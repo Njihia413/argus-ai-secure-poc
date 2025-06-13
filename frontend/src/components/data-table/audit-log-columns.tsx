@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { Badge } from "../ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export type AuditLog = {
   id: string;
@@ -21,10 +22,30 @@ export type AuditLog = {
 };
 
 export const columns: ColumnDef<AuditLog>[] = [
-  // { // Removing User column as it's redundant on the key-specific details page
-  //   accessorKey: "username",
-  //   header: "User",
-  // },
+  {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        checked={
+          table.getIsAllPageRowsSelected() ||
+          (table.getIsSomePageRowsSelected() && "indeterminate")
+        }
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label="Select all"
+      />
+    ),
+    cell: ({ row }) => (
+      <div className="py-2">
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      </div>
+    ),
+    enableSorting: false,
+    enableHiding: false,
+  },
   {
     accessorKey: "action",
     header: "Action",
@@ -62,24 +83,35 @@ export const columns: ColumnDef<AuditLog>[] = [
       }
 
       return (
-        <Badge
-          variant="outline"
-          className={`${textColor} ${borderColor}`} // Removed bgColor
-        >
-          {action}
-        </Badge>
+        <div className="py-2">
+          <Badge
+            variant="outline"
+            className={`${textColor} ${borderColor}`}
+          >
+            {action}
+          </Badge>
+        </div>
       );
     },
   },
   {
     accessorKey: "details",
     header: "Details",
+    cell: ({ row }) => (
+      <div className="py-2">
+        {row.getValue("details")}
+      </div>
+    ),
   },
   {
     accessorKey: "timestamp",
     header: "Time",
     cell: ({ row }) => {
-      return format(new Date(row.getValue("timestamp")), "MMM dd, yyyy HH:mm:ss");
+      return (
+        <div className="py-2">
+          {format(new Date(row.getValue("timestamp")), "MMM dd, yyyy HH:mm:ss")}
+        </div>
+      );
     },
   },
   {
@@ -87,7 +119,11 @@ export const columns: ColumnDef<AuditLog>[] = [
     header: "Performed By",
     cell: ({ row }) => {
       const performedBy = row.getValue("performedBy") as { username: string };
-      return performedBy.username;
+      return (
+        <div className="py-2">
+          {performedBy.username}
+        </div>
+      );
     },
     // Custom filter function for the "Search..." input
     filterFn: (row, columnId, filterValue) => {
