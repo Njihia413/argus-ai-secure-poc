@@ -91,6 +91,11 @@ interface TableInstance {
     getIsVisible: () => boolean;
     toggleVisibility: (value: boolean) => void;
   }[];
+  getFilteredRowModel: () => {
+    rows: {
+      original: SecurityAlert;
+    }[];
+  };
 }
 
 export default function SecurityPage() {
@@ -206,7 +211,12 @@ export default function SecurityPage() {
   // Function to export alerts as PDF
   const exportToPdf = async () => {
     try {
-      if (!alerts.length) return;
+      if (!table || !alerts.length) return;
+
+      // Get filtered data
+      const filteredData = table.getFilteredRowModel().rows.map((row) => row.original);
+
+      if (filteredData.length === 0) return;
 
       // Create PDF document
       const doc = new jsPDF();
@@ -220,17 +230,17 @@ export default function SecurityPage() {
       doc.setFontSize(10);
       doc.text(`Generated on ${new Date().toLocaleString()}`, 14, 25);
 
-      // Add stats summary
+      // Add stats summary with filtered counts
       doc.setFont("Montserrat", "bold");
       doc.text("Summary", 14, 35);
       doc.setFont("Montserrat", "normal");
-      doc.text(`Total Alerts: ${stats.alertStats.total}`, 14, 45);
-      doc.text(`High Severity: ${stats.alertStats.bySeverity.High}`, 14, 50);
-      doc.text(`Medium Severity: ${stats.alertStats.bySeverity.Medium}`, 14, 55);
-      doc.text(`Low Severity: ${stats.alertStats.bySeverity.Low}`, 14, 60);
+      doc.text(`Total Filtered Alerts: ${filteredData.length}`, 14, 45);
+      doc.text(`High Severity: ${filteredData.filter((alert: SecurityAlert) => alert.severity === "High").length}`, 14, 50);
+      doc.text(`Medium Severity: ${filteredData.filter((alert: SecurityAlert) => alert.severity === "Medium").length}`, 14, 55);
+      doc.text(`Low Severity: ${filteredData.filter((alert: SecurityAlert) => alert.severity === "Low").length}`, 14, 60);
 
       // Prepare table data
-      const tableData = alerts.map(alert => [
+      const tableData = filteredData.map((alert: SecurityAlert) => [
         alert.id,
         alert.type,
         alert.user,
@@ -300,10 +310,15 @@ export default function SecurityPage() {
   // Function to export alerts as CSV
   const exportAlerts = async () => {
     try {
-      if (!alerts.length) return;
+      if (!table || !alerts.length) return;
+
+      // Get filtered data
+      const filteredData = table.getFilteredRowModel().rows.map((row) => row.original);
+      
+      if (filteredData.length === 0) return;
 
       const headers = ["ID", "Type", "User", "Details", "Time", "Severity", "Status"];
-      const csvData = alerts.map(alert => [
+      const csvData = filteredData.map((alert: SecurityAlert) => [
         alert.id,
         alert.type,
         alert.user,
