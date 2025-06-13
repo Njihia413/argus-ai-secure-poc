@@ -208,6 +208,20 @@ export default function SecurityPage() {
     }
   };
 
+  // Function to convert a font file to base64
+  const loadFont = async (path: string) => {
+    const response = await fetch(path);
+    const blob = await response.blob();
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        resolve(base64data.substr(base64data.indexOf(',') + 1));
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
   // Function to export alerts as PDF
   const exportToPdf = async () => {
     try {
@@ -220,20 +234,31 @@ export default function SecurityPage() {
 
       // Create PDF document
       const doc = new jsPDF();
+
+      // Load and add regular font
+      const regularFont = await loadFont('/assets/fonts/Montserrat-Regular.ttf');
+      doc.addFileToVFS('Montserrat-Regular.ttf', regularFont);
+      doc.addFont('Montserrat-Regular.ttf', 'MontserratRegular', 'normal');
+
+      // Load and add bold font
+      const boldFont = await loadFont('/assets/fonts/Montserrat-Bold.ttf');
+      doc.addFileToVFS('Montserrat-Bold.ttf', boldFont);
+      doc.addFont('Montserrat-Bold.ttf', 'MontserratBold', 'normal');
       
       // Add title
       doc.setFontSize(16);
-      doc.text("Security Alerts Report", 14, 15);
+      doc.setFont("MontserratBold");
+      doc.text("Argus AI Security Alerts Report", 14, 15);
       
       // Switch back to regular font for other text
-      doc.setFont("Montserrat", "normal");
+      doc.setFont("MontserratRegular");
       doc.setFontSize(10);
       doc.text(`Generated on ${new Date().toLocaleString()}`, 14, 25);
 
       // Add stats summary with filtered counts
-      doc.setFont("Montserrat", "bold");
+      doc.setFont("MontserratBold");
       doc.text("Summary", 14, 35);
-      doc.setFont("Montserrat", "normal");
+      doc.setFont("MontserratRegular");
       doc.text(`Total Filtered Alerts: ${filteredData.length}`, 14, 45);
       doc.text(`High Severity: ${filteredData.filter((alert: SecurityAlert) => alert.severity === "High").length}`, 14, 50);
       doc.text(`Medium Severity: ${filteredData.filter((alert: SecurityAlert) => alert.severity === "Medium").length}`, 14, 55);
@@ -261,13 +286,13 @@ export default function SecurityPage() {
           cellPadding: 3,
           lineWidth: 0.1, // Border width
           lineColor: [0, 0, 0], // Border color
-          font: 'Helvetica', // Fallback to standard PDF font
+          font: 'MontserratRegular',
           textColor: [50, 50, 50] // Dark gray text
         },
         headStyles: {
           fillColor: [41, 128, 185],
           textColor: [255, 255, 255],
-          font: 'Helvetica',
+          font: 'MontserratBold',
           fontStyle: 'bold',
           lineWidth: 0.1,
           halign: 'center'
@@ -277,13 +302,13 @@ export default function SecurityPage() {
         },
         margin: { top: 10 },
         columnStyles: {
-          0: { cellWidth: 15 }, // ID
+          0: { cellWidth: 12 }, // ID
           1: { cellWidth: 25 }, // Type
           2: { cellWidth: 25 }, // User
-          3: { cellWidth: 50 }, // Details
-          4: { cellWidth: 30 }, // Time
-          5: { cellWidth: 20 }, // Severity
-          6: { cellWidth: 20 }, // Status
+          3: { cellWidth: 45 }, // Details
+          4: { cellWidth: 25 }, // Time
+          5: { cellWidth: 18 }, // Severity
+          6: { cellWidth: 25 }, // Status
         },
         didParseCell: (data) => {
           // Color the severity cell based on the value
@@ -300,7 +325,7 @@ export default function SecurityPage() {
       });
 
       // Save the PDF
-      doc.save(`security-alerts-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`Argus-AI-Security-Alerts-${new Date().toISOString().slice(0, 10)}.pdf`);
 
     } catch (error) {
       console.error('Error exporting PDF:', error);
@@ -337,7 +362,7 @@ export default function SecurityPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `security-alerts-${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute("download", `Argus-AI-Security-Alerts-${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = "hidden";
       document.body.appendChild(link);
       link.click();
@@ -562,3 +587,4 @@ export default function SecurityPage() {
       </div>
   )
 }
+
