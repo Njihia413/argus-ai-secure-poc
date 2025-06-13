@@ -15,6 +15,7 @@ import {
   getFacetedRowModel,
   getFacetedUniqueValues,
 } from "@tanstack/react-table"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -39,21 +40,50 @@ interface DataTableProps<TData extends SecurityKey, TValue> {
   data: TData[]
   onTableInit?: (table: any) => void
   meta?: SecurityKeyTableMeta
+  enableRowSelection?: boolean
+  onRowSelectionChange?: (value: any) => void
 }
 
 export function SecurityDataTable<TData extends SecurityKey, TValue>({
   columns,
   data,
   onTableInit,
-  meta
+  meta,
+  enableRowSelection = false,
+  onRowSelectionChange
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = React.useState('')
+  const [rowSelection, setRowSelection] = React.useState({})
+
+  const selectionColumn: ColumnDef<TData, any> = {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        checked={table.getIsAllPageRowsSelected()}
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label="Select all"
+        className="translate-y-[2px]"
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        aria-label="Select row"
+        className="translate-y-[2px]"
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false,
+  }
+
+  const allColumns = [selectionColumn, ...columns]
 
   const table = useReactTable({
     data,
-    columns,
+    columns: enableRowSelection ? allColumns : columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
@@ -63,10 +93,17 @@ export function SecurityDataTable<TData extends SecurityKey, TValue>({
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
     onGlobalFilterChange: setGlobalFilter,
+    enableRowSelection,
+    onRowSelectionChange: (updater) => {
+      const value = typeof updater === 'function' ? updater(rowSelection) : updater
+      setRowSelection(value)
+      onRowSelectionChange?.(value)
+    },
     state: {
       sorting,
       columnFilters,
       globalFilter,
+      rowSelection,
     },
     meta: meta || {},
   })
@@ -107,7 +144,7 @@ export function SecurityDataTable<TData extends SecurityKey, TValue>({
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="p-4">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -175,3 +212,4 @@ export function SecurityDataTable<TData extends SecurityKey, TValue>({
     </div>
   )
 }
+
