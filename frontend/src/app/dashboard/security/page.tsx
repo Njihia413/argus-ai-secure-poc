@@ -6,7 +6,7 @@ import {
   SortingState,
   VisibilityState,
 } from "@tanstack/react-table"
-import { Shield, ChevronDown } from "lucide-react"
+import { Shield, ChevronDown, FileUp } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -95,6 +95,7 @@ export default function SecurityPage() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [stats, setStats] = useState<SecurityStats>(emptyStats)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -180,34 +181,60 @@ export default function SecurityPage() {
     fetchData()
   }, [pagination.pageIndex, pagination.pageSize])
 
+  // Function to escape CSV values
+  const escapeCsvValue = (value: any): string => {
+    if (value === null || value === undefined) return '';
+    const stringValue = String(value);
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    return stringValue;
+  };
+
+  // Function to format date for CSV
+  const formatDateForCsv = (isoDate: string): string => {
+    try {
+      const date = new Date(isoDate);
+      return date.toLocaleString();
+    } catch (e) {
+      return isoDate;
+    }
+  };
+
   // Function to export alerts as CSV
-  const exportAlerts = () => {
-    if (!alerts.length) return;
+  const exportAlerts = async () => {
+    try {
+      if (!alerts.length) return;
 
-    const headers = ["Type", "User", "Details", "Time", "Severity", "Status"];
-    const csvData = alerts.map(alert => [
-      alert.type,
-      alert.user,
-      alert.details,
-      alert.time,
-      alert.severity,
-      alert.resolved ? "Resolved" : "Unresolved"
-    ]);
+      const headers = ["ID", "Type", "User", "Details", "Time", "Severity", "Status"];
+      const csvData = alerts.map(alert => [
+        alert.id,
+        alert.type,
+        alert.user,
+        alert.details,
+        formatDateForCsv(alert.time),
+        alert.severity,
+        alert.resolved ? "Resolved" : "Unresolved"
+      ]);
 
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(","))
-    ].join("\n");
+      const csvContent = [
+        headers.join(","),
+        ...csvData.map(row => row.map(escapeCsvValue).join(","))
+      ].join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `security-alerts-${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `security-alerts-${new Date().toISOString().slice(0, 10)}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url); // Clean up the URL object
+    } catch (error) {
+      console.error('Error exporting alerts:', error);
+    }
   };
 
   // Calculate total pages safely
@@ -216,12 +243,31 @@ export default function SecurityPage() {
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">Security Overview</h2>
-          <Button
-              onClick={exportAlerts}
-              disabled={alerts.length === 0 || loading}
-          >
-            Export Report
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={alerts.length === 0 || loading}
+                className="gap-2"
+              >
+                <FileUp className="h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[150px]">
+              <DropdownMenuCheckboxItem
+                onClick={async () => {
+                  setExporting(true);
+                  await exportAlerts();
+                  setExporting(false);
+                }}
+              >
+                {exporting ? "Exporting..." : "Excel"}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem>
+                PDF
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
