@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import {
   ColumnFiltersState,
   SortingState,
@@ -95,7 +97,7 @@ export default function SecurityPage() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [stats, setStats] = useState<SecurityStats>(emptyStats)
   const [loading, setLoading] = useState(true)
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState<"excel" | "pdf" | false>(false)
   const [error, setError] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -201,6 +203,100 @@ export default function SecurityPage() {
     }
   };
 
+  // Function to export alerts as PDF
+  const exportToPdf = async () => {
+    try {
+      if (!alerts.length) return;
+
+      // Create PDF document
+      const doc = new jsPDF();
+      
+      // Add title
+      doc.setFontSize(16);
+      doc.text("Security Alerts Report", 14, 15);
+      
+      // Switch back to regular font for other text
+      doc.setFont("Montserrat", "normal");
+      doc.setFontSize(10);
+      doc.text(`Generated on ${new Date().toLocaleString()}`, 14, 25);
+
+      // Add stats summary
+      doc.setFont("Montserrat", "bold");
+      doc.text("Summary", 14, 35);
+      doc.setFont("Montserrat", "normal");
+      doc.text(`Total Alerts: ${stats.alertStats.total}`, 14, 45);
+      doc.text(`High Severity: ${stats.alertStats.bySeverity.High}`, 14, 50);
+      doc.text(`Medium Severity: ${stats.alertStats.bySeverity.Medium}`, 14, 55);
+      doc.text(`Low Severity: ${stats.alertStats.bySeverity.Low}`, 14, 60);
+
+      // Prepare table data
+      const tableData = alerts.map(alert => [
+        alert.id,
+        alert.type,
+        alert.user,
+        alert.details,
+        formatDateForCsv(alert.time),
+        alert.severity,
+        alert.resolved ? "Resolved" : "Unresolved"
+      ]);
+
+      // Add table
+      autoTable(doc, {
+        head: [["ID", "Type", "User", "Details", "Time", "Severity", "Status"]],
+        body: tableData,
+        startY: 70, // Increased spacing from the top content
+        theme: 'grid', // Add gridlines
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+          lineWidth: 0.1, // Border width
+          lineColor: [0, 0, 0], // Border color
+          font: 'Helvetica', // Fallback to standard PDF font
+          textColor: [50, 50, 50] // Dark gray text
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: [255, 255, 255],
+          font: 'Helvetica',
+          fontStyle: 'bold',
+          lineWidth: 0.1,
+          halign: 'center'
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245]
+        },
+        margin: { top: 10 },
+        columnStyles: {
+          0: { cellWidth: 15 }, // ID
+          1: { cellWidth: 25 }, // Type
+          2: { cellWidth: 25 }, // User
+          3: { cellWidth: 50 }, // Details
+          4: { cellWidth: 30 }, // Time
+          5: { cellWidth: 20 }, // Severity
+          6: { cellWidth: 20 }, // Status
+        },
+        didParseCell: (data) => {
+          // Color the severity cell based on the value
+          if (data.column.dataKey === 5) {
+            if (data.cell.raw === "High") {
+              data.cell.styles.textColor = [255, 0, 0]; // Red
+            } else if (data.cell.raw === "Medium") {
+              data.cell.styles.textColor = [255, 165, 0]; // Orange
+            } else if (data.cell.raw === "Low") {
+              data.cell.styles.textColor = [0, 128, 0]; // Green
+            }
+          }
+        }
+      });
+
+      // Save the PDF
+      doc.save(`security-alerts-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+    }
+  };
+
   // Function to export alerts as CSV
   const exportAlerts = async () => {
     try {
@@ -256,15 +352,21 @@ export default function SecurityPage() {
             <DropdownMenuContent align="end" className="w-[150px]">
               <DropdownMenuCheckboxItem
                 onClick={async () => {
-                  setExporting(true);
+                  setExporting("excel");
                   await exportAlerts();
                   setExporting(false);
                 }}
               >
-                {exporting ? "Exporting..." : "Excel"}
+                {exporting === "excel" ? "Exporting..." : "Excel"}
               </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem>
-                PDF
+              <DropdownMenuCheckboxItem
+                onClick={async () => {
+                  setExporting("pdf");
+                  await exportToPdf();
+                  setExporting(false);
+                }}
+              >
+                {exporting === "pdf" ? "Exporting..." : "PDF"}
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
