@@ -1,13 +1,27 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { SecurityKeysDataTable } from "@/components/data-table/security-keys-data-table"
 import { securityKeysColumns } from "@/components/data-table/security-keys-columns"
 import { useEffect, useState } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
 import axios from "axios"
 import { toast } from "sonner"
+import { ChevronDown } from "lucide-react"
+import { DataTable } from "@/components/data-table/data-table"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  ColumnFiltersState,
+  SortingState,
+  VisibilityState,
+} from "@tanstack/react-table"
 
 
 export interface SecurityKey {
@@ -25,6 +39,15 @@ export default function SecurityKeysPage() {
   const [data, setData] = useState<SecurityKey[]>([])
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [rowSelection, setRowSelection] = useState({})
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+  })
+  const [statusFilterValue, setStatusFilterValue] = useState<string>("all")
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -77,7 +100,104 @@ export default function SecurityKeysPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SecurityKeysDataTable columns={securityKeysColumns} data={data} loading={loading} />
+          <DataTable
+            columns={securityKeysColumns}
+            data={data}
+            state={{
+              sorting,
+              columnFilters,
+              columnVisibility,
+              rowSelection,
+              pagination
+            }}
+            onSortingChange={setSorting}
+            onColumnFiltersChange={setColumnFilters}
+            onColumnVisibilityChange={setColumnVisibility}
+            onRowSelectionChange={setRowSelection}
+            onPaginationChange={setPagination}
+            enableRowSelection={true}
+            getPaginationRowModel={true}
+            getSortedRowModel={true}
+            getFilteredRowModel={true}
+            toolbar={(table) => (
+              <div className="flex items-center justify-between w-full font-montserrat">
+                <div className="flex items-center space-x-4">
+                  <Input
+                    placeholder="Search security keys..."
+                    value={(table?.getColumn("model")?.getFilterValue() as string) ?? ""}
+                    onChange={(event) =>
+                      table?.getColumn("model")?.setFilterValue(event.target.value)
+                    }
+                    className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                        {statusFilterValue === "all"
+                          ? "All Statuses"
+                          : statusFilterValue === "active"
+                            ? "Active"
+                            : "Inactive"} <ChevronDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="rounded-xl">
+                      <DropdownMenuCheckboxItem
+                        checked={statusFilterValue === "all"}
+                        onCheckedChange={() => {
+                          setStatusFilterValue("all");
+                          table?.getColumn("status")?.setFilterValue(undefined);
+                        }}
+                      >
+                        All Statuses
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={statusFilterValue === "active"}
+                        onCheckedChange={() => {
+                          setStatusFilterValue("active");
+                          table?.getColumn("status")?.setFilterValue("active");
+                        }}
+                      >
+                        Active
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={statusFilterValue === "inactive"}
+                        onCheckedChange={() => {
+                          setStatusFilterValue("inactive");
+                          table?.getColumn("status")?.setFilterValue("inactive");
+                        }}
+                      >
+                        Inactive
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                      Columns <ChevronDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="rounded-xl">
+                    {table
+                      ?.getAllColumns()
+                      .filter((column) => column.getCanHide())
+                      .map((column) => (
+                        <DropdownMenuCheckboxItem
+                          key={column.id}
+                          className="capitalize"
+                          checked={column.getIsVisible()}
+                          onCheckedChange={(value) =>
+                            column.toggleVisibility(!!value)
+                          }
+                        >
+                          {column.id}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          />
         </CardContent>
       </Card>
     </div>
