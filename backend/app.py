@@ -2193,11 +2193,11 @@ def login():
         log_system_event(
             user_id=user.id,
             performed_by_user_id=user.id,
-            action_type='USER_LOGIN_PASSWORD_VERIFIED',
+            action_type='USER_LOGIN_SUCCESS', # Correct for no security key path
             status='SUCCESS',
             target_entity_type='USER',
             target_entity_id=user.id,
-            details=f"Password verified for user '{user.username}' (ID: {user.id}). Awaiting security key registration/verification. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
+            details=f"Login attempt successful for user '{user.username}' (ID: {user.id}). No security key configured. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
         )
         return jsonify(response_data), 200
     else:
@@ -2207,7 +2207,7 @@ def login():
         log_system_event(
             user_id=user.id,
             performed_by_user_id=user.id,
-            action_type='USER_LOGIN_PASSWORD_VERIFIED',
+            action_type='USER_LOGIN_PASSWORD_VERIFIED', # Correct for security key path
             status='SUCCESS',
             target_entity_type='USER',
             target_entity_id=user.id,
@@ -5489,7 +5489,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5503,7 +5503,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5516,7 +5516,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=auth_session.user_id,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5529,7 +5529,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5543,7 +5543,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5555,7 +5555,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_FAILURE',
+                action_type='USER_ACCOUNT_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5569,7 +5569,7 @@ def unlock_user_account(user_id):
         log_system_event(
             user_id=user.id,
             performed_by_user_id=admin_user.id,
-            action_type='USER_UNLOCK_SUCCESS',
+            action_type='USER_ACCOUNT_UNLOCK_SUCCESS',
             status='SUCCESS',
             target_entity_type='USER',
             target_entity_id=user.id,
@@ -5593,7 +5593,7 @@ def unlock_user_account(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
-            action_type='USER_UNLOCK_FAILURE',
+            action_type='USER_ACCOUNT_UNLOCK_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
