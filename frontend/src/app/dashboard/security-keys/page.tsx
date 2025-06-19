@@ -100,9 +100,15 @@ export default function SecurityKeysPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable
-            columns={securityKeysColumns}
-            data={data}
+          {loading ? (
+            <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+              <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
+              <span>Loading security keys...</span>
+            </div>
+          ) : (
+            <DataTable
+              columns={securityKeysColumns}
+              data={data}
             state={{
               sorting,
               columnFilters,
@@ -198,6 +204,7 @@ export default function SecurityKeysPage() {
               </div>
             )}
           />
+          )}
         </CardContent>
       </Card>
     </div>
