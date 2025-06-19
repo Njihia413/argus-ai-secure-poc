@@ -120,7 +120,7 @@ export function DataTable<TData>({
   const table = useReactTable<TData>({
     data,
     columns,
-    pageCount: pageCount ?? -1, // Pass pageCount to the hook
+    pageCount: pageCount ?? 0, // Default to 0 if undefined, for hydration consistency
     state: {
       sorting: localState.sorting,
       columnFilters: localState.columnFilters,
