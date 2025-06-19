@@ -6,19 +6,17 @@ import { Badge } from "../ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export type AuditLog = {
-  id: string;
-  securityKeyId: string;
-  userId: string;
-  username: string;
-  action: string;
-  details: string;
+  id: number;
   timestamp: string;
-  performedBy: {
-    id: string;
-    username: string;
-  };
-  previousState?: any;
-  newState?: any;
+  user_id?: number | null;
+  user_username?: string | null;
+  performed_by_user_id?: number | null;
+  performed_by_username?: string | null;
+  action_type: string;
+  target_entity_type?: string | null;
+  target_entity_id?: string | null;
+  details?: string | null;
+  status: 'SUCCESS' | 'FAILURE';
 };
 
 export const columns: ColumnDef<AuditLog>[] = [
@@ -47,59 +45,87 @@ export const columns: ColumnDef<AuditLog>[] = [
     enableHiding: false,
   },
   {
-    accessorKey: "action",
-    header: "Action",
+    accessorKey: "action_type",
+    header: "Action Type",
     cell: ({ row }) => {
-      const action = row.getValue("action") as string;
-      let textColor = "";
-      let borderColor = "";
-      
-      switch (action.toLowerCase()) {
-        case "register":
-        case "initial-register": // Adding this case for consistency
-        case "re-register": // Adding this case for consistency
-          textColor = "text-green-700 dark:text-green-400";
-          borderColor = "border-green-300 dark:border-green-700";
-          break;
-        case "deactivate":
-          textColor = "text-red-700 dark:text-red-400";
-          borderColor = "border-red-300 dark:border-red-700";
-          break;
-        case "activate":
-          textColor = "text-blue-700 dark:text-blue-400";
-          borderColor = "border-blue-300 dark:border-blue-700";
-          break;
-        case "reassign":
-          textColor = "text-yellow-700 dark:text-yellow-400";
-          borderColor = "border-yellow-300 dark:border-yellow-700";
-          break;
-        case "reset":
-          textColor = "text-purple-700 dark:text-purple-400";
-          borderColor = "border-purple-300 dark:border-purple-700";
-          break;
-        default:
-          textColor = "text-gray-700 dark:text-gray-400";
-          borderColor = "border-gray-300 dark:border-gray-700";
-      }
-
+      const actionType = row.getValue("action_type") as string;
+      // Basic styling for now, can be expanded like the old 'action' column
       return (
         <div className="py-2">
           <Badge
             variant="outline"
-            className={`${textColor} ${borderColor}`}
           >
-            {action}
+            {actionType}
           </Badge>
         </div>
       );
     },
   },
   {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      let textColor = "";
+      let borderColor = "";
+      if (status === "SUCCESS") {
+        textColor = "text-green-700 dark:text-green-400";
+        borderColor = "border-green-300 dark:border-green-700";
+      } else if (status === "FAILURE") {
+        textColor = "text-red-700 dark:text-red-400";
+        borderColor = "border-red-300 dark:border-red-700";
+      } else {
+        textColor = "text-gray-700 dark:text-gray-400";
+        borderColor = "border-gray-300 dark:border-gray-700";
+      }
+      return (
+        <div className="py-2">
+          <Badge
+            variant="outline"
+            className={`${textColor} ${borderColor}`}
+          >
+            {status}
+          </Badge>
+        </div>
+      );
+    }
+  },
+  {
     accessorKey: "details",
     header: "Details",
+    cell: ({ row }) => {
+      const details = row.getValue("details") as string | null;
+      return (
+        <div className="py-2 truncate max-w-xs" title={details ?? undefined}>
+          {details || "-"}
+        </div>
+      );
+    }
+  },
+  {
+    accessorKey: "user_username",
+    header: "Affected User",
     cell: ({ row }) => (
       <div className="py-2">
-        {row.getValue("details")}
+        {row.getValue("user_username") || "-"}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "target_entity_type",
+    header: "Target Type",
+    cell: ({ row }) => (
+      <div className="py-2">
+        {row.getValue("target_entity_type") || "-"}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "target_entity_id",
+    header: "Target ID",
+    cell: ({ row }) => (
+      <div className="py-2">
+        {row.getValue("target_entity_id") || "-"}
       </div>
     ),
   },
@@ -115,23 +141,37 @@ export const columns: ColumnDef<AuditLog>[] = [
     },
   },
   {
-    accessorKey: "performedBy",
+    accessorKey: "performed_by_username",
     header: "Performed By",
     cell: ({ row }) => {
-      const performedBy = row.getValue("performedBy") as { username: string };
+      const performedByUsername = row.getValue("performed_by_username") as string | null;
       return (
         <div className="py-2">
-          {performedBy.username}
+          {performedByUsername || "System"}
         </div>
       );
     },
     // Custom filter function for the "Search..." input
+    // This will be used by the global search input on the audit logs page
     filterFn: (row, columnId, filterValue) => {
-      const performedByUsername = (row.getValue("performedBy") as { username: string })?.username?.toLowerCase() || "system";
-      const action = (row.getValue("action") as string)?.toLowerCase();
-      const searchTerm = String(filterValue).toLowerCase(); // Ensure filterValue is a string
+      const searchTerm = String(filterValue).toLowerCase();
 
-      return performedByUsername.includes(searchTerm) || action.includes(searchTerm);
+      const performedBy = (row.getValue("performed_by_username") as string || "system").toLowerCase();
+      const affectedUser = (row.getValue("user_username") as string || "").toLowerCase();
+      const actionType = (row.getValue("action_type") as string || "").toLowerCase();
+      const details = (row.getValue("details") as string || "").toLowerCase();
+      const status = (row.getValue("status") as string || "").toLowerCase();
+      const targetEntityType = (row.getValue("target_entity_type") as string || "").toLowerCase();
+      const targetEntityId = (row.getValue("target_entity_id") as string || "").toLowerCase();
+
+
+      return performedBy.includes(searchTerm) ||
+             affectedUser.includes(searchTerm) ||
+             actionType.includes(searchTerm) ||
+             details.includes(searchTerm) ||
+             status.includes(searchTerm) ||
+             targetEntityType.includes(searchTerm) ||
+             targetEntityId.includes(searchTerm);
     },
   },
 ];
