@@ -59,6 +59,37 @@
         - **Added new endpoint `/api/security-keys/<int:key_id>` to fetch details for a single security key, including its audit logs.**
         - Ensured `SecurityKeyAudit` logs are created for `re-register` actions within the `webauthn_register_complete` function.
         - **Revised logic in `webauthn_register_complete` to more reliably determine `actor_id` for the `performed_by` field in `SecurityKeyAudit`. It defaults to `user.id` (for self-registration) and updates to the admin's ID if a valid `auth_token` corresponding to an admin user is provided.**
+- [x] **System-Wide Audit Logging (New Feature):**
+    - [x] **Backend ([`../backend/app.py`](../backend/app.py:1)):**
+        - [x] Added new SQLAlchemy model `AuditLog` to store general system audit events.
+        - [x] Implemented `log_system_event` helper function to create and save `AuditLog` entries.
+        - [x] Integrated `log_system_event` calls into key security and user management endpoints:
+            - User registration (`/api/register`)
+            - User login (`/api/login`)
+            - WebAuthn registration begin (`/api/webauthn/register/begin`)
+            - WebAuthn registration complete (`/api/webauthn/register/complete`)
+            - WebAuthn login begin (`/api/webauthn/login/begin`)
+            - WebAuthn login complete (`/api/webauthn/login/complete`)
+            - Security key deletion (`/api/security-keys/<int:key_id>`)
+            - Security key status change (activate/deactivate) (`/api/security-keys/<int:key_id>/deactivate-status`)
+            - Security key details update (`/api/security-keys/<int:key_id>`)
+            - Security key reset (`/api/security-keys/<int:key_id>/reset`)
+            - Security key reassign (`/api/security-keys/<int:key_id>/reassign`)
+            - User details update (`/api/users/<int:user_id>`)
+            - User role update (`/api/users/<int:user_id>/role`)
+            - User soft delete (`/api/delete-user/<int:user_id>`)
+            - User account unlock (`/api/users/<int:user_id>/unlock`)
+            - Database reset (`/api/reset-db`)
+        - [x] Created new API endpoint `/api/system-audit-logs` to fetch system audit logs with pagination and filtering capabilities (by user, performer, action type, status, target entity, date range).
+        - [x] Ensured database migrations for the new `AuditLog` table were generated and applied.
+    - [x] **Frontend ([`src/app/dashboard/audit-logs/page.tsx`](src/app/dashboard/audit-logs/page.tsx:1) & [`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1)):**
+        - [x] Redefined `AuditLog` type in `audit-log-columns.tsx` to match the new backend model.
+        - [x] Updated `columns` definition in `audit-log-columns.tsx` to display new fields: `action_type`, `status`, `user_username` (Affected User), `performed_by_username`, `target_entity_type`, `target_entity_id`.
+        - [x] Updated `audit-logs/page.tsx` to fetch data from the new `/api/system-audit-logs` endpoint.
+        - [x] Implemented pagination for system audit logs.
+        - [x] Updated `actionOptions` with a comprehensive list of new `action_type` values.
+        - [x] Updated global search input to filter across multiple relevant fields using the `filterFn` in `audit-log-columns.tsx`.
+        - [x] Ensured action type filter correctly queries the backend.
 - [x] User activity tracking
 
 ### AI Integration
@@ -92,7 +123,8 @@
     - Ensured buttons on Users, Locked Accounts, Security, and User Details dashboard pages use the default primary blue styling (action buttons) or blue outline styling ("Cancel" buttons) by removing/adjusting explicit classes and variants, and updated backgrounds to be theme-aware.
     - [x] User Details Page Modals: Ensured important instructional text within Register/Reset/Reassign Key modals is visible in dark mode (theme-aware text/border, transparent background in dark mode for instructional containers) in `src/app/dashboard/users/[id]/page.tsx`.
 - [x] Data Table Enhancements:
-    - Loading spinners in Users, Security, and Locked Accounts tables now use consistent blue styling.
+    - [x] Generic `DataTable` component ([`src/components/data-table/data-table.tsx`](src/components/data-table/data-table.tsx:1)) updated to support server-side pagination by accepting a `pageCount` prop and setting `manualPagination: true`.
+    - Loading spinners in Users, Security Alerts ([`src/app/dashboard/security/page.tsx`](src/app/dashboard/security/page.tsx:1)), Security Keys ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)), Audit Logs ([`src/app/dashboard/audit-logs/page.tsx`](src/app/dashboard/audit-logs/page.tsx:1)), and Locked Accounts tables now use consistent styling (animated div spinner with text).
     - Removed duplicate pagination controls from the Security page.
     - [x] Users Table: Fixed dark mode visibility for "role", "loginAttempts", "failedAttempts", and "securityKeyStatus" badges in `src/components/data-table/columns.tsx`.
     - [x] User Details Security Keys Table: Fixed dark mode visibility for "Status" badge in `src/components/data-table/security-key-columns.tsx`. **Dropdown action logic updated for deactivation/reset/re-registration flow with conditional rendering.**
