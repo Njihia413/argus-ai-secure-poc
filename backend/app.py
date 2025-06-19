@@ -24,7 +24,9 @@ from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserE
 from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
 
-from sqlalchemy import func, case, MetaData
+from sqlalchemy import func, case, MetaData, or_
+from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased
 
 app = Flask(__name__)
 CORS(app)
@@ -234,6 +236,21 @@ class SecurityKeyAudit(db.Model):
     user = db.relationship('Users', foreign_keys=[user_id], backref=db.backref('security_key_audit_logs', lazy=True))
     actor = db.relationship('Users', foreign_keys=[performed_by])
 
+# Model for general system audit logs
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True) # User associated with the event (target)
+    performed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True) # User who performed the action
+    action_type = db.Column(db.String(100), nullable=False) # e.g., USER_LOGIN, SECURITY_KEY_CREATE
+    target_entity_type = db.Column(db.String(50), nullable=True) # e.g., USER, SECURITY_KEY, SYSTEM
+    target_entity_id = db.Column(db.String(250), nullable=True) # ID of the entity being acted upon (can be string for flexibility e.g. credential_id)
+    details = db.Column(db.Text, nullable=True) # Contextual info, IP, params, summary of changes
+    status = db.Column(db.String(20), nullable=False) # SUCCESS, FAILURE
+
+    # Relationships to get user details
+    user = db.relationship('Users', foreign_keys=[user_id], backref=db.backref('related_audit_logs', lazy='dynamic'))
+    performed_by = db.relationship('Users', foreign_keys=[performed_by_user_id], backref=db.backref('performed_audit_logs', lazy='dynamic'))
 # SecurityKey model
 class SecurityKey(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -646,6 +663,13 @@ def register():
     if not data or not data.get('username') or not data.get('password') or \
             not data.get('firstName') or not data.get('lastName') or \
             not data.get('nationalId') or not data.get('email'):
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None, # admin_user not yet known
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            details=f"Registration attempt failed: Missing required fields. Username: {data.get('username') if data else 'N/A'}"
+        )
         return jsonify(
             {'error': 'Missing required fields (firstName, lastName, username, password, nationalId, or email)'}), 400
 
@@ -653,13 +677,34 @@ def register():
     try:
         national_id = int(data.get('nationalId'))
         if len(str(national_id)) != 8:
+            log_system_event(
+                user_id=None,
+                performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else (auth_session.user_id if 'auth_session' in locals() and auth_session else None),
+                action_type='USER_REGISTER_ATTEMPT',
+                status='FAILURE',
+                details=f"Registration attempt for username '{data.get('username')}' failed: National ID '{data.get('nationalId')}' must be exactly 8 digits."
+            )
             return jsonify({'error': 'National ID must be exactly 8 digits'}), 400
     except ValueError:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else (auth_session.user_id if 'auth_session' in locals() and auth_session else None),
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            details=f"Registration attempt for username '{data.get('username')}' failed: National ID '{data.get('nationalId')}' must be a number."
+        )
         return jsonify({'error': 'National ID must be a number'}), 400
 
     # Get the admin's auth token for authorization
     admin_token = request.headers.get('Authorization')
     if not admin_token:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None, # No admin token provided
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            details=f"Registration attempt for username '{data.get('username')}' failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify the admin token
@@ -667,14 +712,38 @@ def register():
     auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None, # Admin token was invalid or session not found
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            details=f"Registration attempt for username '{data.get('username')}' failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=auth_session.user_id, # ID of user who attempted action
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            details=f"Registration attempt for username '{data.get('username')}' failed: Admin privileges required. Attempted by user ID: {auth_session.user_id}."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     if Users.query.filter_by(username=data['username']).first():
+        existing_user_for_log = Users.query.filter_by(username=data['username']).first()
+        log_system_event(
+            user_id=existing_user_for_log.id if existing_user_for_log else None,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_REGISTER_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=existing_user_for_log.id if existing_user_for_log else None,
+            details=f"Registration attempt for username '{data['username']}' failed: Username already exists."
+        )
         return jsonify({'error': 'Username already exists'}), 409
 
     # Set role (default to 'user' unless specifically set to another valid role)
@@ -696,6 +765,17 @@ def register():
 
     db.session.add(user)
     db.session.commit()
+
+    # Log successful registration
+    log_system_event(
+        user_id=user.id, # The newly created user is the target
+        performed_by_user_id=admin_user.id,
+        action_type='USER_REGISTER_SUCCESS',
+        status='SUCCESS',
+        target_entity_type='USER',
+        target_entity_id=user.id,
+        details=f"User '{user.username}' (ID: {user.id}) registered successfully with role '{user.role}' by admin '{admin_user.username}' (ID: {admin_user.id})."
+    )
 
     return jsonify({
         'message': 'User registered successfully',
@@ -1070,6 +1150,15 @@ def delete_security_key(key_id):
     # Verify admin token and authorization (keeping your existing code)
     auth_token = request.headers.get('Authorization')
     if not auth_token:
+        log_system_event(
+            user_id=None, # Admin not identified
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to delete security key ID {key_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify the admin token
@@ -1077,21 +1166,58 @@ def delete_security_key(key_id):
     auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=None, # Admin not identified
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to delete security key ID {key_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None, # Could be key.user_id if key is found, but admin check failed first
+            performed_by_user_id=auth_session.user_id,
+            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to delete security key ID {key_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     # Find the security key
     key = SecurityKey.query.get(key_id)
     if not key:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' (ID: {admin_user.id}) to delete security key ID {key_id} failed: Key not found."
+        )
         return jsonify({'error': 'Security key not found'}), 404
 
     # Get the user before deleting the key
     user = Users.query.get(key.user_id)
     if not user:
+        # This case is less likely if DB constraints are fine, but good to log
+        log_system_event(
+            user_id=key.user_id, # Original user ID from the key
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' (ID: {admin_user.id}) to delete security key ID {key_id} failed: Associated user (ID: {key.user_id}) not found."
+        )
         return jsonify({'error': 'Associated user not found'}), 404
 
     try:
@@ -1133,6 +1259,15 @@ def delete_security_key(key_id):
 
         db.session.commit()
 
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_DELETE_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id, # The ID of the key that was deleted
+            details=f"Security key ID {key_id} (Original CredentialID: {key.credential_id if key and key.credential_id else 'N/A'}) for user '{user.username}' (ID: {user.id}) deleted successfully by admin '{admin_user.username}' (ID: {admin_user.id})."
+        )
         return jsonify({
             'status': 'success',
             'message': 'Security key deleted successfully',
@@ -1148,6 +1283,15 @@ def delete_security_key(key_id):
     except Exception as e:
         db.session.rollback()
         print(f"Error deleting security key: {str(e)}")
+        log_system_event(
+            user_id=user.id if 'user' in locals() and user else (key.user_id if 'key' in locals() and key else None),
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
+            action_type='SECURITY_KEY_DELETE_FAILURE',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Error deleting security key ID {key_id} for user '{user.username if 'user' in locals() and user else 'N/A'}' by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}"
+        )
         return jsonify({'error': 'Failed to delete security key'}), 500
 
 
@@ -1164,6 +1308,15 @@ def deactivate_security_key_status(key_id):
     # Verify admin token and authorization
     auth_token = request.headers.get('Authorization')
     if not auth_token:
+        log_system_event(
+            user_id=None, # Admin not identified
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to change status for security key ID {key_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify the admin token
@@ -1171,16 +1324,43 @@ def deactivate_security_key_status(key_id):
     auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=None, # Admin not identified
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to change status for security key ID {key_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None, # Could be key.user_id if key is found
+            performed_by_user_id=auth_session.user_id,
+            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to change status for security key ID {key_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     # Find the security key
     key = SecurityKey.query.get(key_id)
     if not key:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to change status for security key ID {key_id} failed: Key not found."
+        )
         return jsonify({'error': 'Security key not found'}), 404
 
     print(f"[DEACTIVATE_KEY] Initial key state for ID {key_id}: is_active={key.is_active}, reason='{key.deactivation_reason}'")
@@ -1190,6 +1370,15 @@ def deactivate_security_key_status(key_id):
 
     # If trying to activate a deactivated key
     if not key.is_active and key.last_used:
+        log_system_event(
+            user_id=key.user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_ACTIVATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Attempt by admin '{admin_user.username}' to activate key ID {key.id} for user '{key.user.username}' failed: Cannot reactivate previously used key."
+        )
         return jsonify({
             'error': 'Cannot reactivate key',
             'detail': 'Previously deactivated keys cannot be reactivated for security reasons'
@@ -1202,6 +1391,15 @@ def deactivate_security_key_status(key_id):
             is_active=True
         ).filter(SecurityKey.id != key_id).first() # Exclude the current key itself if it's somehow in this state
         if other_active_key:
+            log_system_event(
+                user_id=key.user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='SECURITY_KEY_ACTIVATE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=key.id,
+                details=f"Attempt by admin '{admin_user.username}' to activate key ID {key.id} for user '{key.user.username}' failed: User already has another active key (ID: {other_active_key.id})."
+            )
             return jsonify({
                 'error': 'Active key exists',
                 'detail': 'User already has an active security key. Deactivate existing key before activating another.'
@@ -1292,6 +1490,17 @@ def deactivate_security_key_status(key_id):
     # Commit all changes
     db.session.commit()
 
+    action_performed = 'SECURITY_KEY_ACTIVATE_SUCCESS' if key.is_active else 'SECURITY_KEY_DEACTIVATE_SUCCESS'
+    log_system_event(
+        user_id=key.user_id,
+        performed_by_user_id=admin_user.id,
+        action_type=action_performed,
+        status='SUCCESS',
+        target_entity_type='SECURITY_KEY',
+        target_entity_id=key.id,
+        details=f"Security key ID {key.id} for user '{user.username if user else 'N/A'}' was {'activated' if key.is_active else 'deactivated'} by admin '{admin_user.username}'. Reason: {key.deactivation_reason if not key.is_active else 'N/A'}."
+    )
+
     return jsonify({
         'message': f"Security key {'activated' if key.is_active else 'deactivated'} successfully",
         'key': {
@@ -1311,6 +1520,15 @@ def update_security_key(key_id):
     # Verify admin token and authorization
     auth_token = request.headers.get('Authorization')
     if not auth_token:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to update security key ID {key_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify the admin token
@@ -1318,27 +1536,72 @@ def update_security_key(key_id):
     auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to update security key ID {key_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None, # Key user not yet known
+            performed_by_user_id=auth_session.user_id,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to update security key ID {key_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     # Get the request data
     data = request.get_json()
     if not data:
+        log_system_event(
+            user_id=None, # Key user not yet known
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to update key ID {key_id} failed: Request data is required."
+        )
         return jsonify({'error': 'Request data is required'}), 400
 
     # Check required fields
     required_fields = ['model', 'type', 'serialNumber']
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
+        log_system_event(
+            user_id=None, # Key user not yet known
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to update key ID {key_id} failed: Missing required fields: {', '.join(missing_fields)}."
+        )
         return jsonify({'error': f'Missing required fields: {", ".join(missing_fields)}'}), 400
 
     # Find the security key
     key = SecurityKey.query.get(key_id)
     if not key:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to update key ID {key_id} failed: Key not found."
+        )
         return jsonify({'error': 'Security key not found'}), 404
 
     # Update the fields
@@ -1352,6 +1615,15 @@ def update_security_key(key_id):
 
     db.session.commit()
 
+    log_system_event(
+        user_id=key.user_id,
+        performed_by_user_id=admin_user.id,
+        action_type='SECURITY_KEY_UPDATE_SUCCESS',
+        status='SUCCESS',
+        target_entity_type='SECURITY_KEY',
+        target_entity_id=key.id,
+        details=f"Security key ID {key.id} (User: {key.user.username}) updated by admin '{admin_user.username}'. New details - Model: {key.model}, Type: {key.type}, SN: {key.serial_number}."
+    )
     return jsonify({
         'message': 'Security key updated successfully',
         'key': {
@@ -1405,26 +1677,71 @@ def reset_security_key(key_id):
     # Authentication checks (keep your existing code)
     auth_token = request.headers.get('Authorization')
     if not auth_token:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reset security key ID {key_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
     
     # Verify the admin token
     auth_token = auth_token.replace('Bearer ', '')
     auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
     if not auth_session:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reset security key ID {key_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
     
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None, # Key user not yet known
+            performed_by_user_id=auth_session.user_id,
+            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reset security key ID {key_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
     
     # Find the security key
     key = SecurityKey.query.get(key_id)
     if not key:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to reset key ID {key_id} failed: Key not found."
+        )
         return jsonify({'error': 'Security key not found'}), 404
         
     # Check if key has already been reset
     if not key.credential_id and key.deactivation_reason == "Reset by admin":
+        log_system_event(
+            user_id=key.user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Attempt by admin '{admin_user.username}' to reset key ID {key.id} for user '{key.user.username}' failed: Key has already been reset."
+        )
         return jsonify({'error': 'Key has already been reset'}), 400
     
     try:
@@ -1475,7 +1792,16 @@ def reset_security_key(key_id):
         db.session.add(audit_log)
         
         db.session.commit()
-        
+
+        log_system_event(
+            user_id=key.user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_RESET_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Security key ID {key.id} (User: {key.user.username}) reset successfully by admin '{admin_user.username}'."
+        )
         return jsonify({
             'success': True,
             'message': 'Security key reset successfully',
@@ -1487,6 +1813,15 @@ def reset_security_key(key_id):
     except Exception as e:
         db.session.rollback()
         print(f"Error resetting security key: {str(e)}")
+        log_system_event(
+            user_id=key.user_id if 'key' in locals() and key else None,
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
+            action_type='SECURITY_KEY_RESET_FAILURE',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Error resetting security key ID {key_id} for user '{key.user.username if 'key' in locals() and key and key.user else 'N/A'}' by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}"
+        )
         return jsonify({'error': f'Failed to reset security key: {str(e)}'}), 500
 
 
@@ -1495,22 +1830,58 @@ def reassign_security_key(key_id):
     # Authentication checks
     auth_token = request.headers.get('Authorization')
     if not auth_token:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reassign security key ID {key_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
     
     # Verify the admin token
     auth_token = auth_token.replace('Bearer ', '')
     auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
     if not auth_session:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reassign security key ID {key_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
     
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=None, # Key user not yet known
+            performed_by_user_id=auth_session.user_id,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt to reassign security key ID {key_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
     
     # Find the security key
     key = SecurityKey.query.get(key_id)
     if not key:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Attempt by admin '{admin_user.username}' to reassign key ID {key_id} failed: Key not found."
+        )
         return jsonify({'error': 'Security key not found'}), 404
     
     # Get new user ID from request
@@ -1518,10 +1889,28 @@ def reassign_security_key(key_id):
     new_user_id = data.get('new_user_id')
     
     if not new_user_id:
+        log_system_event(
+            user_id=key.user_id, # Original owner
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Attempt by admin '{admin_user.username}' to reassign key ID {key.id} from user '{key.user.username}' failed: New user ID is required."
+        )
         return jsonify({'error': 'New user ID is required'}), 400
     
     # Check if key is ready for reassignment
     if key.is_active:
+        log_system_event(
+            user_id=key.user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Attempt by admin '{admin_user.username}' to reassign key ID {key.id} from user '{key.user.username}' failed: Key is still active (must be reset first)."
+        )
         return jsonify({'error': 'Security key must be reset before reassignment'}), 400
     
     try:
@@ -1530,11 +1919,29 @@ def reassign_security_key(key_id):
         new_owner = Users.query.get(new_user_id)
         
         if not new_owner:
+            log_system_event(
+                user_id=key.user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=key.id,
+                details=f"Attempt by admin '{admin_user.username}' to reassign key ID {key.id} to user ID {new_user_id} failed: New user not found."
+            )
             return jsonify({'error': 'New user not found'}), 404
 
         # Check if the new owner already has an active security key
         existing_active_key = SecurityKey.query.filter_by(user_id=new_owner.id, is_active=True).first()
         if existing_active_key:
+            log_system_event(
+                user_id=key.user_id, # Original owner
+                performed_by_user_id=admin_user.id,
+                action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=key.id,
+                details=f"Attempt by admin '{admin_user.username}' to reassign key ID {key.id} to user '{new_owner.username}' (ID: {new_owner.id}) failed: New user already has an active security key (ID: {existing_active_key.id})."
+            )
             return jsonify({'error': 'New user already has an active security key. Cannot reassign.'}), 400
         
         # Update the key record
@@ -1592,7 +1999,16 @@ def reassign_security_key(key_id):
         
         new_owner.update_security_key_status()
         db.session.commit()
-        
+
+        log_system_event(
+            user_id=new_owner.id, # The new owner is the primary user associated with this log
+            performed_by_user_id=admin_user.id,
+            action_type='SECURITY_KEY_REASSIGN_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key.id,
+            details=f"Security key ID {key.id} reassigned from user '{current_owner.username if current_owner else 'N/A'}' (ID: {previous_state.get('user_id')}) to user '{new_owner.username}' (ID: {new_owner.id}) by admin '{admin_user.username}'."
+        )
         return jsonify({
             'success': True,
             'message': f'Security key reassigned from {current_owner.username if current_owner else "unknown"} to {new_owner.username}',
@@ -1604,6 +2020,15 @@ def reassign_security_key(key_id):
     except Exception as e:
         db.session.rollback()
         print(f"Error reassigning security key: {str(e)}")
+        log_system_event(
+            user_id=key.user_id if 'key' in locals() and key else None, # User at the time of error
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
+            status='FAILURE',
+            target_entity_type='SECURITY_KEY',
+            target_entity_id=key_id,
+            details=f"Error reassigning security key ID {key_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}"
+        )
         return jsonify({'error': f'Failed to reassign security key: {str(e)}'}), 500
 
 
@@ -1613,6 +2038,13 @@ def login():
     data = request.get_json()
 
     if not data or not data.get('username') or not data.get('password'):
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='USER_LOGIN_ATTEMPT',
+            status='FAILURE',
+            details=f"Login attempt failed: Missing username or password. Identifier: {data.get('username') if data else 'N/A'}"
+        )
         return jsonify({'error': 'Please enter all required fields'}), 400
 
     identifier = data.get('username')
@@ -1629,7 +2061,15 @@ def login():
     # If no user found by national ID or email, check if they exist by username
     if not user:
         user_by_username = Users.query.filter_by(username=identifier).first()
-        if user_by_username:
+        # Log failed attempt due to invalid identifier (user not found by any means)
+        log_system_event(
+            user_id=None, # User not found
+            performed_by_user_id=None,
+            action_type='USER_LOGIN_ATTEMPT',
+            status='FAILURE',
+            details=f"Login attempt failed: User with identifier '{identifier}' not found. IP: {request.remote_addr}."
+        )
+        if user_by_username: # This case should ideally not be hit if the previous block correctly identifies no user
             return jsonify({'error': 'Invalid credentials. Please try again'}), 401
         return jsonify({'error': 'Invalid credentials. Please try again'}), 401
 
@@ -1663,6 +2103,15 @@ def login():
         # After incrementing and potentially locking, check the lock status.
         if user.is_account_locked():
             # db.session.commit() # Not needed here, increment_failed_attempts handles its commit.
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='USER_LOGIN_FAILURE',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"Login attempt failed for user '{user.username}' (ID: {user.id}): Account locked. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
+            )
             return jsonify({
                 'error': 'Account is temporarily locked due to too many failed attempts. Please contact an administrator to unlock your account.',
                 'accountLocked': True,
@@ -1671,6 +2120,15 @@ def login():
         else:
             # Account is not locked, but password was wrong.
             # db.session.commit() # Not needed here, increment_failed_attempts handles its commit.
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='USER_LOGIN_FAILURE',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"Login attempt failed for user '{user.username}' (ID: {user.id}): Invalid password. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
+            )
             return jsonify({'error': 'Invalid credentials. Please try again'}), 401
 
     # Password is correct - update attempt to successful
@@ -1731,10 +2189,30 @@ def login():
         # User needs to register a security key first
         response_data[
             'message'] = 'Password verified, but you need to register a security key to fully access your account'
+        # Log successful password verification, awaiting security key
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=user.id,
+            action_type='USER_LOGIN_PASSWORD_VERIFIED',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"Password verified for user '{user.username}' (ID: {user.id}). Awaiting security key registration/verification. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
+        )
         return jsonify(response_data), 200
     else:
         # User has a security key, so they need to use it as a second factor
         response_data['message'] = 'Password verified. Please complete authentication with your security key'
+        # Log successful password verification, awaiting security key
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=user.id,
+            action_type='USER_LOGIN_PASSWORD_VERIFIED',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"Password verified for user '{user.username}' (ID: {user.id}). Awaiting security key authentication. IP: {ip_address}. Location: {location}. Risk: {risk_score}."
+        )
         return jsonify(response_data), 200
 
 
@@ -1767,11 +2245,25 @@ def webauthn_register_begin():
     print(f"Registration begin request: username={username}, force_registration={force_registration}")
 
     if not username:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+            status='FAILURE',
+            details="WebAuthn registration begin failed: Username required."
+        )
         return jsonify({'error': 'Username required'}), 400
 
     # Check if user exists
     user = Users.query.filter_by(username=username).first()
     if not user:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+            status='FAILURE',
+            details=f"WebAuthn registration begin failed for username '{username}': User not found."
+        )
         return jsonify({'error': 'User not found'}), 404
 
     # If auth token provided, validate binding
@@ -1779,6 +2271,15 @@ def webauthn_register_begin():
         # Find the session
         auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
         if not auth_session or auth_session.user_id != user.id:
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id, # Assuming user initiated if auth_token is for them
+                action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn registration begin for user '{username}' failed: Invalid session token or session mismatch."
+            )
             return jsonify({'error': 'Invalid session'}), 400
 
         # Regenerate the binding hash
@@ -1787,6 +2288,15 @@ def webauthn_register_begin():
 
         # Validate binding
         if not auth_session.validate_binding(binding_hash):
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn registration begin for user '{username}' failed: Invalid session binding."
+            )
             return jsonify({'error': 'Invalid session binding'}), 400
 
         # Update the session last used timestamp
@@ -1873,6 +2383,17 @@ def webauthn_register_begin():
     user_id_bytes = str(user.id).encode('utf-8')
     user_id_base64url = base64.b64encode(user_id_bytes).decode('utf-8').replace('+', '-').replace('/', '_').rstrip('=')
 
+    # Log successful initiation of WebAuthn registration
+    log_system_event(
+        user_id=user.id,
+        performed_by_user_id=user.id, # Or admin if admin initiated
+        action_type='WEBAUTHN_REGISTER_BEGIN_SUCCESS',
+        status='SUCCESS',
+        target_entity_type='USER',
+        target_entity_id=user.id,
+        details=f"WebAuthn registration process initiated for user '{username}' (ID: {user.id}). Challenge generated. Force registration: {force_registration}."
+    )
+
     # Prepare exclude credentials list for client
     exclude_credentials = []
     if not force_registration:
@@ -1935,10 +2456,24 @@ def webauthn_register_complete():
     pin = data.get('pin')
 
     if not username:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=actor_id if 'actor_id' in locals() else None,
+            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            details="WebAuthn registration complete failed: Username required."
+        )
         return jsonify({'error': 'Username required'}), 400
 
     user = Users.query.filter_by(username=username).first()
     if not user:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=actor_id if 'actor_id' in locals() else None,
+            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            details=f"WebAuthn registration complete failed for username '{username}': User not found."
+        )
         return jsonify({'error': 'User not found'}), 404
 
     # Determine the actor_id (who is performing this registration)
@@ -1973,6 +2508,15 @@ def webauthn_register_complete():
     if force_registration:
         if not admin_performing_action:
             print(f"[REGISTER_COMPLETE] AUDIT FAIL: force_registration=True for user '{user.username}', but no admin actor was identified from the Authorization header. This is an admin-driven flow and requires admin authentication via header.")
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=None, # Admin actor not identified
+                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn re-registration (force_registration=True) for user '{username}' failed: Admin authorization token in header required."
+            )
             return jsonify({'error': 'Admin authorization token in header is required for re-registering a key.'}), 403
         # If admin_performing_action is set, actor_id is already correctly the admin's ID.
         print(f"[REGISTER_COMPLETE] AUDIT: Re-registration flow for user '{user.username}'. Actor is Admin ID: {actor_id} (Username: {admin_performing_action.username}).")
@@ -1992,6 +2536,15 @@ def webauthn_register_complete():
     # The `auth_token` from the body is distinct from the `header_auth_token_str` from `request.headers.get('Authorization')`.
     # `auth_token` here is the variable defined at the start of the function from `data.get('auth_token')`.
     if binding_nonce and auth_token and not validate_token_binding(auth_token, binding_nonce, request):
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=actor_id,
+            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"WebAuthn registration complete for user '{username}' failed: Invalid session or connection (token binding validation)."
+        )
         return jsonify({'error': 'Invalid session or connection during token binding validation'}), 400
 
     challenge_record = db.session.query(WebAuthnChallenge).filter(
@@ -2000,6 +2553,15 @@ def webauthn_register_complete():
     ).order_by(WebAuthnChallenge.created_at.desc()).first()
 
     if not challenge_record:
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=actor_id,
+            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"WebAuthn registration complete for user '{username}' failed: Registration session expired or not found."
+        )
         return jsonify({'error': 'Registration session expired or not found'}), 400
 
     stored_challenge_base64 = challenge_record.challenge
@@ -2012,6 +2574,15 @@ def webauthn_register_complete():
     try:
         attestation_response = data.get('attestationResponse')
         if not attestation_response:
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=actor_id,
+                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn registration complete for user '{username}' failed: No attestation response provided."
+            )
             return jsonify({'error': 'No attestation response provided'}), 400
 
         print("\nProcessing attestation response:")
@@ -2044,6 +2615,15 @@ def webauthn_register_complete():
 
         if not challenges_match:
             print("CHALLENGE MISMATCH!")
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=actor_id,
+                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn registration complete for user '{username}' failed: Challenge mismatch."
+            )
             return jsonify({
                 'error': 'Challenge mismatch between server and client',
                 'detail': 'The challenge sent by the client does not match the one stored on the server'
@@ -2167,7 +2747,16 @@ def webauthn_register_complete():
                     # Update user's security key status
                     user.update_security_key_status()
                     db.session.commit()
-                    
+
+                    log_system_event(
+                        user_id=user.id,
+                        performed_by_user_id=actor_id,
+                        action_type='WEBAUTHN_RE_REGISTER_SUCCESS',
+                        status='SUCCESS',
+                        target_entity_type='SECURITY_KEY',
+                        target_entity_id=target_key.id,
+                        details=f"Security key ID {target_key.id} re-registered successfully for user '{user.username}' (ID: {user.id}) by actor ID {actor_id}. Credential ID: {credential_id}."
+                    )
                     return jsonify({
                         'status': 'success',
                         'message': 'Security key re-registered successfully',
@@ -2177,6 +2766,15 @@ def webauthn_register_complete():
                     print(f"Warning: Force registration requested but no existing key found with ID {keyId}")
                     # If we're using keyId but couldn't find the key, return error
                     if keyId:
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=actor_id,
+                            action_type='WEBAUTHN_RE_REGISTER_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='USER',
+                            target_entity_id=user.id,
+                            details=f"WebAuthn re-registration for user '{username}' failed: Security key with ID {keyId} not found for reassignment."
+                        )
                         return jsonify({
                             'error': 'Key not found',
                             'detail': f'No security key found with ID {keyId} for reassignment'
@@ -2188,10 +2786,28 @@ def webauthn_register_complete():
                 if existing_key:
                     # If key exists but is inactive, prevent reuse
                     if not existing_key.is_active:
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=actor_id,
+                            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='SECURITY_KEY',
+                            target_entity_id=existing_key.id,
+                            details=f"WebAuthn registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) previously deactivated and cannot be reused."
+                        )
                         return jsonify({
                             'error': 'Security key previously deactivated',
                             'detail': 'This security key has been deactivated and cannot be reused for security reasons.'
                         }), 400
+                    log_system_event(
+                        user_id=user.id,
+                        performed_by_user_id=actor_id,
+                        action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                        status='FAILURE',
+                        target_entity_type='SECURITY_KEY',
+                        target_entity_id=existing_key.id,
+                        details=f"WebAuthn registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) already registered to user ID {existing_key.user_id}."
+                    )
                     return jsonify({
                         'error': 'Security key already registered',
                         'detail': 'This security key is already registered to another account.'
@@ -2208,11 +2824,29 @@ def webauthn_register_complete():
                         active_key.is_active = False
                         db.session.flush()
                     else:
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=actor_id,
+                            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='USER',
+                            target_entity_id=user.id,
+                            details=f"WebAuthn registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Admin attempted replacement."
+                        )
                         return jsonify({
                             'error': 'Active key exists',
                             'detail': 'User already has an active security key. Deactivate existing key before registering a new one.'
                         }), 400
                 else:
+                    log_system_event(
+                        user_id=user.id,
+                        performed_by_user_id=actor_id, # Should be user.id in this self-service path
+                        action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                        status='FAILURE',
+                        target_entity_type='USER',
+                        target_entity_id=user.id,
+                        details=f"WebAuthn registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Self-service attempt."
+                    )
                     return jsonify({
                         'error': 'Active key exists',
                         'detail': 'User already has an active security key. Deactivate existing key before registering a new one.'
@@ -2310,6 +2944,16 @@ def webauthn_register_complete():
             user.update_security_key_status()
             db.session.commit()  # Commit the entire transaction
 
+            log_action_type = 'WEBAUTHN_RE_REGISTER_SUCCESS' if force_registration else 'WEBAUTHN_INITIAL_REGISTER_SUCCESS'
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=actor_id,
+                action_type=log_action_type,
+                status='SUCCESS',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=new_key.id,
+                details=f"Security key (ID: {new_key.id}, CredentialID: {credential_id}) registered successfully for user '{user.username}' (ID: {user.id}) by actor ID {actor_id}. Force registration: {force_registration}."
+            )
             return jsonify({
                 'status': 'success',
                 'message': 'Security key registered successfully',
@@ -2317,12 +2961,30 @@ def webauthn_register_complete():
             })
         except ValueError as ve:
             print(f"ValueError during register_complete: {str(ve)}")
+            log_system_event(
+                user_id=user.id if 'user' in locals() and user else None,
+                performed_by_user_id=actor_id if 'actor_id' in locals() else None,
+                action_type='WEBAUTHN_REGISTER_COMPLETE_FAILURE',
+                status='FAILURE',
+                target_entity_type='USER' if 'user' in locals() and user else None,
+                target_entity_id=user.id if 'user' in locals() and user else None,
+                details=f"WebAuthn registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to ValueError: {str(ve)}. Challenge verification or attestation parsing failed."
+            )
             return jsonify({'error': str(ve), 'detail': 'Challenge verification failed'}), 400
 
     except Exception as e:
         print(f"\nRegistration error: {str(e)}")
         import traceback
         print(traceback.format_exc())
+        log_system_event(
+            user_id=user.id if 'user' in locals() and user else None,
+            performed_by_user_id=actor_id if 'actor_id' in locals() else None,
+            action_type='WEBAUTHN_REGISTER_COMPLETE_FAILURE',
+            status='FAILURE',
+            target_entity_type='USER' if 'user' in locals() and user else None,
+            target_entity_id=user.id if 'user' in locals() and user else None,
+            details=f"WebAuthn registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to Exception: {str(e)}."
+        )
         return jsonify({'error': str(e)}), 400
 
 
@@ -2338,6 +3000,13 @@ def webauthn_login_begin():
         direct_security_key_auth = data.get('directSecurityKeyAuth', False)
 
         if not identifier:
+            log_system_event(
+                user_id=None,
+                performed_by_user_id=None,
+                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                status='FAILURE',
+                details="WebAuthn login begin failed: Identifier (username, email, or national ID) required."
+            )
             return jsonify({'error': 'Username, email, or national ID required'}), 400
 
         # Find user by different identifier types
@@ -2357,12 +3026,28 @@ def webauthn_login_begin():
 
         # Final check for user existence
         if not user:
+            log_system_event(
+                user_id=None,
+                performed_by_user_id=None,
+                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                status='FAILURE',
+                details=f"WebAuthn login begin failed for identifier '{identifier}': User not found."
+            )
             return jsonify({'error': 'User not found'}), 404
 
         # Check for any security keys first (active or inactive)
         all_security_keys = SecurityKey.query.filter_by(user_id=user.id).all()
 
         if not all_security_keys:
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login begin failed for user '{user.username}': No security keys registered for this user."
+            )
             return jsonify({'error': 'No security keys registered for this user'}), 404
 
         # Get user's active security keys for authentication
@@ -2373,12 +3058,30 @@ def webauthn_login_begin():
             # User has keys, but none are active
             inactive_keys = SecurityKey.query.filter_by(user_id=user.id, is_active=False).all()
             if inactive_keys:
+                log_system_event(
+                    user_id=user.id,
+                    performed_by_user_id=user.id,
+                    action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                    status='FAILURE',
+                    target_entity_type='USER',
+                    target_entity_id=user.id,
+                    details=f"WebAuthn login begin failed for user '{user.username}': All security keys are inactive."
+                )
                 return jsonify({
                     'error': 'Your security key is inactive. Please contact your administrator to activate your security key.',
                     'status': 'inactive_key'
                 }), 403
 
             # Shouldn't reach here, but just in case
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login begin failed for user '{user.username}': No active security keys found (unexpected state)."
+            )
             return jsonify({'error': 'No active security keys found for this user'}), 404
 
         # For direct security key auth, skip session verification
@@ -2390,6 +3093,15 @@ def webauthn_login_begin():
                 if auth_token and binding_nonce:
                     # Validate binding
                     if not validate_token_binding(auth_token, binding_nonce, request):
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=user.id,
+                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='USER',
+                            target_entity_id=user.id,
+                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
+                        )
                         return jsonify({'error': 'Invalid session or connection'}), 400
 
                     # Find the session using the provided token
@@ -2401,6 +3113,15 @@ def webauthn_login_begin():
                     ).first()
 
                     if not auth_session:
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=user.id,
+                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='USER',
+                            target_entity_id=user.id,
+                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Invalid or expired session after token binding."
+                        )
                         return jsonify({'error': 'Invalid or expired session'}), 400
 
                     # Update session last used timestamp
@@ -2416,6 +3137,15 @@ def webauthn_login_begin():
                     ).order_by(AuthenticationSession.created_at.desc()).first()
 
                     if not auth_session:
+                        log_system_event(
+                            user_id=user.id,
+                            performed_by_user_id=user.id,
+                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            status='FAILURE',
+                            target_entity_type='USER',
+                            target_entity_id=user.id,
+                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Password authentication required first (no active session found)."
+                        )
                         return jsonify({'error': 'Password authentication required first'}), 400
 
         # Prepare credentials for all active security keys
@@ -2434,6 +3164,15 @@ def webauthn_login_begin():
                 continue
 
         if not credentials:
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login begin failed for user '{user.username}': No valid (decodable) credentials found among active keys."
+            )
             return jsonify({'error': 'No valid credentials found for user'}), 500
 
         # Prepare authentication options
@@ -2452,6 +3191,15 @@ def webauthn_login_begin():
             )
         except Exception as e:
             print(f"❌ Error in authenticate_begin: {e}")
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_BEGIN_FAILURE', # More specific than _ATTEMPT
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login begin for user '{user.username}' failed during server.authenticate_begin: {str(e)}"
+            )
 
             # Record this error
             auth_attempt = AuthenticationAttempt(
@@ -2524,6 +3272,16 @@ def webauthn_login_begin():
                 verification = 'required'  # Require stronger verification
 
         # Return formatted options for client
+        # Log successful initiation of WebAuthn login
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=user.id,
+            action_type='WEBAUTHN_LOGIN_BEGIN_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"WebAuthn login process initiated for user '{user.username}' (ID: {user.id}). Challenge generated. DirectAuth: {direct_security_key_auth}, 2FA: {second_factor}. Risk: {risk_score}."
+        )
         return jsonify({
             'publicKey': {
                 'rpId': rp.id,
@@ -2539,6 +3297,17 @@ def webauthn_login_begin():
         print(f"❌ Unexpected error in webauthn_login_begin: {str(e)}")
         import traceback
         print(traceback.format_exc())
+        # Log unexpected error
+        user_id_for_log = user.id if 'user' in locals() and user else None
+        log_system_event(
+            user_id=user_id_for_log,
+            performed_by_user_id=user_id_for_log, # Assuming user initiated
+            action_type='WEBAUTHN_LOGIN_BEGIN_ERROR',
+            status='FAILURE',
+            target_entity_type='USER' if user_id_for_log else None,
+            target_entity_id=user_id_for_log,
+            details=f"Unexpected error in webauthn_login_begin for identifier '{identifier}': {str(e)}"
+        )
         return jsonify({'error': 'An unexpected error occurred during security key authentication'}), 500
 
 
@@ -2553,6 +3322,13 @@ def webauthn_login_complete():
     direct_security_key_auth = data.get('directSecurityKeyAuth', False)
 
     if not identifier:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            details="WebAuthn login complete failed: Identifier (username, email, or national ID) required."
+        )
         return jsonify({'error': 'Username, email, or national ID required'}), 400
 
     # Find user by different identifier types, matching the login/begin logic
@@ -2572,6 +3348,13 @@ def webauthn_login_complete():
 
     # Final check for user existence
     if not user:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=None,
+            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            details=f"WebAuthn login complete failed for identifier '{identifier}': User not found."
+        )
         return jsonify({'error': 'User not found'}), 404
 
     # Calculate risk score - important to do this for every authentication attempt
@@ -2594,6 +3377,15 @@ def webauthn_login_complete():
     if second_factor and auth_token and binding_nonce and not direct_security_key_auth:
         if not validate_token_binding(auth_token, binding_nonce, request):
             db.session.commit()  # Commit the failed attempt
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login complete (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
+            )
             return jsonify({'error': 'Invalid session or connection'}), 400
 
     # Get the latest challenge for this user
@@ -2604,6 +3396,15 @@ def webauthn_login_complete():
 
     if not challenge_record:
         db.session.commit()  # Commit the failed attempt
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=user.id,
+            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"WebAuthn login complete for user '{user.username}' failed: Authentication session (challenge) expired or not found."
+        )
         return jsonify({'error': 'Authentication session expired'}), 400
 
     try:
@@ -2627,6 +3428,15 @@ def webauthn_login_complete():
                 if other_user_key:
                     print(f"Security key {credential_id[:8]}... is registered to another user")
                     db.session.commit()  # Commit the failed attempt
+                    log_system_event(
+                        user_id=user.id,
+                        performed_by_user_id=user.id,
+                        action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                        status='FAILURE',
+                        target_entity_type='SECURITY_KEY',
+                        target_entity_id=credential_id, # The credential ID from assertion
+                        details=f"WebAuthn login complete for user '{user.username}' failed: Security key (CredentialID: {credential_id}) is registered to another user (User ID: {other_user_key.user_id})."
+                    )
                     return jsonify({'error': 'Login failed. Key is already registered to another user'}), 400
 
                 # Try with credentialId encoded differently
@@ -2639,12 +3449,30 @@ def webauthn_login_complete():
         if not security_key:
             print("Could not determine which security key was used")
             db.session.commit()  # Commit the failed attempt
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login complete for user '{user.username}' failed: Invalid or unregistered security key (CredentialID from assertion: {credential_id})."
+            )
             return jsonify({'error': 'Invalid or unregistered security key'}), 400
 
         # Check if the key is active
         if not security_key.is_active:
             print(f"Security key {security_key.id} is inactive")
             db.session.commit()  # Commit the failed attempt
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                status='FAILURE',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=security_key.id,
+                details=f"WebAuthn login complete for user '{user.username}' failed: Security key (ID: {security_key.id}, CredentialID: {security_key.credential_id}) is inactive."
+            )
             return jsonify({'error': 'This security key has been deactivated'}), 400
 
         # Extract data for counter check
@@ -2698,6 +3526,15 @@ def webauthn_login_complete():
                 f"⚠️ SECURITY ALERT: Counter regression detected! Stored: {security_key.sign_count}, Received: {auth_data.counter}")
             auth_attempt.risk_score = 100
             db.session.commit()
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                status='FAILURE',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=security_key.id,
+                details=f"WebAuthn login complete for user '{user.username}' (Key ID: {security_key.id}) failed: Counter regression detected. Stored: {security_key.sign_count}, Received: {auth_data.counter}."
+            )
             return jsonify({
                 'error': 'Security verification failed',
                 'detail': 'Authentication counter check failed. This could indicate a security issue.'
@@ -2732,6 +3569,16 @@ def webauthn_login_complete():
 
             db.session.commit()
 
+            # Log successful direct security key authentication
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_DIRECT_LOGIN_SUCCESS',
+                status='SUCCESS',
+                target_entity_type='SECURITY_KEY',
+                target_entity_id=security_key.id,
+                details=f"Direct WebAuthn login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+            )
             # Return success with the session token
             return jsonify({
                 'status': 'success',
@@ -2780,6 +3627,16 @@ def webauthn_login_complete():
 
                 db.session.commit()
 
+                # Log successful 2FA WebAuthn authentication
+                log_system_event(
+                    user_id=user.id,
+                    performed_by_user_id=user.id,
+                    action_type='WEBAUTHN_2FA_LOGIN_SUCCESS',
+                    status='SUCCESS',
+                    target_entity_type='SECURITY_KEY',
+                    target_entity_id=security_key.id,
+                    details=f"2FA WebAuthn login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                )
                 # This is a second factor after password authentication
                 return jsonify({
                     'status': 'success',
@@ -2800,6 +3657,15 @@ def webauthn_login_complete():
                 })
             else:
                 db.session.commit()  # Commit the failed attempt
+                log_system_event(
+                    user_id=user.id,
+                    performed_by_user_id=user.id,
+                    action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                    status='FAILURE',
+                    target_entity_type='USER',
+                    target_entity_id=user.id,
+                    details=f"WebAuthn login complete (2FA) for user '{user.username}' failed: No active password authentication session found."
+                )
                 return jsonify({
                     'error': 'No active authentication session found',
                     'detail': 'Password authentication required first'
@@ -2807,6 +3673,15 @@ def webauthn_login_complete():
         else:
             # Standalone security key authentication is no longer allowed
             db.session.commit()  # Commit the failed attempt
+            log_system_event(
+                user_id=user.id,
+                performed_by_user_id=user.id,
+                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user.id,
+                details=f"WebAuthn login complete for user '{user.username}' failed: Standalone security key authentication attempted (requires password first)."
+            )
             return jsonify({
                 'error': 'Authentication flow requires password verification first',
                 'detail': 'Please enter your password before attempting security key authentication'
@@ -2821,6 +3696,18 @@ def webauthn_login_complete():
         auth_attempt.success = False
         auth_attempt.risk_score = 100  # High risk for errors
         db.session.commit()
+
+        # Log the specific error
+        error_detail = f"WebAuthn login complete for user '{user.username}' failed: {str(e)}. IP: {request.remote_addr}. Location: {auth_attempt.location if auth_attempt else 'N/A'}."
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=user.id,
+            action_type='WEBAUTHN_LOGIN_COMPLETE_ERROR',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=error_detail
+        )
 
         # Provide helpful error messages based on common WebAuthn errors
         if 'NotAllowedError' in str(e):
@@ -3522,6 +4409,15 @@ def update_user(user_id):
     # Verify admin token and authorization
     admin_token = request.headers.get('Authorization')
     if not admin_token:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=None,
+            action_type='USER_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update user ID {user_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify the admin token
@@ -3529,16 +4425,43 @@ def update_user(user_id):
     auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=None,
+            action_type='USER_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update user ID {user_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get the admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=auth_session.user_id,
+            action_type='USER_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update user ID {user_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     # Get the user to update
     user = Users.query.get(user_id)
     if not user:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt by admin '{admin_user.username}' to update user ID {user_id} failed: User not found."
+        )
         return jsonify({'error': 'User not found'}), 404
 
     # Validate national ID if provided
@@ -3546,15 +4469,42 @@ def update_user(user_id):
         try:
             national_id = int(data['nationalId'])
             if len(str(national_id)) != 8:
+                log_system_event(
+                    user_id=user_id,
+                    performed_by_user_id=admin_user.id,
+                    action_type='USER_UPDATE_ATTEMPT',
+                    status='FAILURE',
+                    target_entity_type='USER',
+                    target_entity_id=user_id,
+                    details=f"Attempt by admin '{admin_user.username}' to update user '{user.username}' (ID: {user_id}) failed: National ID '{data['nationalId']}' must be exactly 8 digits."
+                )
                 return jsonify({'error': 'National ID must be exactly 8 digits'}), 400
 
             # Check if national ID is already taken by another user
             existing_user = Users.query.filter(Users.national_id == national_id, Users.id != user_id).first()
             if existing_user:
+                log_system_event(
+                    user_id=user_id,
+                    performed_by_user_id=admin_user.id,
+                    action_type='USER_UPDATE_ATTEMPT',
+                    status='FAILURE',
+                    target_entity_type='USER',
+                    target_entity_id=user_id,
+                    details=f"Attempt by admin '{admin_user.username}' to update user '{user.username}' (ID: {user_id}) failed: National ID '{data['nationalId']}' already exists for user '{existing_user.username}'."
+                )
                 return jsonify({'error': 'National ID already exists'}), 409
 
             user.national_id = national_id
         except ValueError:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UPDATE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to update user '{user.username}' (ID: {user_id}) failed: National ID '{data.get('nationalId')}' must be a number."
+            )
             return jsonify({'error': 'National ID must be a number'}), 400
 
     # Update other fields
@@ -3567,11 +4517,29 @@ def update_user(user_id):
     if 'email' in data:
         existing_user = Users.query.filter(Users.email == data['email'], Users.id != user_id).first()
         if existing_user:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UPDATE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to update user '{user.username}' (ID: {user_id}) failed: Email '{data['email']}' already exists for user '{existing_user.username}'."
+            )
             return jsonify({'error': 'Email already exists'}), 409
         user.email = data['email']
     if 'username' in data:
         existing_user = Users.query.filter(Users.username == data['username'], Users.id != user_id).first()
         if existing_user:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UPDATE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to update user '{user.username}' (ID: {user_id}) failed: Username '{data['username']}' already exists for user '{existing_user.username}'."
+            )
             return jsonify({'error': 'Username already exists'}), 409
         user.username = data['username']
     if 'role' in data:
@@ -3579,6 +4547,15 @@ def update_user(user_id):
 
     try:
         db.session.commit()
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_UPDATE_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"User '{user.username}' (ID: {user.id}) updated successfully by admin '{admin_user.username}'. Data: {data}"
+        )
         return jsonify({
             'message': 'User updated successfully',
             'user': {
@@ -3594,6 +4571,15 @@ def update_user(user_id):
         })
     except Exception as e:
         db.session.rollback()
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_UPDATE_FAILURE',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Error updating user '{user.username if user else 'N/A'}' (ID: {user_id}) by admin '{admin_user.username}': {str(e)}"
+        )
         return jsonify({'error': str(e)}), 500
 
 
@@ -3613,6 +4599,16 @@ def reset_db():
         # Create default admin user after reset
         admin = create_admin_user()
 
+        # Log successful database reset
+        # Similar to failure, performed_by_user_id might be None or an admin ID if available
+        log_system_event(
+            user_id=admin.id if admin else None, # Associate with the created admin if successful
+            performed_by_user_id=None, # Or admin ID if available
+            action_type='DATABASE_RESET_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"Database reset successfully. Default admin '{admin.username if admin else 'N/A'}' created/verified."
+        )
         return jsonify({
             'message': 'Database reset successfully',
             'admin_created': {
@@ -3624,6 +4620,18 @@ def reset_db():
 
     except Exception as e:
         db.session.rollback()
+        # Assuming this action is critical and performed by an authorized entity,
+        # but we don't have specific user context here if it's a startup/CLI action.
+        # If it's an API endpoint, admin_user context would be available from request.
+        # For now, logging without a specific performed_by_user_id.
+        log_system_event(
+            user_id=None, # System action
+            performed_by_user_id=None, # Could be enhanced if admin context is passed
+            action_type='DATABASE_RESET_FAILURE',
+            status='FAILURE',
+            target_entity_type='SYSTEM',
+            details=f"Database reset failed: {str(e)}"
+        )
         return jsonify({'error': str(e)}), 500
 
 
@@ -3633,6 +4641,15 @@ def update_user_role(user_id):
     # Get admin auth token
     admin_token = request.headers.get('Authorization')
     if not admin_token:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=None,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update role for user ID {user_id} failed: Admin authorization required."
+        )
         return jsonify({'error': 'Admin authorization required'}), 401
 
     # Verify admin token
@@ -3640,33 +4657,87 @@ def update_user_role(user_id):
     auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
 
     if not auth_session:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=None,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update role for user ID {user_id} failed: Invalid admin token."
+        )
         return jsonify({'error': 'Invalid admin token'}), 401
 
     # Get admin user
     admin_user = Users.query.get(auth_session.user_id)
     if not admin_user or admin_user.role != 'admin':
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=auth_session.user_id,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt to update role for user ID {user_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+        )
         return jsonify({'error': 'Admin privileges required'}), 403
 
     # Get target user
     user = Users.query.get(user_id)
     if not user:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt by admin '{admin_user.username}' to update role for user ID {user_id} failed: User not found."
+        )
         return jsonify({'error': 'User not found'}), 404
 
     # Get new role from request
     data = request.get_json()
     if not data or 'role' not in data:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt by admin '{admin_user.username}' to update role for user '{user.username}' (ID: {user_id}) failed: New role is required in request data."
+        )
         return jsonify({'error': 'New role is required'}), 400
 
     # Validate role
     valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
     new_role = data['role']
     if new_role not in valid_roles:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Attempt by admin '{admin_user.username}' to update role for user '{user.username}' (ID: {user_id}) to '{new_role}' failed: Invalid role."
+        )
         return jsonify({'error': f'Invalid role. Valid roles are: {", ".join(valid_roles)}'}), 400
 
     # Update role
     user.role = new_role
     db.session.commit()
 
+    log_system_event(
+        user_id=user.id,
+        performed_by_user_id=admin_user.id,
+        action_type='USER_ROLE_UPDATE_SUCCESS',
+        status='SUCCESS',
+        target_entity_type='USER',
+        target_entity_id=user.id,
+        details=f"Role for user '{user.username}' (ID: {user.id}) updated to '{new_role}' by admin '{admin_user.username}'."
+    )
     return jsonify({
         'message': f'User role updated successfully to {new_role}',
         'user': {
@@ -3685,25 +4756,70 @@ def delete_user_data(user_id):
         # Check authentication
         auth_token = request.headers.get('Authorization')
         if not auth_token or not auth_token.startswith('Bearer '):
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=None,
+                action_type='USER_DELETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to delete user ID {user_id} failed: Admin authorization required."
+            )
             return jsonify({'error': 'Authorization required'}), 401
 
         auth_token = auth_token.replace('Bearer ', '')
         auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
         if not auth_session:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=None,
+                action_type='USER_DELETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to delete user ID {user_id} failed: Invalid admin session token."
+            )
             return jsonify({'error': 'Invalid session'}), 401
 
         # Verify admin role
         admin_user = Users.query.get(auth_session.user_id)
         if not admin_user or admin_user.role != 'admin':
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=auth_session.user_id,
+                action_type='USER_DELETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to delete user ID {user_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+            )
             return jsonify({'error': 'Admin privileges required'}), 403
 
         # Don't allow deleting your own account
         if user_id == admin_user.id:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_DELETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Admin '{admin_user.username}' (ID: {admin_user.id}) attempt to delete own account (ID: {user_id}) failed."
+            )
             return jsonify({'error': 'Cannot delete your own account'}), 400
 
         # Soft delete the user
         user = Users.query.get(user_id)
         if not user:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_DELETE_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to delete user ID {user_id} failed: User not found."
+            )
             return jsonify({'error': 'User not found'}), 404
 
         # Mark user as deleted
@@ -3717,12 +4833,30 @@ def delete_user_data(user_id):
         AuthenticationAttempt.query.filter_by(user_id=user_id).update({"is_deleted": True})
 
         db.session.commit()
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_DELETE_SUCCESS', # Soft delete
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"User '{user.username}' (ID: {user.id}) soft-deleted successfully by admin '{admin_user.username}'."
+        )
         return jsonify({
             'message': f'User {user_id} marked as deleted successfully',
             'deleted_at': user.deleted_at.isoformat()
         }), 200
     except Exception as e:
         db.session.rollback()
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
+            action_type='USER_DELETE_FAILURE',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Error soft-deleting user ID {user_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}"
+        )
         return jsonify({'error': str(e)}), 500
 
 
@@ -3949,6 +5083,28 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
         print(traceback.format_exc())
         return False
 
+def log_system_event(user_id, performed_by_user_id, action_type, status, target_entity_type=None, target_entity_id=None, details=None):
+    """
+    Helper function to create and save a system audit event.
+    """
+    try:
+        log_entry = AuditLog(
+            user_id=user_id,
+            performed_by_user_id=performed_by_user_id,
+            action_type=action_type,
+            target_entity_type=target_entity_type,
+            target_entity_id=str(target_entity_id) if target_entity_id is not None else None, # Ensure ID is string
+            details=details,
+            status=status # SUCCESS or FAILURE
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        print(f"Audit log created: Action={action_type}, Status={status}, UserID={user_id}, PerformedBy={performed_by_user_id}")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating audit log: {str(e)}")
+        # Optionally, re-raise the exception or handle it as per application's error handling strategy
+        # For now, just printing the error to avoid disrupting the main operation.
 
 @app.route('/api/security/alerts', methods=['GET'])
 def get_security_alerts():
@@ -4155,6 +5311,121 @@ def get_security_key_audit_logs():
     except Exception as e:
         print(f"Error fetching security key audit logs: {str(e)}")
         return jsonify({'error': 'Failed to fetch audit logs'}), 500
+    
+    
+@app.route('/api/system-audit-logs', methods=['GET'])
+def get_system_audit_logs():
+    try:
+        # Admin and authorization check (similar to other protected routes)
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin': # Assuming only admins can view all system logs
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        # Pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int) # Default to 10, can be adjusted
+
+        # Filtering parameters
+        filter_user_id = request.args.get('user_id', type=int)
+        filter_performed_by_user_id = request.args.get('performed_by_user_id', type=int)
+        filter_action_type = request.args.get('action_type', type=str)
+        filter_status = request.args.get('status', type=str)
+        filter_target_entity_type = request.args.get('target_entity_type', type=str)
+        filter_target_entity_id = request.args.get('target_entity_id', type=str)
+        
+        date_from_str = request.args.get('date_from', type=str)
+        date_to_str = request.args.get('date_to', type=str)
+        search_term = request.args.get('search_term', type=str)
+
+        # Start with base query and prepare aliases for joins
+        PerformedByAlias = aliased(Users, name="performed_by_user")
+        AffectedUserAlias = aliased(Users, name="affected_user")
+
+        query = AuditLog.query.outerjoin(PerformedByAlias, PerformedByAlias.id == AuditLog.performed_by_user_id)\
+                              .outerjoin(AffectedUserAlias, AffectedUserAlias.id == AuditLog.user_id)
+
+        if filter_user_id:
+            query = query.filter(AuditLog.user_id == filter_user_id)
+        if filter_performed_by_user_id:
+            query = query.filter(AuditLog.performed_by_user_id == filter_performed_by_user_id)
+        if filter_action_type:
+            query = query.filter(AuditLog.action_type.ilike(f"%{filter_action_type}%"))
+        if filter_status:
+            query = query.filter(AuditLog.status.ilike(f"%{filter_status}%"))
+        if filter_target_entity_type:
+            query = query.filter(AuditLog.target_entity_type.ilike(f"%{filter_target_entity_type}%"))
+        if filter_target_entity_id:
+            query = query.filter(AuditLog.target_entity_id == filter_target_entity_id)
+        
+        if search_term:
+            search_ilike = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    AuditLog.action_type.ilike(search_ilike),
+                    AuditLog.details.ilike(search_ilike),
+                    AuditLog.status.ilike(search_ilike),
+                    AuditLog.target_entity_type.ilike(search_ilike),
+                    AuditLog.target_entity_id.ilike(search_ilike),
+                    PerformedByAlias.username.ilike(search_ilike),
+                    AffectedUserAlias.username.ilike(search_ilike)
+                )
+            )
+
+        if date_from_str:
+            try:
+                date_from = datetime.fromisoformat(date_from_str).replace(tzinfo=timezone.utc)
+                query = query.filter(AuditLog.timestamp >= date_from)
+            except ValueError:
+                return jsonify({'error': 'Invalid date_from format. Use ISO format.'}), 400
+        
+        if date_to_str:
+            try:
+                date_to = datetime.fromisoformat(date_to_str).replace(tzinfo=timezone.utc)
+                date_to_inclusive = date_to + timedelta(days=1)
+                query = query.filter(AuditLog.timestamp < date_to_inclusive)
+            except ValueError:
+                return jsonify({'error': 'Invalid date_to format. Use ISO format.'}), 400
+
+        audit_logs_page = query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        
+        logs_data = []
+        for log in audit_logs_page.items:
+            logs_data.append({
+                'id': log.id,
+                'timestamp': log.timestamp.isoformat(),
+                'user_id': log.user_id,
+                'user_username': log.user.username if log.user else None,
+                'performed_by_user_id': log.performed_by_user_id,
+                'performed_by_username': log.performed_by.username if log.performed_by else None,
+                'action_type': log.action_type,
+                'target_entity_type': log.target_entity_type,
+                'target_entity_id': log.target_entity_id,
+                'details': log.details,
+                'status': log.status
+            })
+
+        return jsonify({
+            'logs': logs_data,
+            'total': audit_logs_page.total,
+            'pages': audit_logs_page.pages,
+            'current_page': page,
+            'per_page': per_page
+        })
+
+    except Exception as e:
+        print(f"Error fetching system audit logs: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to fetch system audit logs'}), 500
 
 @app.route('/api/security/stats', methods=['GET'])
 def get_security_stats():
@@ -4215,32 +5486,95 @@ def unlock_user_account(user_id):
         # Verify admin authorization
         auth_token = request.headers.get('Authorization')
         if not auth_token or not auth_token.startswith('Bearer '):
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=None,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to unlock user ID {user_id} failed: Admin authorization required."
+            )
             return jsonify({'error': 'Admin authorization required'}), 401
             
         auth_token = auth_token.replace('Bearer ', '')
         auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
         if not auth_session:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=None,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to unlock user ID {user_id} failed: Invalid admin session token."
+            )
             return jsonify({'error': 'Invalid session'}), 401
             
         admin_user = Users.query.get(auth_session.user_id)
         if not admin_user or admin_user.role != 'admin':
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=auth_session.user_id,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to unlock user ID {user_id} by user ID {auth_session.user_id} failed: Admin privileges required."
+            )
             return jsonify({'error': 'Admin privileges required'}), 403
 
         if not admin_user.username:
             print(f"CRITICAL: Admin user (ID: {admin_user.id}) performing unlock for user ID {user_id} has a missing username.")
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt to unlock user ID {user_id} by admin ID {admin_user.id} failed: Admin username missing."
+            )
             return jsonify({'error': 'Admin account data is incomplete. Cannot complete unlock operation.'}), 500
 
         # Find and unlock the user account
         user = Users.query.get(user_id)
         if not user:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to unlock user ID {user_id} failed: User not found."
+            )
             return jsonify({'error': 'User not found'}), 404
             
         if not user.account_locked:
+            log_system_event(
+                user_id=user_id,
+                performed_by_user_id=admin_user.id,
+                action_type='USER_UNLOCK_ATTEMPT',
+                status='FAILURE',
+                target_entity_type='USER',
+                target_entity_id=user_id,
+                details=f"Attempt by admin '{admin_user.username}' to unlock user '{user.username}' (ID: {user_id}) failed: Account is not locked."
+            )
             return jsonify({'error': 'Account is not locked'}), 400
             
         # Unlock the account
         user.unlock_account(admin_user.username) # Pass username instead of id
-        
+
+        log_system_event(
+            user_id=user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_UNLOCK_SUCCESS',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user.id,
+            details=f"User account '{user.username}' (ID: {user.id}) unlocked successfully by admin '{admin_user.username}'."
+        )
         return jsonify({
             'message': f'Account unlocked successfully',
             'user': {
@@ -4253,6 +5587,18 @@ def unlock_user_account(user_id):
         
     except Exception as e:
         print(f"Error unlocking account: {str(e)}")
+        # It's possible 'user' is not defined if Users.query.get(user_id) failed before this,
+        # though that specific case is handled above.
+        # However, admin_user should be defined if we passed the initial checks.
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else None,
+            action_type='USER_UNLOCK_FAILURE',
+            status='FAILURE',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details=f"Error unlocking user ID {user_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}"
+        )
         return jsonify({'error': 'Failed to unlock account'}), 500
 
 
