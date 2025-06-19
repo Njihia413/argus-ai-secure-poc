@@ -217,11 +217,11 @@ export const columns: ColumnDef<User, unknown>[] = [
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="font-montserrat border-0 shadow-lg">
-              <DropdownMenuItem onClick={() => router.push(`/dashboard/users/${user.id}`)}>
+              <DropdownMenuItem onSelect={() => router.push(`/dashboard/users/${user.id}`)}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => {
+              <DropdownMenuItem onSelect={() => {
                 setSelectedUser(user);
                 setIsEditUserDialogOpen(true);
               }}>
@@ -229,7 +229,7 @@ export const columns: ColumnDef<User, unknown>[] = [
                 Edit User
               </DropdownMenuItem>
               {user.account_locked && (
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem onSelect={() => {
                   setSelectedUser(user);
                   setIsUnlockAccountDialogOpen(true);
                 }}>
@@ -238,7 +238,7 @@ export const columns: ColumnDef<User, unknown>[] = [
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                  onClick={() => {
+                  onSelect={() => {
                     setSelectedUser(user);
                     setIsDeleteDialogOpen(true);
                   }}
