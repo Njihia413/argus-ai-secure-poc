@@ -3,6 +3,21 @@
 ## Current Focus
 Based on open files and recent activity, development is focused on security management features, UI enhancements for the dashboard, and theme refinements.
 
+0.  **System-Wide Audit Logging (New Feature - Completed):**
+    *   **Backend ([`../backend/app.py`](../backend/app.py:1)):**
+        *   Implemented a new `AuditLog` SQLAlchemy model.
+        *   Added a `log_system_event` helper function.
+        *   Integrated logging calls into numerous authentication, user management, security key, and system-level API endpoints.
+        *   Created a new API endpoint `/api/system-audit-logs` for fetching these logs with filtering and pagination.
+        *   Database migrations were successfully generated and applied.
+    *   **Frontend ([`src/app/dashboard/audit-logs/page.tsx`](src/app/dashboard/audit-logs/page.tsx:1) & [`src/components/data-table/audit-log-columns.tsx`](src/components/data-table/audit-log-columns.tsx:1)):**
+        *   Updated the `AuditLog` type and table column definitions to reflect the new comprehensive log structure.
+        *   Modified the audit logs page to fetch data from the new `/api/system-audit-logs` endpoint.
+        *   Enhanced filtering options, including a broader set of `actionOptions` and updated global search functionality.
+        *   Implemented pagination for the system audit logs table.
+        *   Updated generic `DataTable` component ([`src/components/data-table/data-table.tsx`](src/components/data-table/data-table.tsx:1)) to support server-side pagination via `pageCount` prop and `manualPagination: true`.
+        *   Standardized loading state display (spinner and text) for Audit Logs ([`src/app/dashboard/audit-logs/page.tsx`](src/app/dashboard/audit-logs/page.tsx:1)), Security Alerts ([`src/app/dashboard/security/page.tsx`](src/app/dashboard/security/page.tsx:1)), and Security Keys ([`src/app/dashboard/security-keys/page.tsx`](src/app/dashboard/security-keys/page.tsx:1)) pages.
+
 1.  **Security Key Management (Backend)**
     *   In [`../backend/app.py`](../backend/app.py:1), the [`reassign_security_key`](../backend/app.py:1497) function was updated to prevent reassigning a security key to a user who already has an active security key. An error `{'error': 'New user already has an active security key. Cannot reassign.'}` with HTTP status 400 is returned.
 
