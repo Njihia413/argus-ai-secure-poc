@@ -16,7 +16,7 @@ from flask_sqlalchemy.session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
 import base64
 
-# Import WebAuthn related libraries
+# Import SecurityKey related libraries
 from fido2.server import Fido2Server
 from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, UserVerificationRequirement, \
     AuthenticatorAttachment, CollectedClientData, AttestationObject, PublicKeyCredentialDescriptor, \
@@ -78,7 +78,7 @@ class Users(db.Model):
     unlocked_time = db.Column(db.DateTime(timezone=True), nullable=True)  # When account was unlocked
     security_key_status = db.Column(db.String(20), nullable=True)
 
-    # WebAuthn related fields
+    # SecurityKey related fields
     credential_id = db.Column(db.String(250), unique=True, nullable=True)
     public_key = db.Column(db.Text, nullable=True)
     sign_count = db.Column(db.Integer, default=0)
@@ -178,8 +178,8 @@ class Users(db.Model):
 
         return self
 
-# Update WebAuthnChallenge model to reference Users instead of User
-class WebAuthnChallenge(db.Model):
+# Update SecurityKeyChallenge model to reference Users instead of User
+class SecurityKeyChallenge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     challenge = db.Column(db.String(255), nullable=False)
@@ -276,7 +276,7 @@ class SecurityKey(db.Model):
     user = db.relationship('Users', backref=db.backref('security_keys', lazy=True))
 
 
-# Configure WebAuthn
+# Configure SecurityKey
 rp = PublicKeyCredentialRpEntity(name="Athens AI", id="localhost")
 server = Fido2Server(rp)
 
@@ -666,7 +666,7 @@ def register():
         log_system_event(
             user_id=None,
             performed_by_user_id=None, # admin_user not yet known
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             details=f"Registration attempt failed: Missing required fields. Username: {data.get('username') if data else 'N/A'}"
         )
@@ -680,7 +680,7 @@ def register():
             log_system_event(
                 user_id=None,
                 performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else (auth_session.user_id if 'auth_session' in locals() and auth_session else None),
-                action_type='USER_REGISTER_ATTEMPT',
+                action_type='USER_REGISTER_FAILURE',
                 status='FAILURE',
                 details=f"Registration attempt for username '{data.get('username')}' failed: National ID '{data.get('nationalId')}' must be exactly 8 digits."
             )
@@ -689,7 +689,7 @@ def register():
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id if 'admin_user' in locals() and admin_user else (auth_session.user_id if 'auth_session' in locals() and auth_session else None),
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             details=f"Registration attempt for username '{data.get('username')}' failed: National ID '{data.get('nationalId')}' must be a number."
         )
@@ -701,7 +701,7 @@ def register():
         log_system_event(
             user_id=None,
             performed_by_user_id=None, # No admin token provided
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             details=f"Registration attempt for username '{data.get('username')}' failed: Admin authorization required."
         )
@@ -715,7 +715,7 @@ def register():
         log_system_event(
             user_id=None,
             performed_by_user_id=None, # Admin token was invalid or session not found
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             details=f"Registration attempt for username '{data.get('username')}' failed: Invalid admin token."
         )
@@ -727,7 +727,7 @@ def register():
         log_system_event(
             user_id=None,
             performed_by_user_id=auth_session.user_id, # ID of user who attempted action
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             details=f"Registration attempt for username '{data.get('username')}' failed: Admin privileges required. Attempted by user ID: {auth_session.user_id}."
         )
@@ -738,7 +738,7 @@ def register():
         log_system_event(
             user_id=existing_user_for_log.id if existing_user_for_log else None,
             performed_by_user_id=admin_user.id,
-            action_type='USER_REGISTER_ATTEMPT',
+            action_type='USER_REGISTER_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=existing_user_for_log.id if existing_user_for_log else None,
@@ -1153,7 +1153,7 @@ def delete_security_key(key_id):
         log_system_event(
             user_id=None, # Admin not identified
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            action_type='SECURITY_KEY_DELETE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1169,7 +1169,7 @@ def delete_security_key(key_id):
         log_system_event(
             user_id=None, # Admin not identified
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            action_type='SECURITY_KEY_DELETE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1183,7 +1183,7 @@ def delete_security_key(key_id):
         log_system_event(
             user_id=None, # Could be key.user_id if key is found, but admin check failed first
             performed_by_user_id=auth_session.user_id,
-            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            action_type='SECURITY_KEY_DELETE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1197,7 +1197,7 @@ def delete_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            action_type='SECURITY_KEY_DELETE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1212,7 +1212,7 @@ def delete_security_key(key_id):
         log_system_event(
             user_id=key.user_id, # Original user ID from the key
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_DELETE_ATTEMPT',
+            action_type='SECURITY_KEY_DELETE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1311,7 +1311,7 @@ def deactivate_security_key_status(key_id):
         log_system_event(
             user_id=None, # Admin not identified
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            action_type='SECURITY_KEY_STATUS_CHANGE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1327,7 +1327,7 @@ def deactivate_security_key_status(key_id):
         log_system_event(
             user_id=None, # Admin not identified
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            action_type='SECURITY_KEY_STATUS_CHANGE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1341,7 +1341,7 @@ def deactivate_security_key_status(key_id):
         log_system_event(
             user_id=None, # Could be key.user_id if key is found
             performed_by_user_id=auth_session.user_id,
-            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            action_type='SECURITY_KEY_STATUS_CHANGE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1355,7 +1355,7 @@ def deactivate_security_key_status(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_STATUS_CHANGE_ATTEMPT',
+            action_type='SECURITY_KEY_STATUS_CHANGE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1373,7 +1373,7 @@ def deactivate_security_key_status(key_id):
         log_system_event(
             user_id=key.user_id,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_ACTIVATE_ATTEMPT',
+            action_type='SECURITY_KEY_ACTIVATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key.id,
@@ -1394,7 +1394,7 @@ def deactivate_security_key_status(key_id):
             log_system_event(
                 user_id=key.user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='SECURITY_KEY_ACTIVATE_ATTEMPT',
+                action_type='SECURITY_KEY_ACTIVATE_FAILURE',
                 status='FAILURE',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=key.id,
@@ -1523,7 +1523,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1539,7 +1539,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1553,7 +1553,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None, # Key user not yet known
             performed_by_user_id=auth_session.user_id,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1567,7 +1567,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None, # Key user not yet known
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1582,7 +1582,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None, # Key user not yet known
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1596,7 +1596,7 @@ def update_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_UPDATE_ATTEMPT',
+            action_type='SECURITY_KEY_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1680,7 +1680,7 @@ def reset_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            action_type='SECURITY_KEY_RESET_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1695,7 +1695,7 @@ def reset_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            action_type='SECURITY_KEY_RESET_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1709,7 +1709,7 @@ def reset_security_key(key_id):
         log_system_event(
             user_id=None, # Key user not yet known
             performed_by_user_id=auth_session.user_id,
-            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            action_type='SECURITY_KEY_RESET_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1723,7 +1723,7 @@ def reset_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            action_type='SECURITY_KEY_RESET_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1736,7 +1736,7 @@ def reset_security_key(key_id):
         log_system_event(
             user_id=key.user_id,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_RESET_ATTEMPT',
+            action_type='SECURITY_KEY_RESET_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key.id,
@@ -1833,7 +1833,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1848,7 +1848,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1862,7 +1862,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=None, # Key user not yet known
             performed_by_user_id=auth_session.user_id,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1876,7 +1876,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=None,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key_id,
@@ -1892,7 +1892,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=key.user_id, # Original owner
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key.id,
@@ -1905,7 +1905,7 @@ def reassign_security_key(key_id):
         log_system_event(
             user_id=key.user_id,
             performed_by_user_id=admin_user.id,
-            action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+            action_type='SECURITY_KEY_REASSIGN_FAILURE',
             status='FAILURE',
             target_entity_type='SECURITY_KEY',
             target_entity_id=key.id,
@@ -1922,7 +1922,7 @@ def reassign_security_key(key_id):
             log_system_event(
                 user_id=key.user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+                action_type='SECURITY_KEY_REASSIGN_FAILURE',
                 status='FAILURE',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=key.id,
@@ -1936,7 +1936,7 @@ def reassign_security_key(key_id):
             log_system_event(
                 user_id=key.user_id, # Original owner
                 performed_by_user_id=admin_user.id,
-                action_type='SECURITY_KEY_REASSIGN_ATTEMPT',
+                action_type='SECURITY_KEY_REASSIGN_FAILURE',
                 status='FAILURE',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=key.id,
@@ -2041,7 +2041,7 @@ def login():
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='USER_LOGIN_ATTEMPT',
+            action_type='USER_LOGIN_FAILURE',
             status='FAILURE',
             details=f"Login attempt failed: Missing username or password. Identifier: {data.get('username') if data else 'N/A'}"
         )
@@ -2065,7 +2065,7 @@ def login():
         log_system_event(
             user_id=None, # User not found
             performed_by_user_id=None,
-            action_type='USER_LOGIN_ATTEMPT',
+            action_type='USER_LOGIN_FAILURE',
             status='FAILURE',
             details=f"Login attempt failed: User with identifier '{identifier}' not found. IP: {request.remote_addr}."
         )
@@ -2216,7 +2216,7 @@ def login():
         return jsonify(response_data), 200
 
 
-# WebAuthn registration endpoints
+# SecurityKey registration endpoints
 # Helper functions for base64url encoding/decoding
 def base64url_to_bytes(base64url):
     """Convert base64url to bytes."""
@@ -2248,9 +2248,9 @@ def webauthn_register_begin():
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_BEGIN_FAILURE',
             status='FAILURE',
-            details="WebAuthn registration begin failed: Username required."
+            details="SecurityKey registration begin failed: Username required."
         )
         return jsonify({'error': 'Username required'}), 400
 
@@ -2260,9 +2260,9 @@ def webauthn_register_begin():
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_BEGIN_FAILURE',
             status='FAILURE',
-            details=f"WebAuthn registration begin failed for username '{username}': User not found."
+            details=f"SecurityKey registration begin failed for username '{username}': User not found."
         )
         return jsonify({'error': 'User not found'}), 404
 
@@ -2274,11 +2274,11 @@ def webauthn_register_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id, # Assuming user initiated if auth_token is for them
-                action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_REGISTER_BEGIN_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn registration begin for user '{username}' failed: Invalid session token or session mismatch."
+                details=f"SecurityKey registration begin for user '{username}' failed: Invalid session token or session mismatch."
             )
             return jsonify({'error': 'Invalid session'}), 400
 
@@ -2291,11 +2291,11 @@ def webauthn_register_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_REGISTER_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_REGISTER_BEGIN_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn registration begin for user '{username}' failed: Invalid session binding."
+                details=f"SecurityKey registration begin for user '{username}' failed: Invalid session binding."
             )
             return jsonify({'error': 'Invalid session binding'}), 400
 
@@ -2361,14 +2361,14 @@ def webauthn_register_begin():
     print(f"- Preview: {challenge_bytes[:10].hex()}")
 
     # Clear any existing challenges for this user
-    WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
+    SecurityKeyChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
     db.session.commit()
 
     # Create base64 representation of the challenge for storage
     challenge_base64 = base64.b64encode(challenge_bytes).decode('utf-8')
 
     # Create new challenge record
-    new_challenge = WebAuthnChallenge(
+    new_challenge = SecurityKeyChallenge(
         user_id=user.id,
         challenge=challenge_base64
     )
@@ -2383,15 +2383,15 @@ def webauthn_register_begin():
     user_id_bytes = str(user.id).encode('utf-8')
     user_id_base64url = base64.b64encode(user_id_bytes).decode('utf-8').replace('+', '-').replace('/', '_').rstrip('=')
 
-    # Log successful initiation of WebAuthn registration
+    # Log successful initiation of SecurityKey registration
     log_system_event(
         user_id=user.id,
         performed_by_user_id=user.id, # Or admin if admin initiated
-        action_type='WEBAUTHN_REGISTER_BEGIN_SUCCESS',
+        action_type='SECURITY_KEY_REGISTER_BEGIN_SUCCESS',
         status='SUCCESS',
         target_entity_type='USER',
         target_entity_id=user.id,
-        details=f"WebAuthn registration process initiated for user '{username}' (ID: {user.id}). Challenge generated. Force registration: {force_registration}."
+        details=f"SecurityKey registration process initiated for user '{username}' (ID: {user.id}). Challenge generated. Force registration: {force_registration}."
     )
 
     # Prepare exclude credentials list for client
@@ -2403,7 +2403,7 @@ def webauthn_register_begin():
                 'id': websafe_encode(cred.id)
             })
 
-    # Return the publicKey options as expected by the WebAuthn API
+    # Return the publicKey options as expected by the SecurityKey API
     return jsonify({
         'publicKey': {
             'rp': {
@@ -2459,9 +2459,9 @@ def webauthn_register_complete():
         log_system_event(
             user_id=None,
             performed_by_user_id=actor_id if 'actor_id' in locals() else None,
-            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
             status='FAILURE',
-            details="WebAuthn registration complete failed: Username required."
+            details="SecurityKey registration complete failed: Username required."
         )
         return jsonify({'error': 'Username required'}), 400
 
@@ -2470,9 +2470,9 @@ def webauthn_register_complete():
         log_system_event(
             user_id=None,
             performed_by_user_id=actor_id if 'actor_id' in locals() else None,
-            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
             status='FAILURE',
-            details=f"WebAuthn registration complete failed for username '{username}': User not found."
+            details=f"SecurityKey registration complete failed for username '{username}': User not found."
         )
         return jsonify({'error': 'User not found'}), 404
 
@@ -2511,11 +2511,11 @@ def webauthn_register_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=None, # Admin actor not identified
-                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn re-registration (force_registration=True) for user '{username}' failed: Admin authorization token in header required."
+                details=f"SecurityKey re-registration (force_registration=True) for user '{username}' failed: Admin authorization token in header required."
             )
             return jsonify({'error': 'Admin authorization token in header is required for re-registering a key.'}), 403
         # If admin_performing_action is set, actor_id is already correctly the admin's ID.
@@ -2539,28 +2539,28 @@ def webauthn_register_complete():
         log_system_event(
             user_id=user.id,
             performed_by_user_id=actor_id,
-            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user.id,
-            details=f"WebAuthn registration complete for user '{username}' failed: Invalid session or connection (token binding validation)."
+            details=f"SecurityKey registration complete for user '{username}' failed: Invalid session or connection (token binding validation)."
         )
         return jsonify({'error': 'Invalid session or connection during token binding validation'}), 400
 
-    challenge_record = db.session.query(WebAuthnChallenge).filter(
-        WebAuthnChallenge.user_id == user.id,
-        WebAuthnChallenge.expired == False
-    ).order_by(WebAuthnChallenge.created_at.desc()).first()
+    challenge_record = db.session.query(SecurityKeyChallenge).filter(
+        SecurityKeyChallenge.user_id == user.id,
+        SecurityKeyChallenge.expired == False
+    ).order_by(SecurityKeyChallenge.created_at.desc()).first()
 
     if not challenge_record:
         log_system_event(
             user_id=user.id,
             performed_by_user_id=actor_id,
-            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user.id,
-            details=f"WebAuthn registration complete for user '{username}' failed: Registration session expired or not found."
+            details=f"SecurityKey registration complete for user '{username}' failed: Registration session expired or not found."
         )
         return jsonify({'error': 'Registration session expired or not found'}), 400
 
@@ -2577,11 +2577,11 @@ def webauthn_register_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=actor_id,
-                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn registration complete for user '{username}' failed: No attestation response provided."
+                details=f"SecurityKey registration complete for user '{username}' failed: No attestation response provided."
             )
             return jsonify({'error': 'No attestation response provided'}), 400
 
@@ -2618,11 +2618,11 @@ def webauthn_register_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=actor_id,
-                action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn registration complete for user '{username}' failed: Challenge mismatch."
+                details=f"SecurityKey registration complete for user '{username}' failed: Challenge mismatch."
             )
             return jsonify({
                 'error': 'Challenge mismatch between server and client',
@@ -2649,7 +2649,7 @@ def webauthn_register_complete():
             'user_verification': 'required'  # or 'preferred' based on what your app expects
         }
 
-        print("\n=== Debug: WebAuthn Objects Before Register Complete ===")
+        print("\n=== Debug: SecurityKey Objects Before Register Complete ===")
         print(f"CollectedClientData Raw JSON: {client_data_bytes.decode('utf-8')}")
         print(f"CollectedClientData Parsed: {client_data_obj}")
         print(f"CollectedClientData (Object Dict): {client_data.__dict__}")
@@ -2751,7 +2751,7 @@ def webauthn_register_complete():
                     log_system_event(
                         user_id=user.id,
                         performed_by_user_id=actor_id,
-                        action_type='WEBAUTHN_RE_REGISTER_SUCCESS',
+                        action_type='SECURITY_KEY_RE_REGISTER_SUCCESS',
                         status='SUCCESS',
                         target_entity_type='SECURITY_KEY',
                         target_entity_id=target_key.id,
@@ -2769,11 +2769,11 @@ def webauthn_register_complete():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=actor_id,
-                            action_type='WEBAUTHN_RE_REGISTER_ATTEMPT',
+                            action_type='SECURITY_KEY_RE_REGISTER_FAILURE',
                             status='FAILURE',
                             target_entity_type='USER',
                             target_entity_id=user.id,
-                            details=f"WebAuthn re-registration for user '{username}' failed: Security key with ID {keyId} not found for reassignment."
+                            details=f"SecurityKey re-registration for user '{username}' failed: Security key with ID {keyId} not found for reassignment."
                         )
                         return jsonify({
                             'error': 'Key not found',
@@ -2789,11 +2789,11 @@ def webauthn_register_complete():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=actor_id,
-                            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                             status='FAILURE',
                             target_entity_type='SECURITY_KEY',
                             target_entity_id=existing_key.id,
-                            details=f"WebAuthn registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) previously deactivated and cannot be reused."
+                            details=f"SecurityKey registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) previously deactivated and cannot be reused."
                         )
                         return jsonify({
                             'error': 'Security key previously deactivated',
@@ -2802,11 +2802,11 @@ def webauthn_register_complete():
                     log_system_event(
                         user_id=user.id,
                         performed_by_user_id=actor_id,
-                        action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                        action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                         status='FAILURE',
                         target_entity_type='SECURITY_KEY',
                         target_entity_id=existing_key.id,
-                        details=f"WebAuthn registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) already registered to user ID {existing_key.user_id}."
+                        details=f"SecurityKey registration for user '{username}' failed: Security key (ID: {existing_key.id}, CredentialID: {credential_id}) already registered to user ID {existing_key.user_id}."
                     )
                     return jsonify({
                         'error': 'Security key already registered',
@@ -2827,11 +2827,11 @@ def webauthn_register_complete():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=actor_id,
-                            action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                             status='FAILURE',
                             target_entity_type='USER',
                             target_entity_id=user.id,
-                            details=f"WebAuthn registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Admin attempted replacement."
+                            details=f"SecurityKey registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Admin attempted replacement."
                         )
                         return jsonify({
                             'error': 'Active key exists',
@@ -2841,11 +2841,11 @@ def webauthn_register_complete():
                     log_system_event(
                         user_id=user.id,
                         performed_by_user_id=actor_id, # Should be user.id in this self-service path
-                        action_type='WEBAUTHN_REGISTER_COMPLETE_ATTEMPT',
+                        action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                         status='FAILURE',
                         target_entity_type='USER',
                         target_entity_id=user.id,
-                        details=f"WebAuthn registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Self-service attempt."
+                        details=f"SecurityKey registration for user '{username}' failed: User already has an active security key (ID: {active_key.id}). Self-service attempt."
                     )
                     return jsonify({
                         'error': 'Active key exists',
@@ -2964,11 +2964,11 @@ def webauthn_register_complete():
             log_system_event(
                 user_id=user.id if 'user' in locals() and user else None,
                 performed_by_user_id=actor_id if 'actor_id' in locals() else None,
-                action_type='WEBAUTHN_REGISTER_COMPLETE_FAILURE',
+                action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER' if 'user' in locals() and user else None,
                 target_entity_id=user.id if 'user' in locals() and user else None,
-                details=f"WebAuthn registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to ValueError: {str(ve)}. Challenge verification or attestation parsing failed."
+                details=f"SecurityKey registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to ValueError: {str(ve)}. Challenge verification or attestation parsing failed."
             )
             return jsonify({'error': str(ve), 'detail': 'Challenge verification failed'}), 400
 
@@ -2979,16 +2979,16 @@ def webauthn_register_complete():
         log_system_event(
             user_id=user.id if 'user' in locals() and user else None,
             performed_by_user_id=actor_id if 'actor_id' in locals() else None,
-            action_type='WEBAUTHN_REGISTER_COMPLETE_FAILURE',
+            action_type='SECURITY_KEY_REGISTER_COMPLETE_FAILURE',
             status='FAILURE',
             target_entity_type='USER' if 'user' in locals() and user else None,
             target_entity_id=user.id if 'user' in locals() and user else None,
-            details=f"WebAuthn registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to Exception: {str(e)}."
+            details=f"SecurityKey registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to Exception: {str(e)}."
         )
         return jsonify({'error': str(e)}), 400
 
 
-# WebAuthn authentication endpoints
+# SecurityKey authentication endpoints
 @app.route('/api/webauthn/login/begin', methods=['POST'])
 def webauthn_login_begin():
     try:
@@ -3003,9 +3003,9 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=None,
                 performed_by_user_id=None,
-                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                 status='FAILURE',
-                details="WebAuthn login begin failed: Identifier (username, email, or national ID) required."
+                details="SecurityKey login begin failed: Identifier (username, email, or national ID) required."
             )
             return jsonify({'error': 'Username, email, or national ID required'}), 400
 
@@ -3029,9 +3029,9 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=None,
                 performed_by_user_id=None,
-                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                 status='FAILURE',
-                details=f"WebAuthn login begin failed for identifier '{identifier}': User not found."
+                details=f"SecurityKey login begin failed for identifier '{identifier}': User not found."
             )
             return jsonify({'error': 'User not found'}), 404
 
@@ -3042,11 +3042,11 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login begin failed for user '{user.username}': No security keys registered for this user."
+                details=f"SecurityKey login begin failed for user '{user.username}': No security keys registered for this user."
             )
             return jsonify({'error': 'No security keys registered for this user'}), 404
 
@@ -3061,11 +3061,11 @@ def webauthn_login_begin():
                 log_system_event(
                     user_id=user.id,
                     performed_by_user_id=user.id,
-                    action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                    action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                     status='FAILURE',
                     target_entity_type='USER',
                     target_entity_id=user.id,
-                    details=f"WebAuthn login begin failed for user '{user.username}': All security keys are inactive."
+                    details=f"SecurityKey login begin failed for user '{user.username}': All security keys are inactive."
                 )
                 return jsonify({
                     'error': 'Your security key is inactive. Please contact your administrator to activate your security key.',
@@ -3076,11 +3076,11 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login begin failed for user '{user.username}': No active security keys found (unexpected state)."
+                details=f"SecurityKey login begin failed for user '{user.username}': No active security keys found (unexpected state)."
             )
             return jsonify({'error': 'No active security keys found for this user'}), 404
 
@@ -3096,11 +3096,11 @@ def webauthn_login_begin():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=user.id,
-                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                             status='FAILURE',
                             target_entity_type='USER',
                             target_entity_id=user.id,
-                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
+                            details=f"SecurityKey login begin (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
                         )
                         return jsonify({'error': 'Invalid session or connection'}), 400
 
@@ -3116,11 +3116,11 @@ def webauthn_login_begin():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=user.id,
-                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                             status='FAILURE',
                             target_entity_type='USER',
                             target_entity_id=user.id,
-                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Invalid or expired session after token binding."
+                            details=f"SecurityKey login begin (2FA) for user '{user.username}' failed: Invalid or expired session after token binding."
                         )
                         return jsonify({'error': 'Invalid or expired session'}), 400
 
@@ -3140,11 +3140,11 @@ def webauthn_login_begin():
                         log_system_event(
                             user_id=user.id,
                             performed_by_user_id=user.id,
-                            action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                            action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                             status='FAILURE',
                             target_entity_type='USER',
                             target_entity_id=user.id,
-                            details=f"WebAuthn login begin (2FA) for user '{user.username}' failed: Password authentication required first (no active session found)."
+                            details=f"SecurityKey login begin (2FA) for user '{user.username}' failed: Password authentication required first (no active session found)."
                         )
                         return jsonify({'error': 'Password authentication required first'}), 400
 
@@ -3167,11 +3167,11 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_BEGIN_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login begin failed for user '{user.username}': No valid (decodable) credentials found among active keys."
+                details=f"SecurityKey login begin failed for user '{user.username}': No valid (decodable) credentials found among active keys."
             )
             return jsonify({'error': 'No valid credentials found for user'}), 500
 
@@ -3194,11 +3194,11 @@ def webauthn_login_begin():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_BEGIN_FAILURE', # More specific than _ATTEMPT
+                action_type='SECURITY_KEY_LOGIN_BEGIN_FAILURE', # More specific than _ATTEMPT
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login begin for user '{user.username}' failed during server.authenticate_begin: {str(e)}"
+                details=f"SecurityKey login begin for user '{user.username}' failed during server.authenticate_begin: {str(e)}"
             )
 
             # Record this error
@@ -3224,7 +3224,7 @@ def webauthn_login_begin():
 
         # Store challenge in database
         # Clear any existing challenges for this user
-        WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
+        SecurityKeyChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
         db.session.commit()
 
         # Create new challenge record with base64 string
@@ -3233,7 +3233,7 @@ def webauthn_login_begin():
         # Updated: Mark if this is part of a multi-factor flow
         is_second_factor = second_factor and not direct_security_key_auth
 
-        new_challenge = WebAuthnChallenge(
+        new_challenge = SecurityKeyChallenge(
             user_id=user.id,
             challenge=challenge_base64,
             is_second_factor=is_second_factor
@@ -3272,15 +3272,15 @@ def webauthn_login_begin():
                 verification = 'required'  # Require stronger verification
 
         # Return formatted options for client
-        # Log successful initiation of WebAuthn login
+        # Log successful initiation of SecurityKey login
         log_system_event(
             user_id=user.id,
             performed_by_user_id=user.id,
-            action_type='WEBAUTHN_LOGIN_BEGIN_SUCCESS',
+            action_type='SECURITY_KEY_LOGIN_BEGIN_SUCCESS',
             status='SUCCESS',
             target_entity_type='USER',
             target_entity_id=user.id,
-            details=f"WebAuthn login process initiated for user '{user.username}' (ID: {user.id}). Challenge generated. DirectAuth: {direct_security_key_auth}, 2FA: {second_factor}. Risk: {risk_score}."
+            details=f"SecurityKey login process initiated for user '{user.username}' (ID: {user.id}). Challenge generated. DirectAuth: {direct_security_key_auth}, 2FA: {second_factor}. Risk: {risk_score}."
         )
         return jsonify({
             'publicKey': {
@@ -3302,7 +3302,7 @@ def webauthn_login_begin():
         log_system_event(
             user_id=user_id_for_log,
             performed_by_user_id=user_id_for_log, # Assuming user initiated
-            action_type='WEBAUTHN_LOGIN_BEGIN_ERROR',
+            action_type='SECURITY_KEY_LOGIN_BEGIN_ERROR',
             status='FAILURE',
             target_entity_type='USER' if user_id_for_log else None,
             target_entity_id=user_id_for_log,
@@ -3315,7 +3315,7 @@ def webauthn_login_begin():
 def webauthn_login_complete():
     data = request.get_json()
     identifier = data.get('username')
-    print(f"WebAuthn login/complete with identifier: {identifier}")
+    print(f"SecurityKey login/complete with identifier: {identifier}")
     second_factor = data.get('secondFactor', False)
     auth_token = data.get('auth_token')
     binding_nonce = data.get('binding_nonce')
@@ -3325,9 +3325,9 @@ def webauthn_login_complete():
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
             status='FAILURE',
-            details="WebAuthn login complete failed: Identifier (username, email, or national ID) required."
+            details="SecurityKey login complete failed: Identifier (username, email, or national ID) required."
         )
         return jsonify({'error': 'Username, email, or national ID required'}), 400
 
@@ -3351,9 +3351,9 @@ def webauthn_login_complete():
         log_system_event(
             user_id=None,
             performed_by_user_id=None,
-            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
             status='FAILURE',
-            details=f"WebAuthn login complete failed for identifier '{identifier}': User not found."
+            details=f"SecurityKey login complete failed for identifier '{identifier}': User not found."
         )
         return jsonify({'error': 'User not found'}), 404
 
@@ -3380,30 +3380,30 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+                action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login complete (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
+                details=f"SecurityKey login complete (2FA) for user '{user.username}' failed: Invalid session or connection (token binding)."
             )
             return jsonify({'error': 'Invalid session or connection'}), 400
 
     # Get the latest challenge for this user
-    challenge_record = db.session.query(WebAuthnChallenge).filter(
-        WebAuthnChallenge.user_id == user.id,
-        WebAuthnChallenge.expired == False
-    ).order_by(WebAuthnChallenge.created_at.desc()).first()
+    challenge_record = db.session.query(SecurityKeyChallenge).filter(
+        SecurityKeyChallenge.user_id == user.id,
+        SecurityKeyChallenge.expired == False
+    ).order_by(SecurityKeyChallenge.created_at.desc()).first()
 
     if not challenge_record:
         db.session.commit()  # Commit the failed attempt
         log_system_event(
             user_id=user.id,
             performed_by_user_id=user.id,
-            action_type='WEBAUTHN_LOGIN_COMPLETE_ATTEMPT',
+            action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user.id,
-            details=f"WebAuthn login complete for user '{user.username}' failed: Authentication session (challenge) expired or not found."
+            details=f"SecurityKey login complete for user '{user.username}' failed: Authentication session (challenge) expired or not found."
         )
         return jsonify({'error': 'Authentication session expired'}), 400
 
@@ -3431,11 +3431,11 @@ def webauthn_login_complete():
                     log_system_event(
                         user_id=user.id,
                         performed_by_user_id=user.id,
-                        action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                        action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                         status='FAILURE',
                         target_entity_type='SECURITY_KEY',
                         target_entity_id=credential_id, # The credential ID from assertion
-                        details=f"WebAuthn login complete for user '{user.username}' failed: Security key (CredentialID: {credential_id}) is registered to another user (User ID: {other_user_key.user_id})."
+                        details=f"SecurityKey login complete for user '{user.username}' failed: Security key (CredentialID: {credential_id}) is registered to another user (User ID: {other_user_key.user_id})."
                     )
                     return jsonify({'error': 'Login failed. Key is already registered to another user'}), 400
 
@@ -3452,11 +3452,11 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login complete for user '{user.username}' failed: Invalid or unregistered security key (CredentialID from assertion: {credential_id})."
+                details=f"SecurityKey login complete for user '{user.username}' failed: Invalid or unregistered security key (CredentialID from assertion: {credential_id})."
             )
             return jsonify({'error': 'Invalid or unregistered security key'}), 400
 
@@ -3467,11 +3467,11 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=security_key.id,
-                details=f"WebAuthn login complete for user '{user.username}' failed: Security key (ID: {security_key.id}, CredentialID: {security_key.credential_id}) is inactive."
+                details=f"SecurityKey login complete for user '{user.username}' failed: Security key (ID: {security_key.id}, CredentialID: {security_key.credential_id}) is inactive."
             )
             return jsonify({'error': 'This security key has been deactivated'}), 400
 
@@ -3529,11 +3529,11 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=security_key.id,
-                details=f"WebAuthn login complete for user '{user.username}' (Key ID: {security_key.id}) failed: Counter regression detected. Stored: {security_key.sign_count}, Received: {auth_data.counter}."
+                details=f"SecurityKey login complete for user '{user.username}' (Key ID: {security_key.id}) failed: Counter regression detected. Stored: {security_key.sign_count}, Received: {auth_data.counter}."
             )
             return jsonify({
                 'error': 'Security verification failed',
@@ -3573,11 +3573,11 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_DIRECT_LOGIN_SUCCESS',
+                action_type='SECURITY_KEY_DIRECT_LOGIN_SUCCESS',
                 status='SUCCESS',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=security_key.id,
-                details=f"Direct WebAuthn login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                details=f"Direct SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
             )
             # Return success with the session token
             return jsonify({
@@ -3627,15 +3627,15 @@ def webauthn_login_complete():
 
                 db.session.commit()
 
-                # Log successful 2FA WebAuthn authentication
+                # Log successful 2FA SecurityKey authentication
                 log_system_event(
                     user_id=user.id,
                     performed_by_user_id=user.id,
-                    action_type='WEBAUTHN_2FA_LOGIN_SUCCESS',
+                    action_type='SECURITY_KEY_2FA_LOGIN_SUCCESS',
                     status='SUCCESS',
                     target_entity_type='SECURITY_KEY',
                     target_entity_id=security_key.id,
-                    details=f"2FA WebAuthn login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                    details=f"2FA SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
                 )
                 # This is a second factor after password authentication
                 return jsonify({
@@ -3660,11 +3660,11 @@ def webauthn_login_complete():
                 log_system_event(
                     user_id=user.id,
                     performed_by_user_id=user.id,
-                    action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                    action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                     status='FAILURE',
                     target_entity_type='USER',
                     target_entity_id=user.id,
-                    details=f"WebAuthn login complete (2FA) for user '{user.username}' failed: No active password authentication session found."
+                    details=f"SecurityKey login complete (2FA) for user '{user.username}' failed: No active password authentication session found."
                 )
                 return jsonify({
                     'error': 'No active authentication session found',
@@ -3676,11 +3676,11 @@ def webauthn_login_complete():
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
-                action_type='WEBAUTHN_LOGIN_COMPLETE_FAILURE',
+                action_type='SECURITY_KEY_LOGIN_COMPLETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user.id,
-                details=f"WebAuthn login complete for user '{user.username}' failed: Standalone security key authentication attempted (requires password first)."
+                details=f"SecurityKey login complete for user '{user.username}' failed: Standalone security key authentication attempted (requires password first)."
             )
             return jsonify({
                 'error': 'Authentication flow requires password verification first',
@@ -3698,18 +3698,18 @@ def webauthn_login_complete():
         db.session.commit()
 
         # Log the specific error
-        error_detail = f"WebAuthn login complete for user '{user.username}' failed: {str(e)}. IP: {request.remote_addr}. Location: {auth_attempt.location if auth_attempt else 'N/A'}."
+        error_detail = f"SecurityKey login complete for user '{user.username}' failed: {str(e)}. IP: {request.remote_addr}. Location: {auth_attempt.location if auth_attempt else 'N/A'}."
         log_system_event(
             user_id=user.id,
             performed_by_user_id=user.id,
-            action_type='WEBAUTHN_LOGIN_COMPLETE_ERROR',
+            action_type='SECURITY_KEY_LOGIN_COMPLETE_ERROR',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user.id,
             details=error_detail
         )
 
-        # Provide helpful error messages based on common WebAuthn errors
+        # Provide helpful error messages based on common SecurityKey errors
         if 'NotAllowedError' in str(e):
             return jsonify({
                 'error': 'Authentication was not allowed',
@@ -3761,7 +3761,7 @@ def webauthn_check_status():
         }), 200
 
     try:
-        # Create a silent WebAuthn challenge to verify key presence
+        # Create a silent SecurityKey challenge to verify key presence
         # This will not require user interaction in most cases
 
         # First, create the credential descriptor from the stored credential
@@ -3795,11 +3795,11 @@ def webauthn_check_status():
 
         # Save this challenge to database
         # First expire any existing active challenges
-        WebAuthnChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
+        SecurityKeyChallenge.query.filter_by(user_id=user.id, expired=False).update({"expired": True})
         db.session.commit()
 
         # Create new challenge record
-        new_challenge = WebAuthnChallenge(
+        new_challenge = SecurityKeyChallenge(
             user_id=user.id,
             challenge=challenge_base64,
             is_second_factor=False  # This is a status check, not a second factor
@@ -3866,7 +3866,7 @@ def webauthn_check_status_complete():
 
     try:
         # Get the challenge record
-        challenge_record = WebAuthnChallenge.query.get(challenge_id)
+        challenge_record = SecurityKeyChallenge.query.get(challenge_id)
         if not challenge_record or challenge_record.expired:
             return jsonify({
                 'isConnected': False,
@@ -4412,7 +4412,7 @@ def update_user(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=None,
-            action_type='USER_UPDATE_ATTEMPT',
+            action_type='USER_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4428,7 +4428,7 @@ def update_user(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=None,
-            action_type='USER_UPDATE_ATTEMPT',
+            action_type='USER_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4442,7 +4442,7 @@ def update_user(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=auth_session.user_id,
-            action_type='USER_UPDATE_ATTEMPT',
+            action_type='USER_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4456,7 +4456,7 @@ def update_user(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id,
-            action_type='USER_UPDATE_ATTEMPT',
+            action_type='USER_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4472,7 +4472,7 @@ def update_user(user_id):
                 log_system_event(
                     user_id=user_id,
                     performed_by_user_id=admin_user.id,
-                    action_type='USER_UPDATE_ATTEMPT',
+                    action_type='USER_UPDATE_FAILURE',
                     status='FAILURE',
                     target_entity_type='USER',
                     target_entity_id=user_id,
@@ -4486,7 +4486,7 @@ def update_user(user_id):
                 log_system_event(
                     user_id=user_id,
                     performed_by_user_id=admin_user.id,
-                    action_type='USER_UPDATE_ATTEMPT',
+                    action_type='USER_UPDATE_FAILURE',
                     status='FAILURE',
                     target_entity_type='USER',
                     target_entity_id=user_id,
@@ -4499,7 +4499,7 @@ def update_user(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UPDATE_ATTEMPT',
+                action_type='USER_UPDATE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4520,7 +4520,7 @@ def update_user(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UPDATE_ATTEMPT',
+                action_type='USER_UPDATE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4534,7 +4534,7 @@ def update_user(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UPDATE_ATTEMPT',
+                action_type='USER_UPDATE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4644,7 +4644,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=None,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4660,7 +4660,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=None,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4674,7 +4674,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=auth_session.user_id,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4688,7 +4688,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4702,7 +4702,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4717,7 +4717,7 @@ def update_user_role(user_id):
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id,
-            action_type='USER_ROLE_UPDATE_ATTEMPT',
+            action_type='USER_ROLE_UPDATE_FAILURE',
             status='FAILURE',
             target_entity_type='USER',
             target_entity_id=user_id,
@@ -4759,7 +4759,7 @@ def delete_user_data(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_DELETE_ATTEMPT',
+                action_type='USER_DELETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4773,7 +4773,7 @@ def delete_user_data(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_DELETE_ATTEMPT',
+                action_type='USER_DELETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4787,7 +4787,7 @@ def delete_user_data(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=auth_session.user_id,
-                action_type='USER_DELETE_ATTEMPT',
+                action_type='USER_DELETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4800,7 +4800,7 @@ def delete_user_data(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_DELETE_ATTEMPT',
+                action_type='USER_DELETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4814,7 +4814,7 @@ def delete_user_data(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_DELETE_ATTEMPT',
+                action_type='USER_DELETE_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -4870,7 +4870,7 @@ def update_user_id(old_id, new_id):
 
             # Update foreign keys in related tables
             AuthenticationAttempt.query.filter_by(user_id=old_id).update({"user_id": temp_id})
-            WebAuthnChallenge.query.filter_by(user_id=old_id).update({"user_id": temp_id})
+            SecurityKeyChallenge.query.filter_by(user_id=old_id).update({"user_id": temp_id})
             AuthenticationSession.query.filter_by(user_id=old_id).update({"user_id": temp_id})
 
             # Update the user ID
@@ -4878,7 +4878,7 @@ def update_user_id(old_id, new_id):
 
             # Now update to the new ID
             AuthenticationAttempt.query.filter_by(user_id=temp_id).update({"user_id": new_id})
-            WebAuthnChallenge.query.filter_by(user_id=temp_id).update({"user_id": new_id})
+            SecurityKeyChallenge.query.filter_by(user_id=temp_id).update({"user_id": new_id})
             AuthenticationSession.query.filter_by(user_id=temp_id).update({"user_id": new_id})
             Users.query.filter_by(id=temp_id).update({"id": new_id})
 
@@ -5489,7 +5489,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5503,7 +5503,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=None,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5516,7 +5516,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=auth_session.user_id,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5529,7 +5529,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5543,7 +5543,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
@@ -5555,7 +5555,7 @@ def unlock_user_account(user_id):
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
-                action_type='USER_UNLOCK_ATTEMPT',
+                action_type='USER_UNLOCK_FAILURE',
                 status='FAILURE',
                 target_entity_type='USER',
                 target_entity_id=user_id,
