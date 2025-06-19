@@ -33,7 +33,7 @@ const actionOptions = [
   // User Actions
   { value: "USER_LOGIN_FAILURE", label: "User Login Failure" },
   { value: "USER_LOGIN_SUCCESS", label: "User Login Success" },
-  { value: "USER_LOGIN_PASSWORD_VERIFIED", label: "Login Password Verified" },
+  { value: "USER_LOGIN_PASSWORD_VERIFIED", label: "User Login Password Verified" },
   { value: "USER_REGISTER_FAILURE", label: "User Register Failure" },
   { value: "USER_REGISTER_SUCCESS", label: "User Register Success" },
   { value: "USER_UPDATE_FAILURE", label: "User Update Failure" },
@@ -42,8 +42,8 @@ const actionOptions = [
   { value: "USER_ROLE_UPDATE_SUCCESS", label: "Role Update Success" },
   { value: "USER_DELETE_FAILURE", label: "User Delete Failure" },
   { value: "USER_DELETE_SUCCESS", label: "User Delete Success" },
-  { value: "USER_UNLOCK_FAILURE", label: "User Unlock Failure" },
-  { value: "USER_UNLOCK_SUCCESS", label: "User Unlock Success" },
+  { value: "USER_ACCOUNT_UNLOCK_FAILURE", label: "User Account Unlock Failure" },
+  { value: "USER_ACCOUNT_UNLOCK_SUCCESS", label: "User Account Unlock Success" },
 
   // WebAuthn Actions
   { value: "SECURITY_KEY_REGISTER_BEGIN_FAILURE", label: "Security Key Register Begin Failure" },
