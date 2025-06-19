@@ -61,6 +61,7 @@ interface DataTableState {
 interface DataTableProps<TData> {
   columns: ColumnDef<TData>[]
   data: TData[]
+  pageCount?: number // Add pageCount for server-side pagination
   onTableInit?: (table: TableType<TData>) => void
   meta?: Record<string, any>
   toolbar?: ((table: TableType<TData>) => React.ReactNode) | React.ReactNode
@@ -99,6 +100,7 @@ const defaultState: DataTableState = {
 export function DataTable<TData>({
   columns,
   data,
+  pageCount, // Destructure pageCount
   onTableInit,
   meta,
   toolbar,
@@ -118,17 +120,20 @@ export function DataTable<TData>({
   const table = useReactTable<TData>({
     data,
     columns,
+    pageCount: pageCount ?? -1, // Pass pageCount to the hook
     state: {
       sorting: localState.sorting,
       columnFilters: localState.columnFilters,
       columnVisibility: localState.columnVisibility,
       rowSelection: localState.rowSelection,
       globalFilter: localState.globalFilter,
-      pagination: state.pagination
+      pagination: state.pagination,
     },
     enableRowSelection,
+    manualPagination: true, // Enable manual pagination for server-side control
     getCoreRowModel: getCoreRowModel(),
-    ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    // getPaginationRowModel is not needed when manualPagination is true
+    // ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     ...(enableSorting ? { getSortedRowModel: getSortedRowModel() } : {}),
     ...(enableFiltering ? { getFilteredRowModel: getFilteredRowModel() } : {}),
     getFacetedRowModel: getFacetedRowModel(),
