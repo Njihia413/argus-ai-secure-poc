@@ -31,10 +31,10 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 
 ### 1. Component Architecture
 -   Atomic design principles with shared UI components.
--   Data table abstraction for consistent data display:
+-   Data table abstraction for consistent data display ([`src/components/data-table/data-table.tsx`](src/components/data-table/data-table.tsx:1)):
     -   Wrapped in `CardContent` for layout.
     -   Supports a `toolbar` prop for custom filter controls (e.g., search input, dropdowns) to be rendered above the table.
-    -   Includes built-in pagination controls.
+    -   Includes built-in pagination controls, and supports server-side pagination via `pageCount` prop and `manualPagination: true` option.
     -   Standardized "Action" column header for action buttons.
     -   Consistent button styling (e.g., black background for primary actions).
     -   Confirmation dialogs (`shadcn/ui Dialog`) for critical actions within table rows (e.g., "Unlock Account"), styled with application's primary font (`font-montserrat`) and consistent sizing (`sm:max-w-[425px]`).
@@ -64,7 +64,19 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 ### 3. Security Implementation
 -   WebAuthn integration for passwordless authentication.
 -   Role-based access control.
--   Audit logging for security events.
+-   **Comprehensive Audit Logging System:**
+    -   **Backend Model (`AuditLog` in [`../backend/app.py`](../backend/app.py:1)):**
+        -   Fields: `id`, `timestamp`, `user_id` (affected user), `performed_by_user_id` (actor), `action_type`, `target_entity_type`, `target_entity_id`, `details` (contextual info, IP, params), `status` (SUCCESS/FAILURE).
+        -   Captures a wide range of system events including user authentication, security key operations, user management, and administrative actions.
+    -   **Logging Mechanism:**
+        -   Centralized `log_system_event` helper function in the backend for creating audit entries.
+        -   Integrated into all relevant API endpoints to ensure consistent and thorough logging.
+    -   **API Endpoint (`/api/system-audit-logs`):**
+        -   Provides paginated and filterable access to all system audit logs (admin-only).
+        -   Supports filtering by user, performer, action type, status, target entity, and date range.
+    -   **Frontend Display ([`src/app/dashboard/audit-logs/page.tsx`](src/app/dashboard/audit-logs/page.tsx:1)):**
+        -   Dedicated page for viewing system audit logs.
+        -   Utilizes the generic `DataTable` component with updated columns (`action_type`, `status`, `user_username`, `performed_by_username`, etc.) and filtering capabilities.
 -   Locked account management system (manual admin unlock with confirmation step, locks at 5 attempts, `failed_login_attempts` are reset to 0 upon admin unlock, `unlocked_by` stores admin username, includes check for admin's username before unlock).
 
 ### 4. AI Integration
@@ -113,7 +125,7 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 
 2.  **Data Handling**
     -   Type-safe data management with TypeScript.
-    -   Data table abstractions for security records, featuring a `toolbar` prop for custom filter controls, built-in pagination, standardized action columns/buttons with confirmation dialogs, and curated column visibility.
+    -   Data table abstractions for security records ([`src/components/data-table/data-table.tsx`](src/components/data-table/data-table.tsx:1)), featuring a `toolbar` prop for custom filter controls, built-in pagination (with support for server-side pagination via `pageCount` and `manualPagination`), standardized action columns/buttons with confirmation dialogs, and curated column visibility.
     -   Efficient data fetching and caching.
 
 3.  **Authentication Flow**
