@@ -1013,9 +1013,9 @@ const handleReassignKey = async () => {
                 will no longer be able to use this key for authentication.
                 {selectedKey && (
                     <div className="bg-muted p-3 mt-2 rounded border">
-                      <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
-                      <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
-                      <p><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</p>
+                      <div><strong>Model:</strong> {selectedKey.model || 'N/A'}</div>
+                      <div><strong>Type:</strong> {selectedKey.type || 'N/A'}</div>
+                      <div><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</div>
                     </div>
                 )}
               </AlertDialogDescription>
@@ -1049,25 +1049,27 @@ const handleReassignKey = async () => {
         <AlertDialogContent className="font-montserrat">
           <AlertDialogHeader>
             <AlertDialogTitle>Reset Security Key</AlertDialogTitle>
-            <AlertDialogDescription>
-              <div className="space-y-4">
-                <p>Are you sure you want to reset this security key for reassignment to another user?</p>
-                
-                <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 dark:bg-transparent dark:border-yellow-700/40">
-                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">This will:</h3>
-                  <ul className="list-disc pl-5 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
-                    <li>Deactivate the key for the current user</li>
-                    <li>Clear the security key's PIN in the database</li>
-                    <li>Mark the key as available for reassignment</li>
-                  </ul>
-                </div>
-                
-                <div className="bg-red-50 p-4 rounded-md border border-red-200 dark:bg-transparent dark:border-red-700/40">
-                  <h3 className="font-semibold text-red-800 dark:text-red-300">Note:</h3>
-                  <p className="text-sm text-red-700 dark:text-red-400">
-                    For security reasons, after resetting, a new user will need to register
-                    the security key before they can use it.
-                  </p>
+            <AlertDialogDescription asChild>
+              <div className="text-muted-foreground text-sm">
+                <div className="space-y-4">
+                  <p>Are you sure you want to reset this security key for reassignment to another user?</p>
+                  
+                  <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200 dark:bg-transparent dark:border-yellow-700/40">
+                    <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">This will:</h3>
+                    <ul className="list-disc pl-5 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
+                      <li>Deactivate the key for the current user</li>
+                      <li>Clear the security key's PIN in the database</li>
+                      <li>Mark the key as available for reassignment</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-red-50 p-4 rounded-md border border-red-200 dark:bg-transparent dark:border-red-700/40">
+                    <h3 className="font-semibold text-red-800 dark:text-red-300">Note:</h3>
+                    <p className="text-sm text-red-700 dark:text-red-400">
+                      For security reasons, after resetting, a new user will need to register
+                      the security key before they can use it.
+                    </p>
+                  </div>
                 </div>
               </div>
             </AlertDialogDescription>
