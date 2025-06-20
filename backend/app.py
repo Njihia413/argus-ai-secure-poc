@@ -879,7 +879,7 @@ def get_users():
                 'securityKeyCount': total_key_count,  # Total number of keys
                 'securityKeyStatus': security_key_status,  # 'active', 'inactive', or null
                 'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
-                'loginAttempts': successful_attempts, # successful_login_attempts in db
+                'successfulLoginAttempts': successful_attempts, # successful_login_attempts in db
                 'failedAttempts': failed_attempts,
                 'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None,
                 # Added fields:
