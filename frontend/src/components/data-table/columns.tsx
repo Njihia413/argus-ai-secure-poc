@@ -27,7 +27,7 @@ export type User = {
   hasSecurityKey: boolean
   securityKeyStatus: string | null // Add this new field for status (active, inactive, null)
   lastLogin: string | null
-  loginAttempts: number
+  successfulLoginAttempts: number
   failedAttempts: number
   account_locked: boolean // New field for account lock status
 }
@@ -152,10 +152,10 @@ export const columns: ColumnDef<User, unknown>[] = [
     },
   },
   {
-    accessorKey: "loginAttempts",
+    accessorKey: "successfulLoginAttempts",
     header: "Successful Logins",
     cell: ({ row }) => {
-      const attempts = row.getValue("loginAttempts")
+      const attempts = row.getValue("successfulLoginAttempts")
       return (
           <Badge
               variant="outline"
