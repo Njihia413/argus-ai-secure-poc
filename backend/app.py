@@ -175,6 +175,10 @@ class Users(db.Model):
         else:
             self.security_key_status = None
             self.has_security_key = False
+            # Clear related fields when no keys are present
+            self.credential_id = None
+            self.public_key = None
+            self.sign_count = 0
 
         return self
 
@@ -1791,6 +1795,12 @@ def reset_security_key(key_id):
         )
         db.session.add(audit_log)
         
+        # Update the user's status
+        user_of_key = Users.query.get(key.user_id)
+        if user_of_key:
+            user_of_key.update_security_key_status()
+            # The commit below will save changes to user_of_key as well
+            
         db.session.commit()
 
         log_system_event(
