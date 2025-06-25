@@ -261,6 +261,7 @@ export default function SecurityKeyDetailsPage() {
                 }
               }}
               enableRowSelection={true}
+              getPaginationRowModel={true}
               getSortedRowModel={true}
               getFilteredRowModel={true}
               toolbar={(table) => (
