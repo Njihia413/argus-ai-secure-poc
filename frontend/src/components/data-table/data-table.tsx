@@ -124,7 +124,7 @@ export function DataTable<TData>({
   const table = useReactTable<TData>({
     data,
     columns,
-    pageCount: isManualPagination ? pageCount : -1,
+    pageCount: isManualPagination ? pageCount : Math.ceil(data.length / 10),
     state: {
       sorting: localState.sorting,
       columnFilters: localState.columnFilters,
@@ -207,9 +207,10 @@ export function DataTable<TData>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className="hover:bg-muted/50"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="py-3">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
