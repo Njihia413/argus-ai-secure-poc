@@ -34,7 +34,17 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
   },
   {
     accessorKey: "details",
-    header: "Details",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Details
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
   },
   {
     accessorKey: "timestamp",
@@ -51,15 +61,35 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
     },
     cell: ({ row }) => {
       const timestamp = row.getValue("timestamp") as string
-      return new Date(timestamp).toLocaleString()
+      const date = new Date(timestamp)
+      return (
+        <div className="space-y-1">
+          <div>{date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+          <div className="text-xs text-muted-foreground">{date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+        </div>
+      )
     },
   },
   {
     accessorKey: "performedBy",
-    header: "Performed By",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Performed By
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
     cell: ({ row }) => {
       const performedBy = row.original.performedBy
-      return performedBy ? performedBy.username : "System"
+      return (
+        <span className="font-medium">
+          {performedBy ? performedBy.username : "System"}
+        </span>
+      )
     },
   },
 ]
