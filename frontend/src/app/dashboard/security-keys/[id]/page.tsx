@@ -11,9 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { API_URL } from "@/app/utils/constants"
-import { AuditLog, columns as auditLogColumns } from "@/components/data-table/audit-log-columns"
-// import { DataTable } from "@/components/data-table/data-table" // Not used directly, AuditDataTable is used
-import { AuditDataTable } from "@/components/data-table/audit-data-table"; // Moved import to top
+import { DataTable } from "@/components/data-table/data-table"
+import { SecurityKeyAuditLog, columns as securityKeyAuditColumns } from "@/components/data-table/security-key-audit-columns"
 
 // Interface for the detailed security key object from backend
 interface SecurityKeyDetail {
@@ -36,7 +35,7 @@ interface SecurityKeyDetail {
     firstName: string;
     lastName: string;
   };
-  auditLogs: AuditLog[]; // Array of audit logs
+  auditLogs: SecurityKeyAuditLog[]; // Array of audit logs for security keys
 }
 
 export default function SecurityKeyDetailsPage() {
@@ -224,7 +223,7 @@ export default function SecurityKeyDetailsPage() {
         <CardContent>
           {/* Use AuditDataTable for filtering capabilities */}
           {securityKey.auditLogs.length > 0 ?
-            <AuditDataTable columns={auditLogColumns} data={securityKey.auditLogs} />
+            <DataTable columns={securityKeyAuditColumns} data={securityKey.auditLogs} />
           :
             <p className="text-muted-foreground">No audit logs available for this security key.</p>
           }
