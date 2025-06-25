@@ -118,9 +118,6 @@ export default function UsersPage() {
           per_page: pagination.pageSize.toString(),
         });
 
-        if (searchTerm) {
-          queryParams.append("search_term", searchTerm);
-        }
         if (roleFilter && roleFilter !== "all") {
           queryParams.append("role", roleFilter);
         }
@@ -156,7 +153,7 @@ export default function UsersPage() {
     };
 
     fetchUsers();
-  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter, searchTerm]);
+  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter]);
 
   // New user form state and handlers
   const [newUserForm, setNewUserForm] = useState<UserFormData>({
@@ -303,10 +300,12 @@ export default function UsersPage() {
                         columnVisibility,
                         rowSelection,
                         pagination,
+                        globalFilter: searchTerm,
                       }}
                       onSortingChange={setSorting}
                       onColumnFiltersChange={setColumnFilters}
                       onColumnVisibilityChange={setColumnVisibility}
+                      onGlobalFilterChange={setSearchTerm}
                       onRowSelectionChange={setRowSelection}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
