@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
@@ -38,6 +38,12 @@ const actionOptions = [
   { value: "reassign", label: "Reassignment" }
 ]
 
+// Interface for the API response for security key details
+interface SecurityKeyDetailsApiResponse {
+  securityKey: SecurityKeyDetail;
+  totalAuditLogs: number;
+}
+
 // Interface for the detailed security key object from backend
 interface SecurityKeyDetail {
   id: number;
@@ -59,10 +65,7 @@ interface SecurityKeyDetail {
     firstName: string;
     lastName: string;
   };
-  auditLogs: {
-    logs: SecurityKeyAuditLog[];
-    total: number;
-  };
+  auditLogs: SecurityKeyAuditLog[];
 }
 
 export default function SecurityKeyDetailsPage() {
@@ -73,6 +76,7 @@ export default function SecurityKeyDetailsPage() {
   const [securityKey, setSecurityKey] = useState<SecurityKeyDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [actionFilterValue, setActionFilterValue] = useState<string>("all")
+  const [searchFilter, setSearchFilter] = useState("")
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 10,
@@ -81,6 +85,13 @@ export default function SecurityKeyDetailsPage() {
   // Add state for delete confirmation later
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [isDeleting, setIsDeleting] = useState(false);
+
+  const paginatedAuditLogs = useMemo(() => {
+    if (!securityKey?.auditLogs) return []
+    const start = pagination.pageIndex * pagination.pageSize
+    const end = start + pagination.pageSize
+    return securityKey.auditLogs.slice(start, end)
+  }, [securityKey, pagination])
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -97,7 +108,7 @@ export default function SecurityKeyDetailsPage() {
     if (keyId) {
       fetchKeyDetails(userInfo.authToken, keyId as string)
     }
-  }, [router, keyId, pagination, actionFilterValue])
+  }, [router, keyId, pagination, actionFilterValue, searchFilter])
 
   const fetchKeyDetails = async (authToken: string, id: string) => {
     setIsLoading(true)
@@ -106,8 +117,9 @@ export default function SecurityKeyDetailsPage() {
         page: (pagination.pageIndex + 1).toString(),
         per_page: pagination.pageSize.toString(),
         action_type: actionFilterValue,
+        search: searchFilter,
       })
-      const response = await axios.get<{ securityKey: SecurityKeyDetail }>(
+      const response = await axios.get<SecurityKeyDetailsApiResponse>(
         `${API_URL}/security-keys/${id}?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
@@ -116,9 +128,7 @@ export default function SecurityKeyDetailsPage() {
       if (response.data && response.data.securityKey) {
         setSecurityKey(response.data.securityKey)
         setPageCount(
-          Math.ceil(
-            response.data.securityKey.auditLogs.total / pagination.pageSize
-          )
+          Math.ceil((response.data.totalAuditLogs || 0) / pagination.pageSize)
         )
       } else {
         toast.error("Security key not found")
@@ -264,10 +274,10 @@ export default function SecurityKeyDetailsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {securityKey.auditLogs.total > 0 ? (
+          {securityKey.auditLogs && securityKey.auditLogs.length > 0 ? (
             <DataTable
               columns={securityKeyAuditColumns}
-              data={securityKey.auditLogs.logs}
+              data={paginatedAuditLogs}
               pageCount={pageCount}
               state={{
                 sorting: [],
@@ -283,9 +293,9 @@ export default function SecurityKeyDetailsPage() {
                   <div className="flex flex-1 items-center space-x-4">
                     <Input
                       placeholder="Search security key audit logs..."
-                      value={(table.getColumn("details")?.getFilterValue() as string) ?? ""}
+                      value={searchFilter}
                       onChange={(event) =>
-                        table.getColumn("details")?.setFilterValue(event.target.value)
+                        setSearchFilter(event.target.value)
                       }
                       className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
                     />
@@ -293,7 +303,6 @@ export default function SecurityKeyDetailsPage() {
                       value={actionFilterValue}
                       onValueChange={(value) => {
                         setActionFilterValue(value);
-                        table.getColumn("action")?.setFilterValue(value === "all" ? "" : value);
                       }}
                     >
                       <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
