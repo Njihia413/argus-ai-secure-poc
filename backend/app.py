@@ -5245,9 +5245,9 @@ def get_security_alerts():
             filtered_alerts = [a for a in filtered_alerts if a['severity'].lower() == filter_severity.lower()]
         
         if filter_alert_type:
-            # Normalize alert type from frontend (e.g., 'high_risk_login' -> 'High Risk Login')
-            normalized_alert_type = filter_alert_type.replace('_', ' ').title()
-            filtered_alerts = [a for a in filtered_alerts if a['type'] == normalized_alert_type]
+            # The frontend sends the exact string value, so no normalization is needed.
+            # The previous .title() method was causing issues with terms like "IP".
+            filtered_alerts = [a for a in filtered_alerts if a['type'] == filter_alert_type]
 
         # Paginate the filtered list
         total_items = len(filtered_alerts)
