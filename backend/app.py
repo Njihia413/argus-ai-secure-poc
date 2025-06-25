@@ -817,54 +817,68 @@ def get_users():
         if not admin_user or admin_user.role != 'admin':
             return jsonify({'error': 'Admin privileges required'}), 403
 
-        # Use the filtered query to exclude soft-deleted users
-        users = Users.query.filter_by(is_deleted=False).all()
+        # Pagination and filtering parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        search_term = request.args.get('search_term', type=str)
+        role_filter = request.args.get('role', type=str)
+        security_key_status_filter = request.args.get('security_key_status', type=str)
+        account_status_filter = request.args.get('account_status', type=str)
 
-        # Now update login attempts with the current active state
+        # Base query to exclude soft-deleted users
+        query = Users.query.filter_by(is_deleted=False)
+
+
+        # Apply search term filter
+        if search_term:
+            search_ilike = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    Users.username.ilike(search_ilike),
+                    Users.first_name.ilike(search_ilike),
+                    Users.last_name.ilike(search_ilike),
+                    Users.email.ilike(search_ilike),
+                    Users.national_id.cast(db.String).ilike(search_ilike)
+                )
+            )
+
+        # Apply role filter
+        if role_filter and role_filter != 'all':
+            query = query.filter(Users.role == role_filter)
+
+        # Apply account status filter
+        if account_status_filter and account_status_filter != 'all':
+            if account_status_filter == 'locked':
+                query = query.filter(Users.account_locked == True)
+            elif account_status_filter == 'unlocked':
+                query = query.filter(Users.account_locked == False)
+
+        # Apply security key status filter
+        if security_key_status_filter and security_key_status_filter != 'all':
+            if security_key_status_filter == 'none':
+                query = query.filter(Users.has_security_key == False)
+            else: # 'active' or 'inactive'
+                query = query.filter(Users.security_key_status == security_key_status_filter)
+
+        # Paginate the results
+        paginated_users = query.paginate(page=page, per_page=per_page, error_out=False)
+        users = paginated_users.items
+        total_pages = paginated_users.pages
+
         user_list = []
-
         for user in users:
-            # Only update attempts for non-deleted users
-            failed_attempts = AuthenticationAttempt.query.filter(
-                AuthenticationAttempt.user_id == user.id,
-                AuthenticationAttempt.success == False,
-                AuthenticationAttempt.is_deleted == False,
-                AuthenticationAttempt.auth_type == 'password'
-            ).count()
+            # These counts can be optimized if performance becomes an issue
+            failed_attempts = AuthenticationAttempt.query.filter_by(user_id=user.id, success=False, is_deleted=False, auth_type='password').count()
+            successful_attempts = AuthenticationAttempt.query.filter_by(user_id=user.id, success=True, is_deleted=False, auth_type='password').count()
+            active_keys = SecurityKey.query.filter_by(user_id=user.id, is_active=True).count()
+            inactive_keys = SecurityKey.query.filter_by(user_id=user.id, is_active=False).count()
+            total_key_count = active_keys + inactive_keys
 
-            successful_attempts = AuthenticationAttempt.query.filter(
-                AuthenticationAttempt.user_id == user.id,
-                AuthenticationAttempt.success == True,
-                AuthenticationAttempt.is_deleted == False,
-                AuthenticationAttempt.auth_type == 'password'
-            ).count()
-
-            # Count active and inactive security keys for this user
-            active_keys = SecurityKey.query.filter_by(
-                user_id=user.id,
-                is_active=True
-            ).count()
-
-            inactive_keys = SecurityKey.query.filter_by(
-                user_id=user.id,
-                is_active=False
-            ).count()
-
-            # Determine security key status
             security_key_status = None
             if active_keys > 0:
                 security_key_status = "active"
             elif inactive_keys > 0:
                 security_key_status = "inactive"
-            else:
-                security_key_status = None
-
-            # Total key count (both active and inactive)
-            total_key_count = active_keys + inactive_keys
-
-            # Log user security key info for debugging
-            print(f"User {user.username}: active_keys={active_keys}, inactive_keys={inactive_keys}, "
-                  f"status={security_key_status}, total={total_key_count}")
 
             user_list.append({
                 'id': user.id,
@@ -875,24 +889,23 @@ def get_users():
                 'lastName': user.last_name,
                 'email': user.email,
                 'role': user.role,
-                'hasSecurityKey': total_key_count > 0,  # True if user has any keys (active or inactive)
-                'securityKeyCount': total_key_count,  # Total number of keys
-                'securityKeyStatus': security_key_status,  # 'active', 'inactive', or null
+                'hasSecurityKey': total_key_count > 0,
+                'securityKeyCount': total_key_count,
+                'securityKeyStatus': security_key_status,
                 'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
-                'successfulLoginAttempts': successful_attempts, # successful_login_attempts in db
+                'successfulLoginAttempts': successful_attempts,
                 'failedAttempts': failed_attempts,
                 'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None,
-                # Added fields:
                 'account_locked': user.account_locked,
                 'timezone': user.timezone,
                 'last_login_ip': user.last_login_ip,
-                'total_login_attempts': user.total_login_attempts, # This uses the DB column
+                'total_login_attempts': user.total_login_attempts,
                 'locked_time': user.locked_time.isoformat() if user.locked_time else None,
                 'unlocked_by': user.unlocked_by,
                 'unlocked_time': user.unlocked_time.isoformat() if user.unlocked_time else None
             })
 
-        return jsonify({'users': user_list})
+        return jsonify({'users': user_list, 'pages': total_pages})
 
     except Exception as e:
         print(f"Error in get_users: {str(e)}")
