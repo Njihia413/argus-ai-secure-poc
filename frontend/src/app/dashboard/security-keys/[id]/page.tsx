@@ -3,13 +3,20 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, ChevronRight, Edit, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { API_URL } from "@/app/utils/constants"
 import { DataTable } from "@/components/data-table/data-table"
 import { SecurityKeyAuditLog, columns as securityKeyAuditColumns } from "@/components/data-table/security-key-audit-columns"
@@ -221,12 +228,65 @@ export default function SecurityKeyDetailsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Use AuditDataTable for filtering capabilities */}
-          {securityKey.auditLogs.length > 0 ?
-            <DataTable columns={securityKeyAuditColumns} data={securityKey.auditLogs} />
-          :
+          {securityKey.auditLogs.length > 0 ? (
+            <DataTable
+              columns={securityKeyAuditColumns}
+              data={securityKey.auditLogs}
+              state={{
+                sorting: [],
+                columnFilters: [],
+                columnVisibility: {},
+                rowSelection: {},
+                pagination: {
+                  pageIndex: 0,
+                  pageSize: 10,
+                }
+              }}
+              enableRowSelection={true}
+              getSortedRowModel={true}
+              getFilteredRowModel={true}
+              toolbar={(table) => (
+                <div className="flex items-center justify-between w-full font-montserrat">
+                  <div className="flex flex-1 items-center space-x-4">
+                    <Input
+                      placeholder="Search audit logs..."
+                      value={(table.getColumn("action")?.getFilterValue() as string) ?? ""}
+                      onChange={(event) =>
+                        table.getColumn("action")?.setFilterValue(event.target.value)
+                      }
+                      className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
+                    />
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                        Columns <ChevronDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="rounded-xl">
+                      {table
+                        .getAllColumns()
+                        .filter((column) => column.getCanHide())
+                        .map((column) => (
+                          <DropdownMenuCheckboxItem
+                            key={column.id}
+                            className="capitalize"
+                            checked={column.getIsVisible()}
+                            onCheckedChange={(value) =>
+                              column.toggleVisibility(!!value)
+                            }
+                          >
+                            {column.id}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            />
+          ) : (
             <p className="text-muted-foreground">No audit logs available for this security key.</p>
-          }
+          )}
         </CardContent>
       </Card>
 
