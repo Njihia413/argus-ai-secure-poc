@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
 import { CirclePlus, Eye, EyeOff, LockOpen, ChevronDown } from "lucide-react"
@@ -82,7 +82,7 @@ export default function UsersPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [pageCount, setPageCount] = useState(0)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchFilter, setSearchFilter] = useState("")
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
@@ -94,6 +94,66 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState("all") // 'all', 'admin', 'user'
   const [securityKeyFilter, setSecurityKeyFilter] = useState("all") // 'all', 'none', 'active', 'inactive'
   const [accountStatusFilter, setAccountStatusFilter] = useState("all") // 'all', 'locked', 'unlocked'
+
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter(user => {
+        if (roleFilter !== "all" && user.role !== roleFilter) {
+          return false
+        }
+        if (securityKeyFilter !== "all") {
+          if (securityKeyFilter === "none" && user.hasSecurityKey) {
+            return false
+          }
+          if (
+            securityKeyFilter === "active" &&
+            !(user.hasSecurityKey && user.securityKeyStatus === "active")
+          ) {
+            return false
+          }
+          if (
+            securityKeyFilter === "inactive" &&
+            !(user.hasSecurityKey && user.securityKeyStatus === "inactive")
+          ) {
+            return false
+          }
+        }
+        if (accountStatusFilter !== "all") {
+          if (
+            accountStatusFilter === "locked" &&
+            !user.account_locked
+          ) {
+            return false
+          }
+          if (
+            accountStatusFilter === "unlocked" &&
+            user.account_locked
+          ) {
+            return false
+          }
+        }
+        const searchTerm = searchFilter.toLowerCase()
+        return (
+          user.username.toLowerCase().includes(searchTerm) ||
+          user.firstName.toLowerCase().includes(searchTerm) ||
+          user.lastName.toLowerCase().includes(searchTerm) ||
+          user.email.toLowerCase().includes(searchTerm) ||
+          String(user.nationalId).includes(searchTerm)
+        )
+      })
+  }, [users, roleFilter, securityKeyFilter, accountStatusFilter, searchFilter])
+
+  const paginatedUsers = useMemo(() => {
+    const start = pagination.pageIndex * pagination.pageSize
+    const end = start + pagination.pageSize
+    return filteredUsers.slice(start, end)
+  }, [filteredUsers, pagination])
+
+  useEffect(() => {
+    if (filteredUsers.length > 0) {
+      setPageCount(Math.ceil(filteredUsers.length / pagination.pageSize))
+    }
+  }, [filteredUsers, pagination.pageSize])
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -113,23 +173,8 @@ export default function UsersPage() {
 
       try {
         setIsLoading(true);
-        const queryParams = new URLSearchParams({
-          page: (pagination.pageIndex + 1).toString(),
-          per_page: pagination.pageSize.toString(),
-        });
-
-        if (roleFilter && roleFilter !== "all") {
-          queryParams.append("role", roleFilter);
-        }
-        if (securityKeyFilter && securityKeyFilter !== "all") {
-          queryParams.append("security_key_status", securityKeyFilter);
-        }
-        if (accountStatusFilter && accountStatusFilter !== "all") {
-          queryParams.append("account_status", accountStatusFilter);
-        }
-
-        const response = await axios.get<{ users: User[]; pages: number }>(
-          `${API_URL}/users?${queryParams.toString()}`,
+        const response = await axios.get<{ users: User[] }>(
+          `${API_URL}/users`,
           {
             headers: {
               Authorization: `Bearer ${userInfo.authToken}`,
@@ -139,7 +184,6 @@ export default function UsersPage() {
 
         if (response.data && response.data.users) {
           setUsers(response.data.users);
-          setPageCount(response.data.pages);
         } else {
           console.error("Invalid response format:", response.data);
           toast.error("Invalid data format received from server");
@@ -153,7 +197,7 @@ export default function UsersPage() {
     };
 
     fetchUsers();
-  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter]);
+  }, [router]);
 
   // New user form state and handlers
   const [newUserForm, setNewUserForm] = useState<UserFormData>({
@@ -286,7 +330,7 @@ export default function UsersPage() {
               ) : (
                   <DataTable
                       columns={columns}
-                      data={users}
+                      data={paginatedUsers}
                       pageCount={pageCount}
                       meta={{
                         setSelectedUser,
@@ -295,26 +339,25 @@ export default function UsersPage() {
                         setIsUnlockAccountDialogOpen,
                       }}
                       state={{
-                        sorting,
-                        columnFilters,
-                        columnVisibility,
-                        rowSelection,
+                        sorting: [],
+                        columnFilters: [],
+                        columnVisibility: {},
+                        rowSelection: {},
                         pagination,
-                        globalFilter: searchTerm,
                       }}
-                      onSortingChange={setSorting}
-                      onColumnFiltersChange={setColumnFilters}
-                      onColumnVisibilityChange={setColumnVisibility}
-                      onGlobalFilterChange={setSearchTerm}
-                      onRowSelectionChange={setRowSelection}
+                      // onSortingChange={setSorting}
+                      // onColumnFiltersChange={setColumnFilters}
+                      // onColumnVisibilityChange={setColumnVisibility}
+                      // onGlobalFilterChange={setSearchFilter}
+                      // onRowSelectionChange={setRowSelection}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
                       toolbar={(table) => (
                         <div className="flex items-center space-x-4 w-full font-montserrat">
                            <Input
                               placeholder="Search users..."
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
+                              value={searchFilter}
+                              onChange={(e) => setSearchFilter(e.target.value)}
                               className="max-w-sm"
                             />
                             <Select value={roleFilter} onValueChange={setRoleFilter}>
