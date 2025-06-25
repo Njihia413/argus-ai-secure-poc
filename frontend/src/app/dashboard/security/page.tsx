@@ -198,7 +198,7 @@ export default function SecurityPage() {
         const statsData = await statsRes.json() as SecurityStats
 
         setAlerts(alertsData.alerts || [])
-        setPageCount(Math.ceil(statsData.alertStats.total / pagination.pageSize))
+        setPageCount(Math.ceil((alertsData.total || 0) / pagination.pageSize))
         setStats(statsData || emptyStats)
       } catch (error) {
         const e = error as Error;
