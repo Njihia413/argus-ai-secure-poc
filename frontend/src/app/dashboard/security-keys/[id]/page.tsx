@@ -20,6 +20,23 @@ import {
 import { API_URL } from "@/app/utils/constants"
 import { DataTable } from "@/components/data-table/data-table"
 import { SecurityKeyAuditLog, columns as securityKeyAuditColumns } from "@/components/data-table/security-key-audit-columns"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+// Security key specific action options for filtering - matching backend values and display labels
+const actionOptions = [
+  { value: "all", label: "All Actions" },
+  { value: "initial-register", label: "Initial Registration" },
+  { value: "re-register", label: "Re-Registration" },
+  { value: "deactivate", label: "Deactivation" },
+  { value: "reset", label: "Reset" },
+  { value: "reassign", label: "Reassignment" }
+]
 
 // Interface for the detailed security key object from backend
 interface SecurityKeyDetail {
@@ -52,6 +69,7 @@ export default function SecurityKeyDetailsPage() {
 
   const [securityKey, setSecurityKey] = useState<SecurityKeyDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [actionFilterValue, setActionFilterValue] = useState<string>("all")
   // Add state for delete confirmation later
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [isDeleting, setIsDeleting] = useState(false);
@@ -250,12 +268,30 @@ export default function SecurityKeyDetailsPage() {
                   <div className="flex flex-1 items-center space-x-4">
                     <Input
                       placeholder="Search security key audit logs..."
-                      value={(table.getColumn("action")?.getFilterValue() as string) ?? ""}
+                      value={(table.getColumn("details")?.getFilterValue() as string) ?? ""}
                       onChange={(event) =>
-                        table.getColumn("action")?.setFilterValue(event.target.value)
+                        table.getColumn("details")?.setFilterValue(event.target.value)
                       }
                       className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
                     />
+                    <Select
+                      value={actionFilterValue}
+                      onValueChange={(value) => {
+                        setActionFilterValue(value);
+                        table.getColumn("action")?.setFilterValue(value === "all" ? "" : value);
+                      }}
+                    >
+                      <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                        <SelectValue placeholder="Filter by action" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {actionOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
