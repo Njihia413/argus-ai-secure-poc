@@ -339,17 +339,16 @@ export default function UsersPage() {
                         setIsUnlockAccountDialogOpen,
                       }}
                       state={{
-                        sorting: [],
-                        columnFilters: [],
-                        columnVisibility: {},
-                        rowSelection: {},
+                        sorting,
+                        columnFilters,
+                        columnVisibility,
+                        rowSelection,
                         pagination,
                       }}
-                      // onSortingChange={setSorting}
-                      // onColumnFiltersChange={setColumnFilters}
-                      // onColumnVisibilityChange={setColumnVisibility}
-                      // onGlobalFilterChange={setSearchFilter}
-                      // onRowSelectionChange={setRowSelection}
+                      onSortingChange={setSorting}
+                      onColumnFiltersChange={setColumnFilters}
+                      onColumnVisibilityChange={setColumnVisibility}
+                      onRowSelectionChange={setRowSelection}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
                       toolbar={(table) => (
