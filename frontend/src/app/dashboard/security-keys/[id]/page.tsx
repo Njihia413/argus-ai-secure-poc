@@ -249,7 +249,7 @@ export default function SecurityKeyDetailsPage() {
                 <div className="flex items-center justify-between w-full font-montserrat">
                   <div className="flex flex-1 items-center space-x-4">
                     <Input
-                      placeholder="Search audit logs..."
+                      placeholder="Search security key audit logs..."
                       value={(table.getColumn("action")?.getFilterValue() as string) ?? ""}
                       onChange={(event) =>
                         table.getColumn("action")?.setFilterValue(event.target.value)
