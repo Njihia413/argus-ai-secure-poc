@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
-import { CirclePlus, Eye, EyeOff, LockOpen, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { CirclePlus, Eye, EyeOff, LockOpen, ChevronDown } from "lucide-react"
 import {
   ColumnFiltersState,
   SortingState,
@@ -18,14 +18,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -36,11 +28,8 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   Select,
@@ -51,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 
 // User type definition for real API integration
@@ -107,62 +95,68 @@ export default function UsersPage() {
   const [securityKeyFilter, setSecurityKeyFilter] = useState("all") // 'all', 'none', 'active', 'inactive'
   const [accountStatusFilter, setAccountStatusFilter] = useState("all") // 'all', 'locked', 'unlocked'
 
-  // Initial load
   useEffect(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+    const fetchUsers = async () => {
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
 
-    if (!userInfo || !userInfo.authToken) {
-      toast.error("You need to log in")
-      router.push("/login")
-      return
-    }
-
-    if (userInfo.role !== "admin") {
-      toast.error("Admin access required")
-      router.push("/")
-      return
-    }
-
-    // Load users data
-    fetchUsers(userInfo.authToken)
-  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter, searchTerm])
-
-  const fetchUsers = async (authToken: string) => {
-    try {
-      setIsLoading(true)
-      const params = new URLSearchParams({
-        page: (pagination.pageIndex + 1).toString(),
-        per_page: pagination.pageSize.toString(),
-        search_term: searchTerm,
-        role: roleFilter,
-        security_key_status: securityKeyFilter,
-        account_status: accountStatusFilter,
-      })
-
-      const response = await axios.get<{ users: User[]; pages: number }>(
-        `${API_URL}/users?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        }
-      )
-
-      // Update state with users from API
-      if (response.data && response.data.users) {
-        setUsers(response.data.users)
-        setPageCount(response.data.pages)
-      } else {
-        console.error("Invalid response format:", response.data)
-        toast.error("Invalid data format received from server")
+      if (!userInfo || !userInfo.authToken) {
+        toast.error("You need to log in");
+        router.push("/login");
+        return;
       }
-    } catch (error: any) {
-      console.error("Error fetching users:", error.response?.data || error.message)
-      toast.error(error.response?.data?.error || "Failed to load users data")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+
+      if (userInfo.role !== "admin") {
+        toast.error("Admin access required");
+        router.push("/");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const queryParams = new URLSearchParams({
+          page: (pagination.pageIndex + 1).toString(),
+          per_page: pagination.pageSize.toString(),
+        });
+
+        if (searchTerm) {
+          queryParams.append("search_term", searchTerm);
+        }
+        if (roleFilter && roleFilter !== "all") {
+          queryParams.append("role", roleFilter);
+        }
+        if (securityKeyFilter && securityKeyFilter !== "all") {
+          queryParams.append("security_key_status", securityKeyFilter);
+        }
+        if (accountStatusFilter && accountStatusFilter !== "all") {
+          queryParams.append("account_status", accountStatusFilter);
+        }
+
+        const response = await axios.get<{ users: User[]; pages: number }>(
+          `${API_URL}/users?${queryParams.toString()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${userInfo.authToken}`,
+            },
+          }
+        );
+
+        if (response.data && response.data.users) {
+          setUsers(response.data.users);
+          setPageCount(response.data.pages);
+        } else {
+          console.error("Invalid response format:", response.data);
+          toast.error("Invalid data format received from server");
+        }
+      } catch (error: any) {
+        console.error("Error fetching users:", error.response?.data || error.message);
+        toast.error(error.response?.data?.error || "Failed to load users data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter, searchTerm]);
 
   // New user form state and handlers
   const [newUserForm, setNewUserForm] = useState<UserFormData>({
@@ -228,7 +222,7 @@ export default function UsersPage() {
 
       // Close dialog and refresh users
       setIsAddUserDialogOpen(false)
-      fetchUsers(userInfo.authToken)
+      // No need to call fetchUsers, useEffect will refetch
     } catch (error: any) {
       console.error("Error creating user:", error)
       toast.error(error.response?.data?.error || "Failed to create user")
@@ -265,7 +259,7 @@ export default function UsersPage() {
       
       toast.success(`User account ${selectedUser.username} unlocked successfully`);
       setIsUnlockAccountDialogOpen(false); // Close dialog on success
-      fetchUsers(authToken); // Refresh users list
+      // No need to call fetchUsers, useEffect will refetch
     } catch (error) {
       console.error('Error unlocking account:', error);
       toast.error((error as Error).message || "Failed to unlock account. Please try again.");
@@ -310,10 +304,10 @@ export default function UsersPage() {
                         rowSelection,
                         pagination,
                       }}
-                      onSortingChange={(sorting) => setSorting(sorting)}
-                      onColumnFiltersChange={(filters) => setColumnFilters(filters)}
-                      onColumnVisibilityChange={(visibility) => setColumnVisibility(visibility)}
-                      onRowSelectionChange={(selection) => setRowSelection(selection)}
+                      onSortingChange={setSorting}
+                      onColumnFiltersChange={setColumnFilters}
+                      onColumnVisibilityChange={setColumnVisibility}
+                      onRowSelectionChange={setRowSelection}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
                       toolbar={(table) => (
@@ -534,7 +528,7 @@ export default function UsersPage() {
                     }
 
                     // Update user via API
-                    const response = await axios.put(
+                    await axios.put(
                         `${API_URL}/users/${selectedUser.id}`,
                         {
                           firstName: selectedUser.firstName,
@@ -554,7 +548,7 @@ export default function UsersPage() {
 
                     toast.success("User details updated successfully")
                     setIsEditUserDialogOpen(false)
-                    fetchUsers(userInfo.authToken)
+                    // No need to call fetchUsers, useEffect will refetch
                   } catch (error: any) {
                     console.error("Error updating user:", error)
                     toast.error(error.response?.data?.error || "Failed to update user")
@@ -737,7 +731,7 @@ export default function UsersPage() {
 
                             toast.success("User deleted successfully")
                             setIsDeleteDialogOpen(false)
-                            fetchUsers(userInfo.authToken)
+                            // No need to call fetchUsers, useEffect will refetch
                           } catch (error: any) {
                             console.error("Error deleting user:", error)
                             toast.error(error.response?.data?.error || "Failed to delete user")
