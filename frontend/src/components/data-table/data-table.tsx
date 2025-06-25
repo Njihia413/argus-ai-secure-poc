@@ -22,6 +22,7 @@ import type {
   OnChangeFn,
   Updater,
   TableState,
+  ColumnSizingInfoState,
 } from "@tanstack/react-table"
 import {
   flexRender,
@@ -55,7 +56,7 @@ interface DataTableState {
   expanded?: { [key: string]: boolean }
   grouping?: string[]
   columnSizing?: { [key: string]: number }
-  columnSizingInfo?: { startOffset: number | null, startSize: number | null }
+  columnSizingInfo?: ColumnSizingInfoState
 }
 
 interface DataTableProps<TData> {
@@ -76,6 +77,7 @@ interface DataTableProps<TData> {
   onColumnVisibilityChange?: OnChangeFn<VisibilityState>
   onRowSelectionChange?: OnChangeFn<RowSelectionState>
   onPaginationChange?: OnChangeFn<{ pageIndex: number; pageSize: number }>
+  onGlobalFilterChange?: OnChangeFn<string>
   enableRowSelection?: boolean
   getSortedRowModel?: boolean
   getFilteredRowModel?: boolean
@@ -94,7 +96,14 @@ const defaultState: DataTableState = {
   expanded: {},
   grouping: [],
   columnSizing: {},
-  columnSizingInfo: { startOffset: null, startSize: null }
+  columnSizingInfo: {
+    columnSizingStart: [],
+    deltaOffset: null,
+    deltaPercentage: null,
+    isResizingColumn: false,
+    startOffset: null,
+    startSize: null,
+  },
 }
 
 export function DataTable<TData>({
@@ -113,59 +122,29 @@ export function DataTable<TData>({
   enableRowSelection = false,
   getSortedRowModel: enableSorting = false,
   getFilteredRowModel: enableFiltering = false,
+  onGlobalFilterChange,
 }: DataTableProps<TData>) {
   const isManualPagination = onPaginationChange !== undefined && pageCount !== undefined;
-
-  const [localState, setLocalState] = React.useState<DataTableState>(state)
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: 10,
-  });
 
   const table = useReactTable<TData>({
     data,
     columns,
-    pageCount: isManualPagination ? pageCount : Math.ceil(data.length / ((isManualPagination ? state.pagination?.pageSize : pagination.pageSize) ?? 10)),
-    state: {
-      sorting: localState.sorting,
-      columnFilters: localState.columnFilters,
-      columnVisibility: localState.columnVisibility,
-      rowSelection: localState.rowSelection,
-      globalFilter: localState.globalFilter,
-      pagination: isManualPagination ? state.pagination : pagination,
-    },
+    pageCount: pageCount === -1 ? undefined : pageCount,
+    state,
     enableRowSelection,
     manualPagination: isManualPagination,
     getCoreRowModel: getCoreRowModel(),
-    ...(!isManualPagination && { getPaginationRowModel: getPaginationRowModel() }),
+    getPaginationRowModel: getPaginationRowModel(),
     ...(enableSorting ? { getSortedRowModel: getSortedRowModel() } : {}),
     ...(enableFiltering ? { getFilteredRowModel: getFilteredRowModel() } : {}),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
-    onSortingChange: (updater) => {
-      const value = typeof updater === 'function' ? updater(localState.sorting ?? []) : updater
-      setLocalState((prev) => ({ ...prev, sorting: value }))
-      onSortingChange?.(value)
-    },
-    onColumnFiltersChange: (updater) => {
-      const value = typeof updater === 'function' ? updater(localState.columnFilters ?? []) : updater
-      setLocalState((prev) => ({ ...prev, columnFilters: value }))
-      onColumnFiltersChange?.(value)
-    },
-    onColumnVisibilityChange: (updater) => {
-      const value = typeof updater === 'function' ? updater(localState.columnVisibility ?? {}) : updater
-      setLocalState((prev) => ({ ...prev, columnVisibility: value }))
-      onColumnVisibilityChange?.(value)
-    },
-    onRowSelectionChange: (updater) => {
-      const value = typeof updater === 'function' ? updater(localState.rowSelection ?? {}) : updater
-      setLocalState((prev) => ({ ...prev, rowSelection: value }))
-      onRowSelectionChange?.(value)
-    },
-    onGlobalFilterChange: (value) => {
-      setLocalState((prev) => ({ ...prev, globalFilter: value }))
-    },
-    onPaginationChange: isManualPagination ? onPaginationChange : setPagination,
+    onSortingChange,
+    onColumnFiltersChange,
+    onColumnVisibilityChange,
+    onRowSelectionChange,
+    onGlobalFilterChange,
+    onPaginationChange,
     meta,
   })
 
@@ -234,7 +213,7 @@ export function DataTable<TData>({
         </Table>
       </div>
       <div className="flex items-center justify-between space-x-2 py-4">
-        <div className="text-sm text-muted-foreground">
+        <div className="flex-1 text-sm text-muted-foreground">
           {table.getFilteredSelectedRowModel().rows.length} of{" "}
           {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
@@ -243,14 +222,7 @@ export function DataTable<TData>({
             <Select
               value={`${table.getState().pagination?.pageSize || 10}`}
               onValueChange={(value) => {
-                const newSize = Number(value);
-                table.setPageSize(newSize);
-                if (onPaginationChange) {
-                  onPaginationChange({
-                    pageSize: newSize,
-                    pageIndex: 0,
-                  });
-                }
+                table.setPageSize(Number(value));
               }}
             >
               <SelectTrigger className="h-8 w-[70px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
@@ -274,16 +246,7 @@ export function DataTable<TData>({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 p-0 border border-[var(--border)] dark:bg-input bg-transparent hover:bg-transparent"
-                onClick={() => {
-                  table.previousPage();
-                  if (onPaginationChange) {
-                    const currentState = table.getState().pagination;
-                    onPaginationChange({
-                      pageSize: currentState.pageSize,
-                      pageIndex: currentState.pageIndex - 1,
-                    });
-                  }
-                }}
+                onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -293,16 +256,7 @@ export function DataTable<TData>({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 p-0 border border-[var(--border)] dark:bg-input bg-transparent hover:bg-transparent"
-                onClick={() => {
-                  table.nextPage();
-                  if (onPaginationChange) {
-                    const currentState = table.getState().pagination;
-                    onPaginationChange({
-                      pageSize: currentState.pageSize,
-                      pageIndex: currentState.pageIndex + 1,
-                    });
-                  }
-                }}
+                onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
                 <ChevronRight className="h-4 w-4" />

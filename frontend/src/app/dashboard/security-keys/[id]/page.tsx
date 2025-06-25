@@ -70,6 +70,11 @@ export default function SecurityKeyDetailsPage() {
   const [securityKey, setSecurityKey] = useState<SecurityKeyDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [actionFilterValue, setActionFilterValue] = useState<string>("all")
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 10,
+  })
+  const [pageCount, setPageCount] = useState(0)
   // Add state for delete confirmation later
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [isDeleting, setIsDeleting] = useState(false);
@@ -89,19 +94,25 @@ export default function SecurityKeyDetailsPage() {
     if (keyId) {
       fetchKeyDetails(userInfo.authToken, keyId as string)
     }
-  }, [router, keyId])
+  }, [router, keyId, pagination, actionFilterValue])
 
   const fetchKeyDetails = async (authToken: string, id: string) => {
     setIsLoading(true)
     try {
-      const response = await axios.get<{ securityKey: SecurityKeyDetail }>(
-        `${API_URL}/security-keys/${id}`,
+      const params = new URLSearchParams({
+        page: (pagination.pageIndex + 1).toString(),
+        per_page: pagination.pageSize.toString(),
+        action_type: actionFilterValue,
+      })
+      const response = await axios.get<{ securityKey: SecurityKeyDetail; pages: number }>(
+        `${API_URL}/security-keys/${id}?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
         }
       )
       if (response.data && response.data.securityKey) {
         setSecurityKey(response.data.securityKey)
+        setPageCount(response.data.pages)
       } else {
         toast.error("Security key not found")
         router.push("/dashboard/security-keys")
@@ -250,20 +261,16 @@ export default function SecurityKeyDetailsPage() {
             <DataTable
               columns={securityKeyAuditColumns}
               data={securityKey.auditLogs}
+              pageCount={pageCount}
               state={{
                 sorting: [],
                 columnFilters: [],
                 columnVisibility: {},
                 rowSelection: {},
-                pagination: {
-                  pageIndex: 0,
-                  pageSize: 10,
-                }
+                pagination,
               }}
+              onPaginationChange={setPagination}
               enableRowSelection={true}
-              getPaginationRowModel={true}
-              getSortedRowModel={true}
-              getFilteredRowModel={true}
               toolbar={(table) => (
                 <div className="flex items-center justify-between w-full font-montserrat">
                   <div className="flex flex-1 items-center space-x-4">

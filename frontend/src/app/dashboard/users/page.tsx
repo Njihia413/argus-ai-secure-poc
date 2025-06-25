@@ -93,6 +93,7 @@ export default function UsersPage() {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
+  const [pageCount, setPageCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -124,26 +125,33 @@ export default function UsersPage() {
 
     // Load users data
     fetchUsers(userInfo.authToken)
-  }, [router])
+  }, [router, pagination, roleFilter, securityKeyFilter, accountStatusFilter, searchTerm])
 
   const fetchUsers = async (authToken: string) => {
     try {
       setIsLoading(true)
-      const response = await axios.get<{ users: User[] }>(`${API_URL}/users`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+      const params = new URLSearchParams({
+        page: (pagination.pageIndex + 1).toString(),
+        per_page: pagination.pageSize.toString(),
+        search_term: searchTerm,
+        role: roleFilter,
+        security_key_status: securityKeyFilter,
+        account_status: accountStatusFilter,
       })
+
+      const response = await axios.get<{ users: User[]; pages: number }>(
+        `${API_URL}/users?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      )
 
       // Update state with users from API
       if (response.data && response.data.users) {
-        // Sort users by lastLogin date in descending order
-        const sortedUsers = response.data.users.sort((a: User, b: User) => {
-          const dateA = a.lastLogin ? new Date(a.lastLogin).getTime() : 0; // Treat null/undefined as oldest
-          const dateB = b.lastLogin ? new Date(b.lastLogin).getTime() : 0;
-          return dateB - dateA; // Descending order
-        });
-        setUsers(sortedUsers)
+        setUsers(response.data.users)
+        setPageCount(response.data.pages)
       } else {
         console.error("Invalid response format:", response.data)
         toast.error("Invalid data format received from server")
@@ -229,36 +237,6 @@ export default function UsersPage() {
     }
   }
 
-  const filteredUsers = users.filter(user => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      (user.username.toLowerCase()).includes(term) ||
-      (user.firstName.toLowerCase()).includes(term) ||
-      (user.middlename ? user.middlename.toLowerCase().includes(term) : false) ||
-      (user.lastName.toLowerCase()).includes(term) ||
-      (user.email.toLowerCase()).includes(term) ||
-      (String(user.nationalId).toLowerCase()).includes(term);
-
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-
-    let matchesSecurityKey = true;
-    if (securityKeyFilter === "none") {
-      matchesSecurityKey = !user.hasSecurityKey;
-    } else if (securityKeyFilter === "active") {
-      matchesSecurityKey = user.hasSecurityKey && user.securityKeyStatus === "active";
-    } else if (securityKeyFilter === "inactive") {
-      matchesSecurityKey = user.hasSecurityKey && user.securityKeyStatus === "inactive";
-    }
-
-    let matchesAccountStatus = true;
-    if (accountStatusFilter === "locked") {
-      matchesAccountStatus = user.account_locked === true;
-    } else if (accountStatusFilter === "unlocked") {
-      matchesAccountStatus = user.account_locked === false;
-    }
-
-    return matchesSearch && matchesRole && matchesSecurityKey && matchesAccountStatus;
-  });
 
   const handleUnlockUserAccount = async () => {
     if (!selectedUser) return; // Ensure selectedUser is not null
@@ -317,7 +295,8 @@ export default function UsersPage() {
               ) : (
                   <DataTable
                       columns={columns}
-                      data={filteredUsers}
+                      data={users}
+                      pageCount={pageCount}
                       meta={{
                         setSelectedUser,
                         setIsDeleteDialogOpen,
@@ -337,9 +316,6 @@ export default function UsersPage() {
                       onRowSelectionChange={(selection) => setRowSelection(selection)}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
-                      getPaginationRowModel={true}
-                      getSortedRowModel={true}
-                      getFilteredRowModel={true}
                       toolbar={(table) => (
                         <div className="flex items-center space-x-4 w-full font-montserrat">
                            <Input

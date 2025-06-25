@@ -114,6 +114,7 @@ export default function SecurityPage() {
   })
   const [severityFilterValue, setSeverityFilterValue] = useState<string>("all")
   const [typeFilterValue, setTypeFilterValue] = useState<string>("all")
+  const [pageCount, setPageCount] = useState(0)
 
 
   // Handle table reference
@@ -143,7 +144,14 @@ export default function SecurityPage() {
         const authToken = user.authToken
 
         // Fetch alerts with pagination
-        const alertsRes = await fetch(`${API_URL}/security/alerts`, {
+        const params = new URLSearchParams({
+          page: (pagination.pageIndex + 1).toString(),
+          per_page: pagination.pageSize.toString(),
+          severity: severityFilterValue,
+          type: typeFilterValue,
+        })
+
+        const alertsRes = await fetch(`${API_URL}/security/alerts?${params.toString()}`, {
           headers: {
             'Authorization': `Bearer ${authToken}`
           }
@@ -157,6 +165,7 @@ export default function SecurityPage() {
         interface AlertsResponse {
           alerts: SecurityAlert[];
           total?: number;
+          pages: number;
         }
         const alertsData = await alertsRes.json() as AlertsResponse
 
@@ -175,6 +184,7 @@ export default function SecurityPage() {
         const statsData = await statsRes.json() as SecurityStats
 
         setAlerts(alertsData.alerts || [])
+        setPageCount(alertsData.pages || 0)
         setStats(statsData || emptyStats)
       } catch (error) {
         const e = error as Error;
@@ -186,7 +196,7 @@ export default function SecurityPage() {
     }
 
     fetchData()
-  }, [pagination.pageIndex, pagination.pageSize])
+  }, [pagination, severityFilterValue, typeFilterValue])
 
   // Function to escape CSV values
   const escapeCsvValue = (value: any): string => {
@@ -491,6 +501,7 @@ export default function SecurityPage() {
                   <DataTable
                       columns={columns}
                       data={alerts}
+                      pageCount={pageCount}
                       onTableInit={handleTableInit}
                       state={{
                         sorting,
@@ -505,9 +516,6 @@ export default function SecurityPage() {
                       onRowSelectionChange={setRowSelection}
                       onPaginationChange={setPagination}
                       enableRowSelection={true}
-                      getPaginationRowModel={true}
-                      getSortedRowModel={true}
-                      getFilteredRowModel={true}
                       toolbar={(table) => (
                         <div className="flex items-center space-x-4 w-full font-montserrat">
                           <Select
