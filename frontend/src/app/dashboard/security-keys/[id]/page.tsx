@@ -173,8 +173,9 @@ export default function SecurityKeyDetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-xl h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex flex-col items-center justify-center h-screen space-y-2 text-muted-foreground">
+        <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
+        <span>Loading security key details...</span>
       </div>
     )
   }
