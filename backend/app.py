@@ -820,7 +820,6 @@ def get_users():
         # Pagination and filtering parameters
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
-        search_term = request.args.get('search_term', type=str)
         role_filter = request.args.get('role', type=str)
         security_key_status_filter = request.args.get('security_key_status', type=str)
         account_status_filter = request.args.get('account_status', type=str)
@@ -829,18 +828,6 @@ def get_users():
         query = Users.query.filter_by(is_deleted=False)
 
 
-        # Apply search term filter
-        if search_term:
-            search_ilike = f"%{search_term}%"
-            query = query.filter(
-                or_(
-                    Users.username.ilike(search_ilike),
-                    Users.first_name.ilike(search_ilike),
-                    Users.last_name.ilike(search_ilike),
-                    Users.email.ilike(search_ilike),
-                    Users.national_id.cast(db.String).ilike(search_ilike)
-                )
-            )
 
         # Apply role filter
         if role_filter and role_filter != 'all':
