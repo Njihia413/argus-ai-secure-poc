@@ -80,12 +80,33 @@ export default function SecurityKeyDetailsPage() {
   // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [isDeleting, setIsDeleting] = useState(false);
 
-  const paginatedAuditLogs = useMemo(() => {
+  const filteredLogs = useMemo(() => {
     if (!securityKey?.auditLogs) return []
+    return securityKey.auditLogs
+      .filter(log => {
+        const searchTerm = searchFilter.toLowerCase()
+        return (
+          log.action.toLowerCase().includes(searchTerm) ||
+          log.performedBy.username.toLowerCase().includes(searchTerm) ||
+          log.timestamp.toLowerCase().includes(searchTerm) ||
+          (log.details && log.details.toLowerCase().includes(searchTerm))
+        )
+      })
+      .filter(log => {
+        if (actionFilterValue === "all") return true
+        return log.action === actionFilterValue
+      })
+  }, [securityKey, searchFilter, actionFilterValue])
+
+  const paginatedAuditLogs = useMemo(() => {
     const start = pagination.pageIndex * pagination.pageSize
     const end = start + pagination.pageSize
-    return securityKey.auditLogs.slice(start, end)
-  }, [securityKey, pagination])
+    return filteredLogs.slice(start, end)
+  }, [filteredLogs, pagination])
+
+  useEffect(() => {
+    setPageCount(Math.ceil(filteredLogs.length / pagination.pageSize))
+  }, [filteredLogs, pagination.pageSize])
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -102,31 +123,19 @@ export default function SecurityKeyDetailsPage() {
     if (keyId) {
       fetchKeyDetails(userInfo.authToken, keyId as string)
     }
-  }, [router, keyId, pagination, actionFilterValue, searchFilter])
+  }, [router, keyId])
 
   const fetchKeyDetails = async (authToken: string, id: string) => {
     setIsLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: (pagination.pageIndex + 1).toString(),
-        per_page: pagination.pageSize.toString(),
-        action_type: actionFilterValue,
-        search: searchFilter,
-      })
       const response = await axios.get<{ securityKey: SecurityKeyDetail }>(
-        `${API_URL}/security-keys/${id}?${params.toString()}`,
+        `${API_URL}/security-keys/${id}`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
         }
       )
       if (response.data && response.data.securityKey) {
         setSecurityKey(response.data.securityKey)
-        setPageCount(
-          Math.ceil(
-            (response.data.securityKey.auditLogs?.length || 0) /
-              pagination.pageSize
-          )
-        )
       } else {
         toast.error("Security key not found")
         router.push("/dashboard/security-keys")
