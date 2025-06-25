@@ -54,6 +54,18 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
         </Button>
       )
     },
+    cell: ({ row }) => {
+      const action = row.getValue("action") as string
+      const actionLabel = {
+        "initial-register": "Initial Registration",
+        "re-register": "Re-Registration",
+        "deactivate": "Deactivation",
+        "reset": "Reset",
+        "reassign": "Reassignment"
+      }[action] || action
+      
+      return <span className="capitalize">{actionLabel}</span>
+    }
   },
   {
     accessorKey: "details",
