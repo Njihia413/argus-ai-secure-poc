@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { ChevronDown, Loader2 } from "lucide-react"; // Import Loader2
 import {
   ColumnFiltersState,
@@ -103,30 +103,49 @@ export default function AuditLogsPage() {
   });
   const [actionFilterValue, setActionFilterValue] = useState<string>("all");
 
-  // Handle table reference
-  const [table, setTable] = useState<TableInstance | null>(null);
+  const filteredLogs = useMemo(() => {
+    return data.filter(log => {
+      if (actionFilterValue !== "all" && log.action_type !== actionFilterValue) {
+        return false;
+      }
+      const searchTerm = globalFilter.toLowerCase();
+      return (
+        log.action_type.toLowerCase().includes(searchTerm) ||
+        (log.performed_by_username || '').toLowerCase().includes(searchTerm) ||
+        log.timestamp.toLowerCase().includes(searchTerm) ||
+        (log.details && log.details.toLowerCase().includes(searchTerm))
+      );
+    });
+  }, [data, actionFilterValue, globalFilter]);
 
-  const handleTableInit = (tableInstance: TableInstance) => {
-    if (!tableInstance) return;
-    setTable(tableInstance);
-  };
+  const paginatedLogs = useMemo(() => {
+    const start = pagination.pageIndex * pagination.pageSize;
+    const end = start + pagination.pageSize;
+    return filteredLogs.slice(start, end);
+  }, [filteredLogs, pagination]);
+
+  useEffect(() => {
+    if (filteredLogs.length > 0) {
+      setPageCount(Math.ceil(filteredLogs.length / pagination.pageSize));
+    }
+  }, [filteredLogs, pagination.pageSize]);
 
   useEffect(() => {
     const fetchAuditLogs = async () => {
       setLoading(true);
       setError(null);
       try {
-        const userStr = sessionStorage.getItem('user'); // Align with security/page.tsx
+        const userStr = sessionStorage.getItem('user');
         if (!userStr) {
           throw new Error('User not authenticated. Session storage empty.');
         }
         
-        interface UserData { // Align with security/page.tsx
+        interface UserData {
           authToken: string;
         }
         
-        const user = JSON.parse(userStr) as UserData; // Align with security/page.tsx
-        const authToken = user.authToken; // Align with security/page.tsx
+        const user = JSON.parse(userStr) as UserData;
+        const authToken = user.authToken;
 
         if (!authToken) {
           setError("Authentication token not found in session storage.");
@@ -134,19 +153,7 @@ export default function AuditLogsPage() {
           return;
         }
 
-        const queryParams = new URLSearchParams({
-          page: (pagination.pageIndex + 1).toString(),
-          per_page: pagination.pageSize.toString(),
-        });
-
-        if (actionFilterValue && actionFilterValue !== "all") {
-          queryParams.append("action_type", actionFilterValue);
-        }
-        if (globalFilter) {
-          queryParams.append("search_term", globalFilter);
-        }
-
-        const response = await fetch(`${API_URL}/system-audit-logs?${queryParams.toString()}`, {
+        const response = await fetch(`${API_URL}/system-audit-logs`, {
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -159,20 +166,14 @@ export default function AuditLogsPage() {
 
         const result = await response.json();
         setData(result.logs || []);
-        setPageCount(result.pages || 0); // Restore full page count
       } catch (err) {
         let errorMessage = "An unknown error occurred.";
         if (err instanceof Error) {
           errorMessage = err.message;
         }
-        // Attempt to get more details if it's a fetch-related error object
-        // This is a basic check; more specific error handling might be needed
-        // if the 'err' object structure from a failed fetch is known.
         if (typeof err === 'object' && err !== null && 'status' in err && typeof err.status === 'number') {
           errorMessage += ` (Status: ${err.status})`;
         } else if (typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string' && err.message.includes('Failed to fetch')) {
-          // This handles the generic "TypeError: Failed to fetch" from the browser itself (e.g. CORS, network down)
-          // No specific status code available in this case from the 'err' object directly.
            errorMessage = `Network error or CORS issue: Failed to fetch. Check browser console and network tab for details.`;
         }
         setError(errorMessage);
@@ -183,7 +184,7 @@ export default function AuditLogsPage() {
     };
 
     fetchAuditLogs();
-  }, [pagination, actionFilterValue, globalFilter]); // Restore full dependencies
+  }, []);
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -208,9 +209,8 @@ export default function AuditLogsPage() {
             ) : (
               <DataTable
                 columns={columns}
-                data={data}
+                data={paginatedLogs}
               pageCount={pageCount} // Pass pageCount to DataTable
-              onTableInit={handleTableInit} // This should be on its own line
               state={{
                 sorting,
                 columnFilters,
