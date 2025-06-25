@@ -5132,27 +5132,26 @@ def get_security_alerts():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
 
-        # Query alerts from authentication attempts
-        attempts = AuthenticationAttempt.query.order_by(
-            AuthenticationAttempt.timestamp.desc()
-        ).paginate(page=page, per_page=per_page)
+        # Filtering parameters
+        filter_severity = request.args.get('severity', type=str)
+        filter_alert_type = request.args.get('alert_type', type=str)
 
-        alerts = []
-        for attempt in attempts.items:
-            # Initialize with a default alert type
+        # Fetch all attempts and generate alerts in memory before filtering and paginating
+        all_attempts = AuthenticationAttempt.query.order_by(AuthenticationAttempt.timestamp.desc()).all()
+
+        all_generated_alerts = []
+        for attempt in all_attempts:
             alert_type = None
             severity = "Low"
 
             # Determine alert type and severity based on conditions
             if not attempt.success:
-                # Count recent failed attempts for this user
                 recent_failed_count = AuthenticationAttempt.query.filter(
                     AuthenticationAttempt.user_id == attempt.user_id,
                     AuthenticationAttempt.success == False,
                     AuthenticationAttempt.timestamp >= attempt.timestamp - timedelta(hours=24)
                 ).count()
 
-                # Set failed login alert with severity based on failure count
                 alert_type = "Failed Login"
                 if recent_failed_count >= 5:
                     severity = "High"
@@ -5161,16 +5160,13 @@ def get_security_alerts():
                 else:
                     severity = "Low"
 
-                # Check if this led to account lockout
                 if recent_failed_count >= 5:
                     user = Users.query.get(attempt.user_id)
                     if user and user.is_account_locked():
                         alert_type = "Account Lockout"
                         severity = "High"
 
-            # For successful logins, check various conditions
             elif attempt.success:
-                # Check for high risk score
                 if attempt.risk_score > 75:
                     alert_type = "High Risk Login"
                     severity = "High"
@@ -5178,7 +5174,6 @@ def get_security_alerts():
                     alert_type = "Moderate Risk Login"
                     severity = "Medium"
 
-                # Check for previous risk scores to detect increases
                 previous_attempt = AuthenticationAttempt.query.filter(
                     AuthenticationAttempt.user_id == attempt.user_id,
                     AuthenticationAttempt.success == True,
@@ -5189,25 +5184,20 @@ def get_security_alerts():
                     alert_type = "Risk Score Increase"
                     severity = "Medium"
 
-                # Check for IP-based alerts
-                previous_ips = AuthenticationAttempt.query.filter(
+                previous_ips = [ip[0] for ip in AuthenticationAttempt.query.filter(
                     AuthenticationAttempt.user_id == attempt.user_id,
                     AuthenticationAttempt.success == True,
                     AuthenticationAttempt.timestamp < attempt.timestamp
-                ).with_entities(AuthenticationAttempt.ip_address).distinct().all()
+                ).with_entities(AuthenticationAttempt.ip_address).distinct().all()]
 
-                previous_ips_list = [ip[0] for ip in previous_ips]
-
-                if attempt.ip_address not in previous_ips_list:
+                if attempt.ip_address not in previous_ips:
                     alert_type = "New IP Address"
                     severity = "Low"
 
-                # Check if IP is suspicious
                 if is_suspicious_ip(attempt.ip_address, attempt.location):
                     alert_type = "Suspicious IP"
                     severity = "High"
 
-                # Check for location change
                 previous_location = AuthenticationAttempt.query.filter(
                     AuthenticationAttempt.user_id == attempt.user_id,
                     AuthenticationAttempt.success == True,
@@ -5215,7 +5205,6 @@ def get_security_alerts():
                 ).order_by(AuthenticationAttempt.timestamp.desc()).first()
 
                 if previous_location and previous_location.location != attempt.location:
-                    # Check if it's a rapid location change (within 3 hours)
                     time_diff = attempt.timestamp - previous_location.timestamp
                     if time_diff < timedelta(hours=3):
                         alert_type = "Rapid Travel"
@@ -5224,28 +5213,23 @@ def get_security_alerts():
                         alert_type = "Location Change"
                         severity = "Medium"
 
-                # Check for new device
                 if attempt.device_type:
-                    previous_devices = AuthenticationAttempt.query.filter(
+                    if AuthenticationAttempt.query.filter(
                         AuthenticationAttempt.user_id == attempt.user_id,
                         AuthenticationAttempt.success == True,
                         AuthenticationAttempt.device_type == attempt.device_type,
                         AuthenticationAttempt.timestamp < attempt.timestamp
-                    ).count()
-
-                    if previous_devices == 0:
+                    ).count() == 0:
                         alert_type = "New Device"
                         severity = "Low"
 
-                # Check for unusual login time (10 PM - 6 AM)
                 hour = attempt.timestamp.hour
                 if hour < 6 or hour >= 22:
                     alert_type = "Unusual Time"
                     severity = "Medium"
 
-            # Only add the alert if we assigned an alert type
             if alert_type:
-                alerts.append({
+                all_generated_alerts.append({
                     'id': attempt.id,
                     'type': alert_type,
                     'user': attempt.user.username,
@@ -5255,10 +5239,26 @@ def get_security_alerts():
                     'resolved': attempt.success
                 })
 
+        # Filter the generated alerts in memory
+        filtered_alerts = all_generated_alerts
+        if filter_severity:
+            filtered_alerts = [a for a in filtered_alerts if a['severity'].lower() == filter_severity.lower()]
+        
+        if filter_alert_type:
+            # Normalize alert type from frontend (e.g., 'high_risk_login' -> 'High Risk Login')
+            normalized_alert_type = filter_alert_type.replace('_', ' ').title()
+            filtered_alerts = [a for a in filtered_alerts if a['type'] == normalized_alert_type]
+
+        # Paginate the filtered list
+        total_items = len(filtered_alerts)
+        start_index = (page - 1) * per_page
+        end_index = start_index + per_page
+        paginated_alerts = filtered_alerts[start_index:end_index]
+
         return jsonify({
-            'alerts': alerts,
-            'total': len(alerts),  # Updated to use actual filtered count
-            'pages': max(1, math.ceil(len(alerts) / per_page)),
+            'alerts': paginated_alerts,
+            'total': total_items,
+            'pages': (total_items + per_page - 1) // per_page if per_page > 0 else 0,
             'current_page': page
         })
 
