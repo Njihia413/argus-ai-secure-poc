@@ -81,6 +81,13 @@ const alertTypeOptions = [
   { label: "Admin Account Login", value: "Admin Account Login" }
 ]
 
+const severityOptions = [
+  { label: "All Severities", value: "all" },
+  { label: "High", value: "High" },
+  { label: "Medium", value: "Medium" },
+  { label: "Low", value: "Low" },
+]
+
 interface TableInstance {
   getColumn: (id: string) => {
     setFilterValue: (value: string | undefined) => void;
@@ -144,14 +151,21 @@ export default function SecurityPage() {
         const authToken = user.authToken
 
         // Fetch alerts with pagination
-        const params = new URLSearchParams({
+        const queryParams = new URLSearchParams({
           page: (pagination.pageIndex + 1).toString(),
           per_page: pagination.pageSize.toString(),
-          severity: severityFilterValue,
-          type: typeFilterValue,
         })
 
-        const alertsRes = await fetch(`${API_URL}/security/alerts?${params.toString()}`, {
+         if (severityFilterValue && severityFilterValue !== "all") {
+          queryParams.append("severity", severityFilterValue);
+        }
+
+        if (typeFilterValue && typeFilterValue !== "all") {
+          queryParams.append("alert_type", typeFilterValue);
+        }
+
+
+        const alertsRes = await fetch(`${API_URL}/security/alerts?${queryParams.toString()}`, {
           headers: {
             'Authorization': `Bearer ${authToken}`
           }
@@ -522,20 +536,17 @@ export default function SecurityPage() {
                             value={severityFilterValue}
                             onValueChange={(value) => {
                               setSeverityFilterValue(value);
-                              const column = table?.getColumn("severity");
-                              if (column) {
-                                column.setFilterValue(value === "all" ? undefined : value);
-                              }
                             }}
                           >
                             <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                               <SelectValue placeholder="Filter by severity" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All Severities</SelectItem>
-                              <SelectItem value="High">High</SelectItem>
-                              <SelectItem value="Medium">Medium</SelectItem>
-                              <SelectItem value="Low">Low</SelectItem>
+                              {severityOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
 
@@ -543,10 +554,6 @@ export default function SecurityPage() {
                             value={typeFilterValue}
                             onValueChange={(value) => {
                               setTypeFilterValue(value);
-                              const column = table?.getColumn("type");
-                              if (column) {
-                                column.setFilterValue(value === "all" ? undefined : value);
-                              }
                             }}
                           >
                             <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
