@@ -38,12 +38,6 @@ const actionOptions = [
   { value: "reassign", label: "Reassignment" }
 ]
 
-// Interface for the API response for security key details
-interface SecurityKeyDetailsApiResponse {
-  securityKey: SecurityKeyDetail;
-  totalAuditLogs: number;
-}
-
 // Interface for the detailed security key object from backend
 interface SecurityKeyDetail {
   id: number;
@@ -119,7 +113,7 @@ export default function SecurityKeyDetailsPage() {
         action_type: actionFilterValue,
         search: searchFilter,
       })
-      const response = await axios.get<SecurityKeyDetailsApiResponse>(
+      const response = await axios.get<{ securityKey: SecurityKeyDetail }>(
         `${API_URL}/security-keys/${id}?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
@@ -128,7 +122,10 @@ export default function SecurityKeyDetailsPage() {
       if (response.data && response.data.securityKey) {
         setSecurityKey(response.data.securityKey)
         setPageCount(
-          Math.ceil((response.data.totalAuditLogs || 0) / pagination.pageSize)
+          Math.ceil(
+            (response.data.securityKey.auditLogs?.length || 0) /
+              pagination.pageSize
+          )
         )
       } else {
         toast.error("Security key not found")
