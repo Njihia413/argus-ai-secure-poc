@@ -59,7 +59,10 @@ interface SecurityKeyDetail {
     firstName: string;
     lastName: string;
   };
-  auditLogs: SecurityKeyAuditLog[]; // Array of audit logs for security keys
+  auditLogs: {
+    logs: SecurityKeyAuditLog[];
+    total: number;
+  };
 }
 
 export default function SecurityKeyDetailsPage() {
@@ -104,7 +107,7 @@ export default function SecurityKeyDetailsPage() {
         per_page: pagination.pageSize.toString(),
         action_type: actionFilterValue,
       })
-      const response = await axios.get<{ securityKey: SecurityKeyDetail; pages: number }>(
+      const response = await axios.get<{ securityKey: SecurityKeyDetail }>(
         `${API_URL}/security-keys/${id}?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${authToken}` },
@@ -112,7 +115,11 @@ export default function SecurityKeyDetailsPage() {
       )
       if (response.data && response.data.securityKey) {
         setSecurityKey(response.data.securityKey)
-        setPageCount(response.data.pages)
+        setPageCount(
+          Math.ceil(
+            response.data.securityKey.auditLogs.total / pagination.pageSize
+          )
+        )
       } else {
         toast.error("Security key not found")
         router.push("/dashboard/security-keys")
@@ -257,10 +264,10 @@ export default function SecurityKeyDetailsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {securityKey.auditLogs.length > 0 ? (
+          {securityKey.auditLogs.total > 0 ? (
             <DataTable
               columns={securityKeyAuditColumns}
-              data={securityKey.auditLogs}
+              data={securityKey.auditLogs.logs}
               pageCount={pageCount}
               state={{
                 sorting: [],
