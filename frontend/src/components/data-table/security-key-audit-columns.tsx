@@ -4,6 +4,7 @@ import { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
 
 
 // Interface for the audit log specific to a security key
@@ -56,6 +57,14 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
     },
     cell: ({ row }) => {
       const action = row.getValue("action") as string
+      const actionStyles = {
+        "initial-register": "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700",
+        "re-register": "text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700",
+        "deactivate": "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700",
+        "reset": "text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700",
+        "reassign": "text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700"
+      }
+      
       const actionLabel = {
         "initial-register": "Initial Registration",
         "re-register": "Re-Registration",
@@ -63,8 +72,15 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
         "reset": "Reset",
         "reassign": "Reassignment"
       }[action] || action
-      
-      return <span className="capitalize">{actionLabel}</span>
+
+      return (
+        <Badge
+          variant="outline"
+          className={`${actionStyles[action as keyof typeof actionStyles] || ""} bg-transparent`}
+        >
+          {actionLabel}
+        </Badge>
+      )
     }
   },
   {
