@@ -77,7 +77,6 @@ interface DataTableProps<TData> {
   onRowSelectionChange?: OnChangeFn<RowSelectionState>
   onPaginationChange?: OnChangeFn<{ pageIndex: number; pageSize: number }>
   enableRowSelection?: boolean
-  getPaginationRowModel?: boolean
   getSortedRowModel?: boolean
   getFilteredRowModel?: boolean
 }
@@ -111,29 +110,33 @@ export function DataTable<TData>({
   onRowSelectionChange,
   onPaginationChange,
   enableRowSelection = false,
-  getPaginationRowModel: enablePagination = false,
   getSortedRowModel: enableSorting = false,
   getFilteredRowModel: enableFiltering = false,
 }: DataTableProps<TData>) {
+  const isManualPagination = onPaginationChange !== undefined && pageCount !== undefined;
+
   const [localState, setLocalState] = React.useState<DataTableState>(state)
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: 10,
+  });
 
   const table = useReactTable<TData>({
     data,
     columns,
-    pageCount: pageCount ?? 0, // Default to 0 if undefined, for hydration consistency
+    pageCount: isManualPagination ? pageCount : -1,
     state: {
       sorting: localState.sorting,
       columnFilters: localState.columnFilters,
       columnVisibility: localState.columnVisibility,
       rowSelection: localState.rowSelection,
       globalFilter: localState.globalFilter,
-      pagination: state.pagination,
+      pagination: isManualPagination ? state.pagination : pagination,
     },
     enableRowSelection,
-    manualPagination: true, // Enable manual pagination for server-side control
+    manualPagination: isManualPagination,
     getCoreRowModel: getCoreRowModel(),
-    // getPaginationRowModel is not needed when manualPagination is true
-    // ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    ...(!isManualPagination && { getPaginationRowModel: getPaginationRowModel() }),
     ...(enableSorting ? { getSortedRowModel: getSortedRowModel() } : {}),
     ...(enableFiltering ? { getFilteredRowModel: getFilteredRowModel() } : {}),
     getFacetedRowModel: getFacetedRowModel(),
@@ -161,6 +164,7 @@ export function DataTable<TData>({
     onGlobalFilterChange: (value) => {
       setLocalState((prev) => ({ ...prev, globalFilter: value }))
     },
+    onPaginationChange: isManualPagination ? onPaginationChange : setPagination,
     meta,
   })
 
