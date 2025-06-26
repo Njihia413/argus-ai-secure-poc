@@ -661,7 +661,7 @@ export default function DashboardPage() {
               </div>
               <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
                 <SelectTrigger
-                  className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--card-border-themed)] rounded-3xl sm:ml-auto"
+                  className="h-9 w-[150px] border border-[var(--card-border-themed)] rounded-3xl sm:ml-auto bg-white dark:bg-zinc-900"
                   aria-label="Select a time range"
                 >
                   <SelectValue placeholder="Select time range" />
@@ -958,7 +958,7 @@ export default function DashboardPage() {
               {metricOptions.length > 0 && (
                 <Select value={activeMetricConfigKey} onValueChange={setActiveMetricConfigKey}>
                   <SelectTrigger
-                    className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl"
+                    className="h-9 w-[150px] border border-[var(--border)] rounded-3xl bg-white dark:bg-zinc-900"
                     aria-label="Select a metric"
                   >
                     <SelectValue placeholder="Select metric" />
