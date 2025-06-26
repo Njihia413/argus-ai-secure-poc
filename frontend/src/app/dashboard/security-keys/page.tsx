@@ -195,7 +195,7 @@ export default function SecurityKeysPage() {
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                    <Button variant="outline" className="dark:bg-input bg-transparent border border-zinc-200 dark:border-zinc-800 rounded-3xl text-foreground hover:bg-transparent">
                       Columns <ChevronDown className="ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
