@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { securityKeysColumns } from "@/components/data-table/security-keys-columns"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
 import axios from "axios"
@@ -56,6 +56,38 @@ export default function SecurityKeysPage() {
     pageSize: 10,
   })
   const [statusFilterValue, setStatusFilterValue] = useState<string>("all")
+  const [searchFilter, setSearchFilter] = useState("")
+
+  const filteredData = useMemo(() => {
+    return data
+      .filter(key => {
+        if (statusFilterValue !== "all" && key.status !== statusFilterValue) {
+          return false
+        }
+        const searchTerm = searchFilter.toLowerCase()
+        if (!searchTerm) return true
+        return (
+          (key.model && key.model.toLowerCase().includes(searchTerm)) ||
+          (key.type && key.type.toLowerCase().includes(searchTerm)) ||
+          (key.serialNumber && key.serialNumber.toLowerCase().includes(searchTerm)) ||
+          key.username.toLowerCase().includes(searchTerm)
+        )
+      })
+  }, [data, statusFilterValue, searchFilter])
+
+  const paginatedData = useMemo(() => {
+    const start = pagination.pageIndex * pagination.pageSize
+    const end = start + pagination.pageSize
+    return filteredData.slice(start, end)
+  }, [filteredData, pagination])
+
+  useEffect(() => {
+    if (filteredData.length > 0) {
+      setPageCount(Math.ceil(filteredData.length / pagination.pageSize))
+    } else {
+      setPageCount(0)
+    }
+  }, [filteredData, pagination.pageSize])
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -73,17 +105,12 @@ export default function SecurityKeysPage() {
     }
     
     fetchSecurityKeys(userInfo.authToken)
-  }, [router, pagination, statusFilterValue])
+  }, [router])
 
   const fetchSecurityKeys = async (authToken: string) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: (pagination.pageIndex + 1).toString(),
-        per_page: pagination.pageSize.toString(),
-        status: statusFilterValue,
-      })
-      const response = await axios.get<{ securityKeys: SecurityKey[], pages: number }>(`${API_URL}/security-keys/all?${params.toString()}`, {
+      const response = await axios.get<{ securityKeys: SecurityKey[] }>(`${API_URL}/security-keys/all`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -91,7 +118,6 @@ export default function SecurityKeysPage() {
  
       if (response.data && response.data.securityKeys) {
         setData(response.data.securityKeys)
-        setPageCount(response.data.pages)
       } else {
         console.error("Invalid response format for security keys:", response.data)
         toast.error("Invalid data format received from server for security keys.")
@@ -122,7 +148,7 @@ export default function SecurityKeysPage() {
           ) : (
             <DataTable
               columns={securityKeysColumns}
-              data={data}
+              data={paginatedData}
               pageCount={pageCount}
             state={{
               sorting,
@@ -144,10 +170,10 @@ export default function SecurityKeysPage() {
               <div className="flex items-center justify-between w-full font-montserrat">
                 <div className="flex items-center space-x-4">
                   <Input
-                    placeholder="Search security keys..."
-                    value={(table?.getColumn("model")?.getFilterValue() as string) ?? ""}
+                    placeholder="Search..."
+                    value={searchFilter}
                     onChange={(event) =>
-                      table?.getColumn("model")?.setFilterValue(event.target.value)
+                      setSearchFilter(event.target.value)
                     }
                     className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
                   />
