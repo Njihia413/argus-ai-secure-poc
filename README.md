@@ -172,21 +172,21 @@ graph TD
         direction TB
         BE_Flask[Flask API Server]
         BE_Database[PostgreSQL Database]
-        BE_WebAuthn[WebAuthn (FIDO2) Library]
+        BE_WebAuthn["WebAuthn (FIDO2) Library"]
         BE_Flask -- Uses --> BE_WebAuthn
         BE_Flask -- CRUD --> BE_Database
     end
 
     subgraph "Local Services"
         direction TB
-        LS_WSServer[USB Detector (WebSocket)]
+        LS_WSServer["USB Detector (WebSocket)"]
         LS_HID[HID/USB Listener]
         LS_WSServer -- Uses --> LS_HID
     end
 
     subgraph "External Services"
         direction TB
-        ES_AI[AI Provider (Groq)]
+        ES_AI["AI Provider (Groq)"]
     end
 
     subgraph "Users"
