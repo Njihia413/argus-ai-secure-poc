@@ -1015,19 +1015,24 @@ def get_all_security_keys():
    auth_token = request.headers.get('Authorization')
    if not auth_token:
        return jsonify({'error': 'Admin authorization required'}), 401
-
+ 
    auth_token = auth_token.replace('Bearer ', '')
    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
-
+ 
    if not auth_session:
        return jsonify({'error': 'Invalid admin token'}), 401
-
+ 
    admin_user = Users.query.get(auth_session.user_id)
    if not admin_user or admin_user.role != 'admin':
        return jsonify({'error': 'Admin privileges required'}), 403
-
+ 
    try:
-       keys = db.session.query(
+       # Pagination and filtering parameters
+       page = request.args.get('page', 1, type=int)
+       per_page = request.args.get('per_page', 10, type=int)
+       status_filter = request.args.get('status', type=str)
+
+       query = db.session.query(
            SecurityKey.id,
            SecurityKey.model,
            SecurityKey.type,
@@ -1036,8 +1041,20 @@ def get_all_security_keys():
            SecurityKey.created_at,
            SecurityKey.last_used,
            Users.username
-       ).join(Users, Users.id == SecurityKey.user_id).order_by(SecurityKey.created_at.desc()).all()
+       ).join(Users, Users.id == SecurityKey.user_id)
 
+       # Apply status filter
+       if status_filter and status_filter != 'all':
+           if status_filter == 'active':
+               query = query.filter(SecurityKey.is_active == True)
+           elif status_filter == 'inactive':
+               query = query.filter(SecurityKey.is_active == False)
+
+       # Paginate the results
+       paginated_keys = query.order_by(SecurityKey.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+       keys = paginated_keys.items
+       total_pages = paginated_keys.pages
+ 
        keys_list = []
        for key_data in keys:
            keys_list.append({
@@ -1051,8 +1068,8 @@ def get_all_security_keys():
                'username': key_data.username
            })
        
-       return jsonify({'securityKeys': keys_list})
-
+       return jsonify({'securityKeys': keys_list, 'pages': total_pages})
+ 
    except Exception as e:
        print(f"Error fetching all security keys: {str(e)}")
        import traceback
