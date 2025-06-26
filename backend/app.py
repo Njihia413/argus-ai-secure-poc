@@ -3605,12 +3605,12 @@ def webauthn_login_complete():
                 status='SUCCESS',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=security_key.id,
-                details=f"Direct SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                details=f"Direct SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.model}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
             )
             # Return success with the session token
             return jsonify({
                 'status': 'success',
-                'message': f"Authentication successful with security key '{security_key.name}'",
+                'message': f"Authentication successful with security key '{security_key.model}'",
                 'user_id': user.id,
                 'firstName': user.first_name,
                 'lastName': user.last_name,
@@ -3622,7 +3622,7 @@ def webauthn_login_complete():
                 'risk_score': risk_score,
                 'securityKey': {
                     'id': security_key.id,
-                    'name': security_key.name
+                    'name': security_key.model
                 }
             })
         elif second_factor:
@@ -3663,12 +3663,12 @@ def webauthn_login_complete():
                     status='SUCCESS',
                     target_entity_type='SECURITY_KEY',
                     target_entity_id=security_key.id,
-                    details=f"2FA SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.name}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                    details=f"2FA SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.model}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
                 )
                 # This is a second factor after password authentication
                 return jsonify({
                     'status': 'success',
-                    'message': f"Authentication successful with security key '{security_key.name}'",
+                    'message': f"Authentication successful with security key '{security_key.model}'",
                     'user_id': user.id,
                     'firstName': user.first_name,
                     'lastName': user.last_name,
@@ -3680,7 +3680,7 @@ def webauthn_login_complete():
                     'requires_additional_verification': risk_score > 50,
                     'securityKey': {
                         'id': security_key.id,
-                        'name': security_key.name
+                        'name': security_key.model
                     }
                 })
             else:
