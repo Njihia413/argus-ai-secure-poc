@@ -73,7 +73,7 @@ export default function DashboardLayout({
                 <Input
                   type="search"
                   placeholder="Search..."
-                  className="h-9 w-full cursor-pointer rounded-full border border-sidebar-border bg-transparent text-sidebar-foreground placeholder:text-sidebar-foreground/70 pr-4 pl-10 text-sm shadow-xs dark:border-input" // Changed to rounded-xl, bg-sidebar, added text/placeholder colors
+                  className="h-9 w-full cursor-pointer rounded-full bg-transparent text-sidebar-foreground placeholder:text-sidebar-foreground/70 pr-4 pl-10 text-sm shadow-xs" // Adjusted to match recent users search input style
                 />
                 {/* Command K shortcut - visual only for now */}
                 <div className="absolute top-1/2 right-2 hidden -translate-y-1/2 items-center gap-0.5 rounded-sm bg-zinc-200 p-1 font-mono text-xs font-medium sm:flex dark:bg-neutral-700">
