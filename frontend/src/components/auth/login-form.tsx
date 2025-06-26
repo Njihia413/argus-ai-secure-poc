@@ -510,7 +510,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                         <Button
                             type="button"
                             variant="outline"
-                            className="w-full border-zinc-200 dark:border-zinc-800 text-primary bg-input hover:bg-primary/10"
+                            className="w-full border-zinc-200 dark:border-zinc-800 text-primary bg-transparent hover:bg-primary/10"
                             onClick={handleSecurityKeyLogin}
                             disabled={isLoading}
                         >
