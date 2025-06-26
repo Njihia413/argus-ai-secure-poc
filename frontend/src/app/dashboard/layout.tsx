@@ -54,7 +54,7 @@ export default function DashboardLayout({
 
   const handleLogout = () => {
     sessionStorage.removeItem("user")
-    router.push("/login")
+    router.push("/home")
   }
 
   return (
