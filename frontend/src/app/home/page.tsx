@@ -1,25 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import {Navbar} from "@/components/navbar";
-import {FlipText} from "@/registry/magicui/flip-text";
-import {TypingAnimation} from "@/components/ui/typing-animation";
-import {InteractiveHoverButton} from "@/components/ui/interactive-hover-button";
-import {Globe} from "@/registry/magicui/globe";
-import {Footer} from "@/components/footer";
-import { useRouter } from "next/navigation";
+import { Navbar } from "@/components/navbar";
+import { FlipText } from "@/registry/magicui/flip-text";
+import { TypingAnimation } from "@/components/ui/typing-animation";
+import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
+import { Globe } from "@/registry/magicui/globe";
+import { Footer } from "@/components/footer";
+import { LoginForm } from "@/components/auth/login-form";
 import { siteConfig } from "../config";
 
-
 export default function Home() {
-  const router = useRouter();
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden">
-      <Navbar
-        showAuth={true}
-        onSignIn={() => router.push("/login")}
-      />
+      <Navbar showAuth={true} onSignIn={() => setIsLoginOpen(true)} />
+      <LoginForm open={isLoginOpen} onOpenChange={setIsLoginOpen} />
 
       {/* Main Content */}
       <main className="flex flex-1 items-center justify-center relative px-4">
@@ -50,7 +47,7 @@ export default function Home() {
 
           <div className="mt-4 md:mt-6">
             <InteractiveHoverButton
-              onClick={() => router.push("/login")}
+              onClick={() => setIsLoginOpen(true)}
               className="border-zinc-200 dark:border-zinc-800 text-sm md:text-base px-6 md:px-8 py-2 md:py-3"
             >
               Get Started
