@@ -19,7 +19,6 @@ export default function Home() {
       <Navbar
         showAuth={true}
         onSignIn={() => router.push("/login")}
-        onSignUp={() => router.push("/register")}
       />
 
       {/* Main Content */}
