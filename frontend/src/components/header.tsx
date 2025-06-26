@@ -304,7 +304,7 @@ export const Header = () => {
   };
 
   return (
-      <div className="fixed right-0 left-0 w-full top-0 bg-white dark:bg-zinc-900 z-50 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="fixed right-0 left-0 w-full top-0 bg-white dark:bg-zinc-900 z-50 border-b border-zinc-200 dark:border-zinc-800 font-montserrat">
         <div className="flex justify-between items-center p-4">
           <div className="flex items-center space-x-2">
             <Link href="/" className="flex items-center space-x-2">

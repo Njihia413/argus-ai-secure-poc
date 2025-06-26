@@ -451,7 +451,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
     return (
         <>
             <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="sm:max-w-[425px]">
+                <DialogContent className="sm:max-w-[425px] font-montserrat">
                     <DialogHeader>
                         <DialogTitle>Welcome back</DialogTitle>
                         <DialogDescription>

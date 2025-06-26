@@ -34,7 +34,7 @@ export function Navbar({
   return (
     <header
       className={cn(
-        "fixed top-0 z-50 w-full bg-white dark:bg-zinc-900",
+        "fixed top-0 z-50 w-full bg-white dark:bg-zinc-900 font-montserrat",
         !isHome && "border-b border-zinc-200 dark:border-zinc-800"
       )}
     >

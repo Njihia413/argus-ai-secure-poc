@@ -14,7 +14,7 @@ export default function Home() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   return (
-    <div className="relative flex h-screen w-screen flex-col overflow-hidden">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden font-montserrat">
       <Navbar showAuth={true} onSignIn={() => setIsLoginOpen(true)} />
       <LoginForm open={isLoginOpen} onOpenChange={setIsLoginOpen} />
 
