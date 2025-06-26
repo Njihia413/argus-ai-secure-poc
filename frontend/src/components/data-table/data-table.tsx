@@ -161,7 +161,7 @@ export function DataTable<TData>({
           {typeof toolbar === 'function' ? toolbar(table) : toolbar}
         </div>
       )}
-      <div className="rounded-md border border-solid border-[var(--card-border-themed)]">
+      <div className="rounded-md border border-zinc-200 dark:border-zinc-800">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -225,7 +225,7 @@ export function DataTable<TData>({
                 table.setPageSize(Number(value));
               }}
             >
-              <SelectTrigger className="h-8 w-[70px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+              <SelectTrigger className="h-8 w-[70px] bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                 <SelectValue placeholder={table.getState().pagination?.pageSize || 10} />
               </SelectTrigger>
               <SelectContent side="top">
@@ -245,7 +245,7 @@ export function DataTable<TData>({
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 p-0 border border-[var(--border)] dark:bg-input bg-transparent hover:bg-transparent"
+                className="h-8 w-8 p-0 border border-[var(--border)] bg-white dark:bg-zinc-900 hover:bg-transparent"
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
@@ -255,7 +255,7 @@ export function DataTable<TData>({
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 p-0 border border-[var(--border)] dark:bg-input bg-transparent hover:bg-transparent"
+                className="h-8 w-8 p-0 border border-[var(--border)] bg-white dark:bg-zinc-900 hover:bg-transparent"
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
