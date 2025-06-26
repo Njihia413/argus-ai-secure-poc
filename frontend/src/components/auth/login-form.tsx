@@ -186,7 +186,7 @@ const InactiveKeyDialog = ({
                             Your security key is currently inactive and cannot be used for authentication.
                         </p>
 
-                        <div className="bg-amber-50 p-3 rounded-sm border-l-4 border-amber-400 text-sm">
+                        <div className="bg-transparent p-3 rounded-sm border border-amber-400 text-sm">
                             <h4 className="text-amber-800 font-medium">What this means:</h4>
                             <p className="text-amber-700 mt-1">
                                 Your security key has been registered but is currently disabled. This may be due to
