@@ -263,7 +263,7 @@ export function RecentUsersTable(): React.ReactElement {
           <Button
             variant="outline"
             onClick={() => router.push('/dashboard/users')}
-            className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
+            className="dark:bg-input bg-transparent border border-[var(--card-border-themed)] rounded-3xl text-foreground hover:bg-transparent"
           >
             View all users <ChevronRight className="h-4 w-4" />
           </Button>
@@ -286,7 +286,7 @@ export function RecentUsersTable(): React.ReactElement {
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                  <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-[var(--card-border-themed)] rounded-3xl text-foreground hover:bg-transparent">
                     Columns <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
