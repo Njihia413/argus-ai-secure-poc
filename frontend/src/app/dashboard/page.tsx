@@ -570,8 +570,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-        <h2 className="text-2xl font-bold tracking-tight">Dashboard Overview</h2>
-
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* Overview Stats */}
           <Card className="bg-gradient-to-t from-[var(--overview-card-gradient-from)] to-[var(--overview-card-gradient-to)]">
@@ -652,7 +650,7 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-3"> 
           {/* Login Attempts Chart */}
           <Card className="md:col-span-2">
-            <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
+            <CardHeader className="flex items-center gap-2 space-y-0 border-b border-[var(--card-border-themed)] py-5 sm:flex-row">
               <div className="grid flex-1 gap-1 text-center sm:text-left">
                 <CardTitle>Login Attempts</CardTitle>
                 <CardDescription>
@@ -663,7 +661,7 @@ export default function DashboardPage() {
               </div>
               <Select value={timeRange} onValueChange={(value) => setTimeRange(value as '7d' | '30d' | '90d')}>
                 <SelectTrigger
-                  className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl sm:ml-auto"
+                  className="h-9 w-[150px] dark:bg-input bg-transparent border border-[var(--card-border-themed)] rounded-3xl sm:ml-auto"
                   aria-label="Select a time range"
                 >
                   <SelectValue placeholder="Select time range" />
@@ -737,7 +735,7 @@ export default function DashboardPage() {
                           />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid vertical={false} /> {/* Matching example */}
+                      <CartesianGrid vertical={false} stroke="var(--sidebar-border)" />
                       <XAxis
                         dataKey="name" // Your data key for date/label
                         tickLine={false}
@@ -1082,7 +1080,7 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-3 mt-6">
           {/* Top Locations Bar Chart - Spanning 2 columns */}
           <Card className="md:col-span-2">
-            <CardHeader>
+            <CardHeader className="border-b border-[var(--card-border-themed)]">
               <CardTitle>Top Locations</CardTitle>
               <CardDescription>Login attempts by location</CardDescription>
             </CardHeader>
@@ -1131,7 +1129,7 @@ export default function DashboardPage() {
                             right: 12,
                           }}
                         >
-                          <CartesianGrid vertical={false} />
+                          <CartesianGrid vertical={false} stroke="var(--sidebar-border)" />
                           <XAxis
                             dataKey="name"
                             tickLine={false}
