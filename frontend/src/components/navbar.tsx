@@ -92,7 +92,7 @@ export function Navbar({
             <div className="flex items-center space-x-2 md:space-x-4">
               <button
                 onClick={onSignIn}
-                className="rounded-full bg-zinc-900 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                className="rounded-full bg-primary px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Sign In
               </button>
