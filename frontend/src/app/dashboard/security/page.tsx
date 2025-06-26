@@ -538,7 +538,7 @@ export default function SecurityPage() {
                               setSeverityFilterValue(value);
                             }}
                           >
-                            <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                            <SelectTrigger className="w-auto bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                               <SelectValue placeholder="Filter by severity" />
                             </SelectTrigger>
                             <SelectContent>
@@ -556,7 +556,7 @@ export default function SecurityPage() {
                               setTypeFilterValue(value);
                             }}
                           >
-                            <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                            <SelectTrigger className="w-auto bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                               <SelectValue placeholder="Filter by type" />
                             </SelectTrigger>
                             <SelectContent>
@@ -567,7 +567,7 @@ export default function SecurityPage() {
                           </Select>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="outline" className="ml-auto dark:bg-input bg-transparent border border-zinc-200 dark:border-zinc-800 rounded-3xl text-foreground hover:bg-transparent">
+                              <Button variant="outline" className="ml-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl text-foreground hover:bg-transparent">
                                 Columns <ChevronDown className="ml-2 h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
