@@ -157,7 +157,7 @@ The following diagram illustrates the main components of the Argus AI Secure app
 
 ```mermaid
 graph TD
-    subgraph "User Interface (Frontend)"
+    subgraph UI ["User Interface (Frontend)"]
         direction TB
         UI_WebApp[Next.js Web App]
         UI_Dashboard[Admin Dashboard]
@@ -168,7 +168,7 @@ graph TD
         UI_WebApp -- Provides --> UI_Auth
     end
 
-    subgraph "Backend Services"
+    subgraph BE ["Backend Services"]
         direction TB
         BE_Flask[Flask API Server]
         BE_Database[PostgreSQL Database]
@@ -177,19 +177,19 @@ graph TD
         BE_Flask -- CRUD --> BE_Database
     end
 
-    subgraph "Local Services"
+    subgraph LS ["Local Services"]
         direction TB
         LS_WSServer["USB Detector (WebSocket)"]
         LS_HID[HID/USB Listener]
         LS_WSServer -- Uses --> LS_HID
     end
 
-    subgraph "External Services"
+    subgraph ES ["External Services"]
         direction TB
         ES_AI["AI Provider (Groq)"]
     end
 
-    subgraph "Users"
+    subgraph U ["Users"]
         direction TB
         U_Admin[Administrator]
         U_User[End User]
@@ -205,11 +205,11 @@ graph TD
     UI_Chat -- API Calls --> ES_AI
     UI_Chat -- WebSocket --> LS_WSServer
 
-    style "User Interface (Frontend)" fill:#ccf,stroke:#333,stroke-width:2px
-    style "Backend Services" fill:#cfc,stroke:#333,stroke-width:2px
-    style "Local Services" fill:#f9f,stroke:#333,stroke-width:2px
-    style "External Services" fill:#fcf,stroke:#333,stroke-width:2px
-    style "Users" fill:#ffc,stroke:#333,stroke-width:2px
+    style UI fill:#ccf,stroke:#333,stroke-width:2px
+    style BE fill:#cfc,stroke:#333,stroke-width:2px
+    style LS fill:#f9f,stroke:#333,stroke-width:2px
+    style ES fill:#fcf,stroke:#333,stroke-width:2px
+    style U fill:#ffc,stroke:#333,stroke-width:2px
 ```
 
 ## User Journey: Security Key Authentication
