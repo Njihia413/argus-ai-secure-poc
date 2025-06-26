@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ThemeToggleButton } from "@/components/theme-toggle-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // Sample security alerts data for notifications
 const securityAlertsData = [
@@ -91,7 +91,7 @@ export default function DashboardLayout({
 
             {/* Right Aligned Icons */}
             <div className="flex items-center gap-3">
-              <ThemeToggleButton />
+              <ThemeToggle />
               <Button variant="outline" size="icon" className="size-9 border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 relative">
                 <Bell className="h-4 w-4" />
                 <span className="bg-destructive absolute -end-0.5 -top-0.5 block size-2 shrink-0 rounded-xl"></span>
