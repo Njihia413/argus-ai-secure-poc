@@ -105,7 +105,7 @@ export default function ChatPage() {
         const storedUser = sessionStorage.getItem('user');
         const sessionUserData = storedUser ? JSON.parse(storedUser) : null;
         if (!sessionUserData || !sessionUserData.username) {
-          router.push("/login");
+          router.push("/home");
           return;
         }
         setUserData(sessionUserData as UserData);
@@ -117,7 +117,7 @@ export default function ChatPage() {
       } catch (err) {
         console.error('Error checking authentication:', err);
         toast.error('Session error. Please login again.');
-        router.push("/login");
+        router.push("/home");
       }
     };
     checkAuth();
