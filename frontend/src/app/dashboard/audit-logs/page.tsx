@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ChevronDown, Loader2 } from "lucide-react"; // Import Loader2
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ChevronDown, FileUp } from "lucide-react";
 import {
   ColumnFiltersState,
   SortingState,
@@ -85,6 +87,11 @@ interface TableInstance {
     getIsVisible: () => boolean;
     toggleVisibility: (value: boolean) => void;
   }[];
+  getFilteredRowModel: () => {
+    rows: {
+      original: AuditLog;
+    }[];
+  };
 }
 
 export default function AuditLogsPage() {
@@ -102,6 +109,8 @@ export default function AuditLogsPage() {
     pageSize: 10,
   });
   const [actionFilterValue, setActionFilterValue] = useState<string>("all");
+  const [exporting, setExporting] = useState<"excel" | "pdf" | false>(false);
+  const [table, setTable] = useState<TableInstance | null>(null);
 
   const filteredLogs = useMemo(() => {
     return data.filter(log => {
@@ -117,6 +126,11 @@ export default function AuditLogsPage() {
       );
     });
   }, [data, actionFilterValue, globalFilter]);
+
+  const handleTableInit = (tableInstance: TableInstance) => {
+    if (!tableInstance) return;
+    setTable(tableInstance);
+  };
 
   const paginatedLogs = useMemo(() => {
     const start = pagination.pageIndex * pagination.pageSize;
@@ -186,10 +200,208 @@ export default function AuditLogsPage() {
     fetchAuditLogs();
   }, []);
 
+  // Function to escape CSV values
+  const escapeCsvValue = (value: any): string => {
+    if (value === null || value === undefined) return '';
+    const stringValue = String(value);
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    return stringValue;
+  };
+
+  // Function to format date for CSV
+  const formatDateForCsv = (isoDate: string): string => {
+    try {
+      const date = new Date(isoDate);
+      return date.toLocaleString();
+    } catch (e) {
+      return isoDate;
+    }
+  };
+
+  // Function to convert a font file to base64
+  const loadFont = async (path: string) => {
+    const response = await fetch(path);
+    const blob = await response.blob();
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        resolve(base64data.substring(base64data.indexOf(',') + 1));
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Function to export audit logs as PDF
+  const exportToPdf = async () => {
+    try {
+      if (!table || data.length === 0) return;
+
+      // Get filtered data
+      const filteredData = table.getFilteredRowModel().rows.map((row) => row.original);
+
+      if (filteredData.length === 0) return;
+
+      // Create PDF document
+      const doc = new jsPDF();
+
+      // Load and add regular font
+      const regularFont = await loadFont('/assets/fonts/Montserrat-Regular.ttf');
+      doc.addFileToVFS('Montserrat-Regular.ttf', regularFont);
+      doc.addFont('Montserrat-Regular.ttf', 'MontserratRegular', 'normal');
+
+      // Load and add bold font
+      const boldFont = await loadFont('/assets/fonts/Montserrat-Bold.ttf');
+      doc.addFileToVFS('Montserrat-Bold.ttf', boldFont);
+      doc.addFont('Montserrat-Bold.ttf', 'MontserratBold', 'normal');
+      
+      // Add title
+      doc.setFontSize(16);
+      doc.setFont("MontserratBold");
+      doc.text("Argus AI Audit Logs Report", 14, 15);
+      
+      // Switch back to regular font for other text
+      doc.setFont("MontserratRegular");
+      doc.setFontSize(10);
+      doc.text(`Generated on ${new Date().toLocaleString()}`, 14, 25);
+
+      // Add stats summary with filtered counts
+      doc.setFont("MontserratBold");
+      doc.text("Summary", 14, 35);
+      doc.setFont("MontserratRegular");
+      doc.text(`Total Filtered Logs: ${filteredData.length}`, 14, 45);
+
+      // Prepare table data
+      const tableData = filteredData.map((log: AuditLog) => [
+        log.id,
+        log.action_type,
+        log.performed_by_username,
+        log.details,
+        formatDateForCsv(log.timestamp),
+        log.status,
+      ]);
+
+      // Add table
+      autoTable(doc, {
+        head: [["ID", "Action Type", "Performed By", "Details", "Timestamp", "Status"]],
+        body: tableData,
+        startY: 55, // Increased spacing from the top content
+        theme: 'grid', // Add gridlines
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+          lineWidth: 0.1, // Border width
+          lineColor: [0, 0, 0], // Border color
+          font: 'MontserratRegular',
+          textColor: [50, 50, 50] // Dark gray text
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: [255, 255, 255],
+          font: 'MontserratBold',
+          fontStyle: 'bold',
+          lineWidth: 0.1,
+          halign: 'center'
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245]
+        },
+        margin: { top: 10 },
+        columnStyles: {
+          0: { cellWidth: 12 }, // ID
+          1: { cellWidth: 40 }, // Action Type
+          2: { cellWidth: 25 }, // Performed By
+          3: { cellWidth: 45 }, // Details
+          4: { cellWidth: 25 }, // Timestamp
+          5: { cellWidth: 20 }, // Status
+        },
+      } as any);
+
+      // Save the PDF
+      doc.save(`Argus-AI-Audit-Logs-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+    }
+  };
+
+  // Function to export audit logs as CSV
+  const exportAuditLogs = async () => {
+    try {
+      if (!table || data.length === 0) return;
+
+      // Get filtered data
+      const filteredData = table.getFilteredRowModel().rows.map((row) => row.original);
+      
+      if (filteredData.length === 0) return;
+
+      const headers = ["ID", "Action Type", "Performed By", "Details", "Timestamp", "Status"];
+      const csvData = filteredData.map((log: AuditLog) => [
+        log.id,
+        log.action_type,
+        log.performed_by_username,
+        log.details,
+        formatDateForCsv(log.timestamp),
+        log.status,
+      ]);
+
+      const csvContent = [
+        headers.join(","),
+        ...csvData.map(row => row.map(escapeCsvValue).join(","))
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Argus-AI-Audit-Logs-${new Date().toISOString().slice(0, 10)}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url); // Clean up the URL object
+    } catch (error) {
+      console.error('Error exporting audit logs:', error);
+    }
+  };
+
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">System Audit Logs</h2>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={data.length === 0 || loading}
+                className="gap-2"
+              >
+                <FileUp className="h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[150px]">
+              <DropdownMenuCheckboxItem
+                onClick={async () => {
+                  setExporting("excel");
+                  await exportAuditLogs();
+                  setExporting(false);
+                }}
+              >
+                {exporting === "excel" ? "Exporting..." : "Excel"}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                onClick={async () => {
+                  setExporting("pdf");
+                  await exportToPdf();
+                  setExporting(false);
+                }}
+              >
+                {exporting === "pdf" ? "Exporting..." : "PDF"}
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
       </div>
       <div className="grid gap-4">
         <Card>
@@ -211,6 +423,7 @@ export default function AuditLogsPage() {
                 columns={columns}
                 data={paginatedLogs}
               pageCount={pageCount} // Pass pageCount to DataTable
+              onTableInit={handleTableInit}
               state={{
                 sorting,
                 columnFilters,
