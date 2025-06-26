@@ -112,7 +112,7 @@ export default function SecurityKeyDetailsPage() {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
     if (!userInfo || !userInfo.authToken) {
       toast.error("You need to log in")
-      router.push("/login")
+      router.push("/home")
       return
     }
     if (userInfo.role !== "admin") {
