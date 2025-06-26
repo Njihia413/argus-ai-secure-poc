@@ -1027,9 +1027,7 @@ def get_all_security_keys():
        return jsonify({'error': 'Admin privileges required'}), 403
  
    try:
-       # Pagination and filtering parameters
-       page = request.args.get('page', 1, type=int)
-       per_page = request.args.get('per_page', 10, type=int)
+       # Filtering parameters
        status_filter = request.args.get('status', type=str)
 
        query = db.session.query(
@@ -1050,10 +1048,7 @@ def get_all_security_keys():
            elif status_filter == 'inactive':
                query = query.filter(SecurityKey.is_active == False)
 
-       # Paginate the results
-       paginated_keys = query.order_by(SecurityKey.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
-       keys = paginated_keys.items
-       total_pages = paginated_keys.pages
+       keys = query.order_by(SecurityKey.created_at.desc()).all()
  
        keys_list = []
        for key_data in keys:
@@ -1068,7 +1063,7 @@ def get_all_security_keys():
                'username': key_data.username
            })
        
-       return jsonify({'securityKeys': keys_list, 'pages': total_pages})
+       return jsonify({'securityKeys': keys_list})
  
    except Exception as e:
        print(f"Error fetching all security keys: {str(e)}")
