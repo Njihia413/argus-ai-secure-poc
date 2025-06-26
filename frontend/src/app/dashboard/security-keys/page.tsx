@@ -18,6 +18,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   ColumnFiltersState,
   SortingState,
   VisibilityState,
@@ -38,6 +45,7 @@ export interface SecurityKey {
 export default function SecurityKeysPage() {
   const [data, setData] = useState<SecurityKey[]>([])
   const [loading, setLoading] = useState(true)
+  const [pageCount, setPageCount] = useState(0)
   const router = useRouter()
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -65,19 +73,25 @@ export default function SecurityKeysPage() {
     }
     
     fetchSecurityKeys(userInfo.authToken)
-  }, [router])
+  }, [router, pagination, statusFilterValue])
 
   const fetchSecurityKeys = async (authToken: string) => {
     setLoading(true)
     try {
-      const response = await axios.get<{ securityKeys: SecurityKey[] }>(`${API_URL}/security-keys/all`, {
+      const params = new URLSearchParams({
+        page: (pagination.pageIndex + 1).toString(),
+        per_page: pagination.pageSize.toString(),
+        status: statusFilterValue,
+      })
+      const response = await axios.get<{ securityKeys: SecurityKey[], pages: number }>(`${API_URL}/security-keys/all?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
       })
-
+ 
       if (response.data && response.data.securityKeys) {
         setData(response.data.securityKeys)
+        setPageCount(response.data.pages)
       } else {
         console.error("Invalid response format for security keys:", response.data)
         toast.error("Invalid data format received from server for security keys.")
@@ -109,6 +123,7 @@ export default function SecurityKeysPage() {
             <DataTable
               columns={securityKeysColumns}
               data={data}
+              pageCount={pageCount}
             state={{
               sorting,
               columnFilters,
@@ -136,46 +151,21 @@ export default function SecurityKeysPage() {
                     }
                     className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
                   />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
-                        {statusFilterValue === "all"
-                          ? "All Statuses"
-                          : statusFilterValue === "active"
-                            ? "Active"
-                            : "Inactive"} <ChevronDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="rounded-xl">
-                      <DropdownMenuCheckboxItem
-                        checked={statusFilterValue === "all"}
-                        onCheckedChange={() => {
-                          setStatusFilterValue("all");
-                          table?.getColumn("status")?.setFilterValue(undefined);
-                        }}
-                      >
-                        All Statuses
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={statusFilterValue === "active"}
-                        onCheckedChange={() => {
-                          setStatusFilterValue("active");
-                          table?.getColumn("status")?.setFilterValue("active");
-                        }}
-                      >
-                        Active
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={statusFilterValue === "inactive"}
-                        onCheckedChange={() => {
-                          setStatusFilterValue("inactive");
-                          table?.getColumn("status")?.setFilterValue("inactive");
-                        }}
-                      >
-                        Inactive
-                      </DropdownMenuCheckboxItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Select
+                    value={statusFilterValue}
+                    onValueChange={(value) => {
+                      setStatusFilterValue(value)
+                    }}
+                  >
+                    <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
