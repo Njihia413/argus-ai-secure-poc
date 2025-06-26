@@ -175,7 +175,7 @@ export default function SecurityKeysPage() {
                     onChange={(event) =>
                       setSearchFilter(event.target.value)
                     }
-                    className="max-w-sm dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
+                    className="max-w-sm bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent"
                   />
                   <Select
                     value={statusFilterValue}
@@ -183,7 +183,7 @@ export default function SecurityKeysPage() {
                       setStatusFilterValue(value)
                     }}
                   >
-                    <SelectTrigger className="w-auto dark:bg-input bg-transparent border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
+                    <SelectTrigger className="w-auto bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
                       <SelectValue placeholder="Filter by status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -195,7 +195,7 @@ export default function SecurityKeysPage() {
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="dark:bg-input bg-transparent border border-zinc-200 dark:border-zinc-800 rounded-3xl text-foreground hover:bg-transparent">
+                    <Button variant="outline" className="ml-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl text-foreground hover:bg-transparent">
                       Columns <ChevronDown className="ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
