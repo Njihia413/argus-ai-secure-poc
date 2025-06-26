@@ -94,7 +94,7 @@ export default function SecurityKeysPage() {
 
     if (!userInfo || !userInfo.authToken) {
       toast.error("You need to log in to view security keys.")
-      router.push("/login")
+      router.push("/home")
       return
     }
 
