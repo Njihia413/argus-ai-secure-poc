@@ -123,7 +123,7 @@ The project is organized into two main directories: `frontend/` and `backend/`.
     ```bash
     npm run dev
     ```
-    The frontend application will be available at `http://localhost:3000`.
+    The frontend application will be available at `http://localhost:3000/home`.
 
 ### 3. Run the USB Detector (Optional)
 
@@ -147,7 +147,7 @@ To enable dynamic AI model availability based on hardware security key presence,
 
 ## Usage
 
-- **Admin Login:** Access the application at `http://localhost:3000/login` and use the default credentials `admin` / `admin123`.
+- **Admin Login:** Access the application at `http://localhost:3000/home`, click "Sign In", and use the default credentials `admin` / `admin123`.
 - **User Management:** Navigate to the "Users" section in the dashboard to create, manage, and view user details.
 - **Security Key Management:** Register and manage security keys for users through their individual details page.
 
@@ -223,30 +223,41 @@ sequenceDiagram
     participant BE as Backend (Flask)
     participant SK as Security Key
 
-    U->>FE: Enters username and password
-    FE->>BE: POST /api/login (credentials)
-    BE->>BE: Verifies password against hash
-    alt Password Correct
-        BE-->>FE: Password verified, requests 2FA
-        FE->>U: Prompt for Security Key
+    participant U as User
+    participant LP as Landing Page
+    participant LM as Login Modal
+    participant BE as Backend (Flask)
+    participant SK as Security Key
+
+    U->>LP: Clicks "Sign In"
+    LP->>LM: Opens Login Modal
+    U->>LM: Enters username and password
+    LM->>BE: POST /api/login (credentials)
+    BE->>BE: Verifies password, checks for security key
+    alt User has Security Key
+        BE-->>LM: Password verified, returns auth token
+        LM->>U: Prompt for Security Key (2FA)
         U->>SK: Touches Security Key
-        FE->>BE: GET /api/webauthn/login/begin
+        LM->>BE: POST /api/webauthn/login/begin (using auth token)
         BE->>BE: Generate challenge
-        BE-->>FE: Return challenge
-        FE->>SK: Pass challenge to Security Key
+        BE-->>LM: Return challenge
+        LM->>SK: Pass challenge to Security Key
         SK->>SK: Sign challenge with private key
-        SK-->>FE: Return signed assertion
-        FE->>BE: POST /api/webauthn/login/complete (assertion)
+        SK-->>LM: Return signed assertion
+        LM->>BE: POST /api/webauthn/login/complete (assertion)
         BE->>BE: Verify assertion with stored public key
         alt Assertion Valid
-            BE-->>FE: Authentication successful, return session token
-            FE->>U: Redirect to Dashboard
+            BE-->>LM: 2FA successful, return final session token
+            LM->>U: Redirect to Dashboard/Chat based on role
         else Assertion Invalid
-            BE-->>FE: Authentication failed
-            FE->>U: Show error message
+            BE-->>LM: Authentication failed
+            LM->>U: Show error message
         end
+    else User has NO Security Key
+        BE-->>LM: Authentication successful, return session token
+        LM->>U: Redirect to Dashboard/Chat based on role
     else Password Incorrect
-        BE-->>FE: Invalid credentials
-        FE->>U: Show error message
+        BE-->>LM: Invalid credentials
+        LM->>U: Show error message
     end
 ```
