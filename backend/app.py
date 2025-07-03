@@ -5201,7 +5201,8 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
 
 def log_system_event(user_id, performed_by_user_id, action_type, status, target_entity_type=None, target_entity_id=None, details=None):
     """
-    Helper function to create and save a system audit event.
+    Helper function to add a system audit event to the current database session.
+    The calling function is responsible for committing the session.
     """
     try:
         log_entry = AuditLog(
@@ -5209,18 +5210,16 @@ def log_system_event(user_id, performed_by_user_id, action_type, status, target_
             performed_by_user_id=performed_by_user_id,
             action_type=action_type,
             target_entity_type=target_entity_type,
-            target_entity_id=str(target_entity_id) if target_entity_id is not None else None, # Ensure ID is string
+            target_entity_id=str(target_entity_id) if target_entity_id is not None else None,
             details=details,
-            status=status # SUCCESS or FAILURE
+            status=status
         )
         db.session.add(log_entry)
-        db.session.commit()
-        print(f"Audit log created: Action={action_type}, Status={status}, UserID={user_id}, PerformedBy={performed_by_user_id}")
+        print(f"Audit log for action '{action_type}' added to session.")
     except Exception as e:
-        db.session.rollback()
-        print(f"Error creating audit log: {str(e)}")
-        # Optionally, re-raise the exception or handle it as per application's error handling strategy
-        # For now, just printing the error to avoid disrupting the main operation.
+        print(f"Error adding audit log to session: {str(e)}")
+        # Re-raise the exception to ensure the parent transaction is rolled back
+        raise
 
 @app.route('/api/security/alerts', methods=['GET'])
 def get_security_alerts():
@@ -5474,7 +5473,8 @@ def get_system_audit_logs():
         if filter_performed_by_user_id:
             query = query.filter(AuditLog.performed_by_user_id == filter_performed_by_user_id)
         if filter_action_type:
-            query = query.filter(AuditLog.action_type.ilike(f"%{filter_action_type}%"))
+            action_types = [action.strip() for action in filter_action_type.split(',')]
+            query = query.filter(AuditLog.action_type.in_(action_types))
         if filter_status:
             query = query.filter(AuditLog.status.ilike(f"%{filter_status}%"))
         if filter_target_entity_type:
@@ -5963,3 +5963,4 @@ if __name__ == '__main__':
     # if using Flask-Migrate and a proper seeding mechanism.
     # Consider moving them to a dedicated init-db command or manage via migrations.
     app.run(debug=True, host='0.0.0.0', port=5000)
+
