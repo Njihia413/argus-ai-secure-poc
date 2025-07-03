@@ -5812,13 +5812,6 @@ def hid_security_key_event():
     else:
         return jsonify({'error': 'Invalid status provided'}), 400
 
-if __name__ == '__main__':
-    # Note: db.create_all() and create_admin_user() are usually not called here
-    # if using Flask-Migrate and a proper seeding mechanism.
-    # Consider moving them to a dedicated init-db command or manage via migrations.
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
-
 @app.route('/api/emergency/status', methods=['GET'])
 def get_emergency_status():
     auth_token = request.headers.get('Authorization')
@@ -5947,3 +5940,9 @@ def update_system_configuration(admin_user):
         'message': f"System maintenance mode {'enabled' if config.maintenance_mode else 'disabled'}.",
         'maintenance_mode': config.maintenance_mode
     })
+
+if __name__ == '__main__':
+    # Note: db.create_all() and create_admin_user() are usually not called here
+    # if using Flask-Migrate and a proper seeding mechanism.
+    # Consider moving them to a dedicated init-db command or manage via migrations.
+    app.run(debug=True, host='0.0.0.0', port=5000)
