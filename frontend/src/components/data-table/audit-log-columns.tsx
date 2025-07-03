@@ -137,15 +137,15 @@ export const columns: ColumnDef<AuditLog>[] = [
       if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
 
       return (
-        <div className="text-sm text-muted-foreground">
-          <div>
+        <div className="text-sm">
+          <div className="text-foreground">
             {new Date(timestamp).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric'
             })}
           </div>
-          <div>
+          <div className="text-muted-foreground">
             {new Date(timestamp).toLocaleTimeString('en-US', {
               hour: 'numeric',
               minute: '2-digit',
