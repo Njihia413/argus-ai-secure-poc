@@ -1,8 +1,9 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon, ShieldAlert, ServerCog } from "lucide-react"
 import React, { useState } from "react" // Added useState
+import { useStore } from "@/app/utils/store"
 import {
   Sidebar,
   SidebarContent,
@@ -63,8 +64,22 @@ const items: NavItem[] = [
   },
 ]
 
+const elevatedItems: NavItem[] = [
+    {
+        title: "Emergency Actions",
+        url: "/dashboard/emergency-actions",
+        icon: ShieldAlert,
+    },
+    {
+        title: "System Configuration",
+        url: "/dashboard/system-configuration",
+        icon: ServerCog,
+    },
+]
+
 export function AppSidebar() {
   const pathname = usePathname()
+  const { hasElevatedAccess } = useStore()
   const { state } = useSidebar()
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({})
 
@@ -160,6 +175,32 @@ export function AppSidebar() {
                     )}
                   </SidebarMenuItem>
                 ))}
+                {hasElevatedAccess && (
+                  <>
+                    <SidebarGroupLabel className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground tracking-wider mt-4">Elevated Access</SidebarGroupLabel>
+                    {elevatedItems.map((item) => (
+                      <SidebarMenuItem key={item.title}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton
+                              asChild
+                              isActive={isItemActive(item.url)}
+                              className={state === "collapsed" ? "justify-center" : ""}
+                            >
+                              <a href={item.url} className={`flex items-center ${state === "expanded" ? "gap-2" : "justify-center w-full"}`}>
+                                <item.icon className="h-4 w-4" />
+                                <span className={`text-sm ${state === "expanded" ? "opacity-100" : "opacity-0 w-0 hidden"}`}>{item.title}</span>
+                              </a>
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          {state === "collapsed" && (
+                            <TooltipContent side="right"><p>{item.title}</p></TooltipContent>
+                          )}
+                        </Tooltip>
+                      </SidebarMenuItem>
+                    ))}
+                  </>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
