@@ -99,14 +99,14 @@ const SecurityKeyPrompt = ({
     }
 
     let riskLevel = "Low Risk"
-    let riskColor = "text-green-800"
+    let riskColor = "text-green-800 dark:text-green-300"
 
     if (riskScore > 75) {
         riskLevel = "High Risk"
-        riskColor = "text-red-800"
+        riskColor = "text-red-800 dark:text-red-300"
     } else if (riskScore > 40) {
         riskLevel = "Medium Risk"
-        riskColor = "text-yellow-800"
+        riskColor = "text-yellow-800 dark:text-yellow-300"
     }
 
     return (
@@ -126,15 +126,15 @@ const SecurityKeyPrompt = ({
                         </div>
                     )}
 
-                    <div className="bg-yellow-50 p-3 rounded-sm border-l-4 border-yellow-400">
-                        <h4 className="text-yellow-800 font-medium">Security Verification</h4>
-                        <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 space-y-1">
+                    <div className="bg-yellow-50 dark:bg-transparent p-3 rounded-sm border border-yellow-400 dark:border-yellow-600">
+                        <h4 className="text-yellow-800 dark:text-yellow-300 font-medium">Security Verification</h4>
+                        <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                             <li>Ensure you're on the correct website</li>
                             <li>Your browser will prompt you to use your security key</li>
                             <li>Insert your key and tap the button when it flashes</li>
                             <li>Never share your security key with anyone</li>
                             {riskScore > 50 && (
-                                <li className="text-red-700 font-semibold">Additional verification required due to unusual activity</li>
+                                <li className="text-red-700 dark:text-red-400 font-semibold">Additional verification required due to unusual activity</li>
                             )}
                         </ul>
                     </div>
@@ -144,8 +144,8 @@ const SecurityKeyPrompt = ({
                     </div>
 
                     {securityKeyError && (
-                        <div className="p-3 bg-red-50 border-l-4 border-red-500 text-sm text-red-700">
-                            <p className="font-medium">Security Key Error</p>
+                        <div className="p-3 bg-red-50 dark:bg-transparent rounded-sm border border-red-400 dark:border-red-600 text-sm text-red-700 dark:text-red-400">
+                            <p className="font-medium text-red-800 dark:text-red-300">Security Key Error</p>
                             <p>{securityKeyError}</p>
                         </div>
                     )}
@@ -177,16 +177,16 @@ const InactiveKeyDialog = ({
             <AlertDialogContent className="w-[90%] max-w-md p-6">
                 <AlertDialogHeader className="font-montserrat">
                     <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
                         <AlertDialogTitle>Inactive Security Key</AlertDialogTitle>
                     </div>
                     <AlertDialogDescription>
                         Your security key is currently inactive and cannot be used for authentication.
                     </AlertDialogDescription>
                     <div className="space-y-4 pt-4">
-                        <div className="bg-transparent p-3 rounded-sm border border-amber-400 text-sm">
-                            <h4 className="text-amber-800 font-medium">What this means:</h4>
-                            <p className="text-amber-700 mt-1">
+                        <div className="bg-yellow-50 dark:bg-transparent p-3 rounded-sm border border-yellow-400 dark:border-yellow-600 text-sm">
+                            <h4 className="text-yellow-800 dark:text-yellow-300 font-medium">What this means:</h4>
+                            <p className="text-yellow-700 dark:text-yellow-400 mt-1">
                                 Your security key has been registered but is currently disabled. This may be due to
                                 administrative policy or the key was deactivated for security reasons.
                             </p>
@@ -521,9 +521,9 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                         </Button>
 
                         {accountLocked && (
-                            <div className="p-3 bg-red-50 border-l-4 border-red-500 text-sm">
-                                <p className="font-medium text-red-800">Account Locked</p>
-                                <p className="text-red-700">
+                            <div className="p-3 bg-red-50 dark:bg-transparent rounded-sm border border-red-400 dark:border-red-600 text-sm">
+                                <p className="font-medium text-red-800 dark:text-red-300">Account Locked</p>
+                                <p className="text-red-700 dark:text-red-400">
                                     For your security, this account has been locked due to multiple failed login attempts.
                                     Please contact your administrator to unlock your account.
                                 </p>
