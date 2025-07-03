@@ -111,14 +111,27 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
       )
     },
     cell: ({ row }) => {
-      const timestamp = row.getValue("timestamp") as string
-      const date = new Date(timestamp)
+      const timestamp = row.getValue("timestamp") as string;
+      if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
+
       return (
-        <div className="space-y-1">
-          <div>{date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-          <div className="text-xs text-muted-foreground">{date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+        <div className="text-sm">
+          <div className="text-foreground">
+            {new Date(timestamp).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </div>
+          <div className="text-muted-foreground">
+            {new Date(timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
         </div>
-      )
+      );
     },
   },
   {
