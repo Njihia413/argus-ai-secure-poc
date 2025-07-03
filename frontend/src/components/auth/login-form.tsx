@@ -113,13 +113,12 @@ const SecurityKeyPrompt = ({
         <>
             <AlertDialogHeader className="font-montserrat">
                 <AlertDialogTitle>Security Key Required</AlertDialogTitle>
-                <AlertDialogDescription className="space-y-4">
-                    <p>
-                        Please use your registered security key to complete login.
-                    </p>
-
+                <AlertDialogDescription>
+                    Please use your registered security key to complete login.
+                </AlertDialogDescription>
+                <div className="space-y-4 pt-4">
                     {riskScore > 0 && (
-                        <div className="mt-3 flex justify-between items-center">
+                        <div className="flex justify-between items-center">
                             <span className="text-sm font-medium">Login Risk:</span>
                             <span className={`text-xs px-2 py-1 rounded ${riskColor} bg-opacity-20`}>
                                 {riskLevel} ({riskScore}/100)
@@ -127,7 +126,7 @@ const SecurityKeyPrompt = ({
                         </div>
                     )}
 
-                    <div className="bg-yellow-50 p-3 mt-3 rounded-sm border-l-4 border-yellow-400">
+                    <div className="bg-yellow-50 p-3 rounded-sm border-l-4 border-yellow-400">
                         <h4 className="text-yellow-800 font-medium">Security Verification</h4>
                         <ul className="list-disc text-left pl-5 mt-1 text-sm text-yellow-700 space-y-1">
                             <li>Ensure you're on the correct website</li>
@@ -150,7 +149,7 @@ const SecurityKeyPrompt = ({
                             <p>{securityKeyError}</p>
                         </div>
                     )}
-                </AlertDialogDescription>
+                </div>
             </AlertDialogHeader>
             <AlertDialogFooter className="font-montserrat">
                 <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
@@ -181,11 +180,10 @@ const InactiveKeyDialog = ({
                         <AlertTriangle className="h-5 w-5 text-amber-500" />
                         <AlertDialogTitle>Inactive Security Key</AlertDialogTitle>
                     </div>
-                    <AlertDialogDescription className="space-y-4">
-                        <p>
-                            Your security key is currently inactive and cannot be used for authentication.
-                        </p>
-
+                    <AlertDialogDescription>
+                        Your security key is currently inactive and cannot be used for authentication.
+                    </AlertDialogDescription>
+                    <div className="space-y-4 pt-4">
                         <div className="bg-transparent p-3 rounded-sm border border-amber-400 text-sm">
                             <h4 className="text-amber-800 font-medium">What this means:</h4>
                             <p className="text-amber-700 mt-1">
@@ -197,7 +195,7 @@ const InactiveKeyDialog = ({
                         <p className="text-sm">
                             Please contact your system administrator to activate your security key or try logging in with your password only.
                         </p>
-                    </AlertDialogDescription>
+                    </div>
                 </AlertDialogHeader>
                 <AlertDialogFooter className="font-montserrat">
                     <AlertDialogAction onClick={onClose} className="w-full">
