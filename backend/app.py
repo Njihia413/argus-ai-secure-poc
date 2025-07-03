@@ -2157,28 +2157,28 @@ def login():
     identifier = data.get('username')
     user = None
 
-    # Try to find user by national ID if it's a number
-    try:
-        national_id = int(identifier)
-        user = Users.query.filter_by(national_id=national_id).first()
-    except ValueError:
-        # If not a number, try email
+    # Try to find user by national ID if the identifier is a number
+    if identifier.isdigit():
+        user = Users.query.filter_by(national_id=int(identifier)).first()
+
+    # If not found by national ID, try by email
+    if not user:
         user = Users.query.filter_by(email=identifier).first()
 
-    # If no user found by national ID or email, check if they exist by username
+    # If still not found, try by username
     if not user:
-        user_by_username = Users.query.filter_by(username=identifier).first()
-        # Log failed attempt due to invalid identifier (user not found by any means)
+        user = Users.query.filter_by(username=identifier).first()
+
+    # If user is not found by any identifier, return a generic error
+    if not user:
         log_system_event(
-            user_id=None, # User not found
+            user_id=None,  # User not found
             performed_by_user_id=None,
             action_type='USER_LOGIN_FAILURE',
             status='FAILURE',
             details=f"Login attempt failed: User with identifier '{identifier}' not found. IP: {request.remote_addr}."
         )
-        if user_by_username: # This case should ideally not be hit if the previous block correctly identifies no user
-            return jsonify({'error': 'Invalid credentials. Please try again'}), 401
-        return jsonify({'error': 'Invalid credentials. Please try again'}), 401
+        return jsonify({'error': 'Invalid credentials. Please try again.'}), 401
 
     # Get location from IP
     ip_address = request.remote_addr
