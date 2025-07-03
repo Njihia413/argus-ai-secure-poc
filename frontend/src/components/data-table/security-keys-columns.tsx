@@ -161,19 +161,54 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
     accessorKey: "registeredOn",
     header: "Registered On",
     cell: ({ row }) => {
-      const date = row.getValue("registeredOn") as string
-      return <div>{new Date(date).toLocaleDateString()}</div>
+      const timestamp = row.getValue("registeredOn") as string;
+      if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
+
+      return (
+        <div className="text-sm text-muted-foreground">
+          <div>
+            {new Date(timestamp).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </div>
+          <div>
+            {new Date(timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
+        </div>
+      );
     },
   },
   {
     accessorKey: "lastUsed",
     header: "Last Used",
     cell: ({ row }) => {
-      const lastUsed = row.getValue("lastUsed") as string
-      if (lastUsed === "Never") {
-        return <div>Never</div>
-      }
-      return <div>{new Date(lastUsed).toLocaleDateString()}</div>
+      const timestamp = row.getValue("lastUsed") as string;
+      if (!timestamp || timestamp === "Never") return <span className="text-sm text-muted-foreground">Never</span>;
+
+      return (
+        <div className="text-sm text-muted-foreground">
+          <div>
+            {new Date(timestamp).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </div>
+          <div>
+            {new Date(timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
+        </div>
+      );
     },
   },
   {

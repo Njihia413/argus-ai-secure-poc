@@ -120,17 +120,27 @@ export const columns: ColumnDef<SecurityAlert>[] = [
     accessorKey: "time",
     header: "Time",
     cell: ({ row }) => {
-      const isoTime = row.getValue<string>("time");
-      try {
-        const date = new Date(isoTime);
-        return (
-          <div className="py-2">
-            {date.toLocaleString()}
+      const timestamp = row.getValue("time") as string;
+      if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
+
+      return (
+        <div className="text-sm text-muted-foreground">
+          <div>
+            {new Date(timestamp).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
           </div>
-        );
-      } catch (e) {
-        return isoTime;
-      }
+          <div>
+            {new Date(timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
+        </div>
+      );
     }
   },
   {

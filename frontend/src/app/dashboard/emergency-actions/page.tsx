@@ -150,7 +150,7 @@ export default function EmergencyActionsPage() {
             <AlertTitle>{isLocked ? 'System is Locked Down' : 'System is Operational'}</AlertTitle>
             <AlertDescription>
               {isLocked
-                ? `The system was locked down by ${lockedBy || 'an admin'} at ${new Date(lockedAt!).toLocaleString()}. The following message is displayed to users: "${currentMessage}"`
+                ? `The system was locked down by ${lockedBy || 'an admin'} at ${new Date(lockedAt!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${new Date(lockedAt!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}. The following message is displayed to users: "${currentMessage}"`
                 : 'All systems are running normally. No emergency lockdown is in effect.'}
             </AlertDescription>
           </Alert>
@@ -209,7 +209,10 @@ export default function EmergencyActionsPage() {
             </div>
           ) : (
             <DataTable
-              columns={logColumns}
+              columns={logColumns.filter(column => {
+                const key = 'accessorKey' in column ? column.accessorKey : column.id;
+                return key !== 'user_username' && key !== 'target_entity_id';
+              })}
               data={logs}
               pageCount={pageCount}
               state={{

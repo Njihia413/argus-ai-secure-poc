@@ -133,9 +133,25 @@ export const columns: ColumnDef<AuditLog>[] = [
     accessorKey: "timestamp",
     header: "Time",
     cell: ({ row }) => {
+      const timestamp = row.getValue("timestamp") as string;
+      if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
+
       return (
-        <div className="py-2">
-          {format(new Date(row.getValue("timestamp")), "MMM dd, yyyy HH:mm:ss")}
+        <div className="text-sm text-muted-foreground">
+          <div>
+            {new Date(timestamp).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </div>
+          <div>
+            {new Date(timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
         </div>
       );
     },
