@@ -291,6 +291,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             })
 
             setIsLoading(false)
+            setHasElevatedAccess(false)
 
             if (!response.data.has_security_key) {
                 toast.success("Login successful!")
@@ -312,6 +313,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             }
 
             toast.success("Login successful!")
+            setHasElevatedAccess(false)
             const userInfo = {
                 id: response.data.user_id,
                 username,
