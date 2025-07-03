@@ -3620,6 +3620,7 @@ def webauthn_login_complete():
                 'auth_token': new_session.session_token,
                 'binding_nonce': new_binding_nonce,
                 'risk_score': risk_score,
+                'has_elevated_access': user.role == 'admin',
                 'securityKey': {
                     'id': security_key.id,
                     'name': security_key.model
@@ -3678,6 +3679,7 @@ def webauthn_login_complete():
                     'auth_token': auth_session.session_token,
                     'risk_score': risk_score,
                     'requires_additional_verification': risk_score > 50,
+                    'has_elevated_access': user.role == 'admin',
                     'securityKey': {
                         'id': security_key.id,
                         'name': security_key.model
