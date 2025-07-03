@@ -5943,14 +5943,24 @@ def update_system_configuration(admin_user):
     
     db.session.commit()
 
-    log_system_event(
-        user_id=None,
-        performed_by_user_id=admin_user.id,
-        action_type='MAINTENANCE_MODE_UPDATE',
-        status='SUCCESS',
-        target_entity_type='SYSTEM',
-        details=f"Maintenance mode {'enabled' if maintenance_mode else 'disabled'} by admin '{admin_user.username}'. Message: '{maintenance_message}'"
-    )
+    if maintenance_mode:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='MAINTENANCE_MODE_ENABLED',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"Maintenance mode enabled by admin '{admin_user.username}'. Message: '{maintenance_message}'"
+        )
+    else:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='MAINTENANCE_MODE_DISABLED',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"Maintenance mode disabled by admin '{admin_user.username}'."
+        )
     
     return jsonify({
         'message': f"System maintenance mode {'enabled' if config.maintenance_mode else 'disabled'}.",
