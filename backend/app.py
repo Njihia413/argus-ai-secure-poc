@@ -2128,6 +2128,20 @@ def reassign_security_key(key_id):
 # Login endpoint
 @app.route('/api/login', methods=['POST'])
 def login():
+    # First, check for system-wide lockdown
+    system_status = SystemStatus.query.first()
+    if system_status and system_status.is_locked_down:
+        data = request.get_json()
+        identifier = data.get('username')
+        # A simple check to see if the user trying to log in is an admin.
+        # This is a simplified check; a more robust implementation might query the user table.
+        user = Users.query.filter_by(username=identifier).first()
+        if not user or user.role != 'admin':
+            return jsonify({
+                'error': 'System is currently under emergency lockdown.',
+                'lockdown_message': system_status.lockdown_message
+            }), 403  # Forbidden
+
     data = request.get_json()
 
     if not data or not data.get('username') or not data.get('password'):
@@ -5815,16 +5829,9 @@ def hid_security_key_event():
     else:
         return jsonify({'error': 'Invalid status provided'}), 400
 
-@app.route('/api/emergency/status', methods=['GET'])
-def get_emergency_status():
-    auth_token = request.headers.get('Authorization')
-    if not auth_token or not auth_token.startswith('Bearer '):
-        return jsonify({'error': 'Authorization required'}), 401
-    token = auth_token.replace('Bearer ', '')
-    auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
-    if not auth_session:
-        return jsonify({'error': 'Invalid session'}), 401
-    
+@app.route('/api/emergency-actions', methods=['GET'])
+@elevated_admin_required
+def get_emergency_status(admin_user):
     status = SystemStatus.query.first()
     if not status:
         status = SystemStatus(is_locked_down=False)
