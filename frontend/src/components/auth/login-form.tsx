@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { Eye, EyeOff, ShieldCheck, Key, AlertTriangle } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
+import { useStore } from "@/app/utils/store"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -214,6 +215,7 @@ interface LoginFormProps {
 
 export function LoginForm({ open, onOpenChange }: LoginFormProps) {
     const router = useRouter()
+    const { setHasElevatedAccess } = useStore()
 
     const [showPassword, setShowPassword] = useState(false)
     const [username, setUsername] = useState("")
@@ -410,6 +412,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
         lastName: string;
         role: string;
         auth_token: string;
+        has_elevated_access?: boolean;
     }
 
     const handleSecondFactorSuccess = (userData: SecurityKeyUserData) => {
@@ -429,6 +432,9 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
         }
         sessionStorage.setItem('user', JSON.stringify(userInfo))
         initializeSecurityKeyStatus(true)
+        if (userData.has_elevated_access) {
+            setHasElevatedAccess(true)
+        }
         onOpenChange(false);
         redirectBasedOnRole(userData.role)
     }
