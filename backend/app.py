@@ -5907,11 +5907,20 @@ def toggle_system_lockdown(admin_user):
 def get_system_configuration(admin_user):
     config = SystemConfiguration.query.first()
     if not config:
-        return jsonify({'maintenance_mode': False, 'maintenance_message': ''})
+        return jsonify({
+            'maintenance_mode': False,
+            'maintenance_message': '',
+            'updated_by': None,
+            'updated_at': None
+        })
     
+    updated_by_user = Users.query.get(config.updated_by_user_id) if config.updated_by_user_id else None
+
     return jsonify({
         'maintenance_mode': config.maintenance_mode,
-        'maintenance_message': config.maintenance_message
+        'maintenance_message': config.maintenance_message,
+        'updated_at': config.updated_at.isoformat() if config.updated_at else None,
+        'updated_by': updated_by_user.username if updated_by_user else None
     })
 
 
