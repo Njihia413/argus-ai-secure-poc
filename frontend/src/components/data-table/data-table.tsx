@@ -82,6 +82,7 @@ interface DataTableProps<TData> {
   getSortedRowModel?: boolean
   getFilteredRowModel?: boolean
   getPaginationRowModel?: boolean
+  manualPagination?: boolean
 }
 
 const defaultState: DataTableState = {
