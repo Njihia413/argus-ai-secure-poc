@@ -242,19 +242,61 @@ export default function SecurityKeyDetailsPage() {
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Registered On</p>
-            <p className="text-lg">{securityKey.registeredOn ? new Date(securityKey.registeredOn).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A"}</p>
-            {securityKey.registeredOn && <p className="text-xs text-foreground">{new Date(securityKey.registeredOn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>}
+            <div className="text-sm">
+              <div className="text-foreground">
+                {securityKey.registeredOn ? new Date(securityKey.registeredOn).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                }) : "N/A"}
+              </div>
+              <div className="text-muted-foreground">
+                {securityKey.registeredOn ? new Date(securityKey.registeredOn).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                }) : ""}
+              </div>
+            </div>
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Last Used</p>
-            <p className="text-lg">{securityKey.lastUsed === "Never" ? "Never" : (securityKey.lastUsed ? new Date(securityKey.lastUsed).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "N/A")}</p>
-            {securityKey.lastUsed && securityKey.lastUsed !== "Never" && <p className="text-xs text-foreground">{new Date(securityKey.lastUsed).toLocaleTimeString('en-US', { second: '2-digit', timeZoneName: 'shortOffset' })}</p>}
+            <div className="text-sm">
+              <div className="text-foreground">
+                {securityKey.lastUsed === "Never" ? "Never" : (securityKey.lastUsed ? new Date(securityKey.lastUsed).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                }) : "N/A")}
+              </div>
+              <div className="text-muted-foreground">
+                {securityKey.lastUsed && securityKey.lastUsed !== "Never" ? new Date(securityKey.lastUsed).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                }) : ""}
+              </div>
+            </div>
           </div>
           {securityKey.deactivatedAt && (
             <div className="space-y-1">
               <p className="text-sm font-medium text-muted-foreground">Deactivated On</p>
-              <p className="text-lg">{new Date(securityKey.deactivatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              <p className="text-xs text-foreground">{new Date(securityKey.deactivatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+              <div className="text-sm">
+                <div className="text-foreground">
+                  {new Date(securityKey.deactivatedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </div>
+                <div className="text-muted-foreground">
+                  {new Date(securityKey.deactivatedAt).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </div>
+              </div>
             </div>
           )}
           {securityKey.deactivationReason && (
