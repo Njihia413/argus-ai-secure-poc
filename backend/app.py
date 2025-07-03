@@ -2133,14 +2133,21 @@ def login():
     if system_status and system_status.is_locked_down:
         data = request.get_json()
         identifier = data.get('username')
-        # A simple check to see if the user trying to log in is an admin.
-        # This is a simplified check; a more robust implementation might query the user table.
-        user = Users.query.filter_by(username=identifier).first()
+        # Robustly find the user to check their role.
+        user = None
+        if identifier.isdigit():
+            user = Users.query.filter_by(national_id=int(identifier)).first()
+        if not user:
+            user = Users.query.filter_by(email=identifier).first()
+        if not user:
+            user = Users.query.filter_by(username=identifier).first()
+
+        # If the user is not found, or if they are not an admin, block login.
         if not user or user.role != 'admin':
             return jsonify({
                 'error': 'System is currently under emergency lockdown.',
                 'lockdown_message': system_status.lockdown_message
-            }), 403  # Forbidden
+            }), 403
 
     data = request.get_json()
 
