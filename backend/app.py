@@ -5445,10 +5445,6 @@ def get_system_audit_logs():
         if not admin_user or admin_user.role != 'admin': # Assuming only admins can view all system logs
             return jsonify({'error': 'Admin privileges required'}), 403
 
-        # Pagination parameters
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int) # Default to 10, can be adjusted
-
         # Filtering parameters
         filter_user_id = request.args.get('user_id', type=int)
         filter_performed_by_user_id = request.args.get('performed_by_user_id', type=int)
@@ -5511,10 +5507,10 @@ def get_system_audit_logs():
             except ValueError:
                 return jsonify({'error': 'Invalid date_to format. Use ISO format.'}), 400
 
-        audit_logs_page = query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        audit_logs = query.order_by(AuditLog.timestamp.desc()).all()
         
         logs_data = []
-        for log in audit_logs_page.items:
+        for log in audit_logs:
             logs_data.append({
                 'id': log.id,
                 'timestamp': log.timestamp.isoformat(),
@@ -5529,13 +5525,7 @@ def get_system_audit_logs():
                 'status': log.status
             })
 
-        return jsonify({
-            'logs': logs_data,
-            'total': audit_logs_page.total,
-            'pages': audit_logs_page.pages,
-            'current_page': page,
-            'per_page': per_page
-        })
+        return jsonify({'logs': logs_data})
 
     except Exception as e:
         print(f"Error fetching system audit logs: {str(e)}")
