@@ -55,7 +55,7 @@ export default function EmergencyActionsPage() {
       return;
     }
     try {
-      const response = await axios.get<EmergencyStatusResponse>(`${API_URL}/emergency/status`, {
+      const response = await axios.get<EmergencyStatusResponse>(`${API_URL}/emergency-actions`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       setIsLocked(response.data.is_locked_down);
@@ -145,7 +145,7 @@ export default function EmergencyActionsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <Alert variant={isLocked ? 'destructive' : 'default'}>
+          <Alert variant={isLocked ? 'destructive' : 'default'} className={`border-2 ${isLocked ? 'border-red-500' : 'border-green-500'}`}>
             {isLocked ? <ShieldAlert className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             <AlertTitle>{isLocked ? 'System is Locked Down' : 'System is Operational'}</AlertTitle>
             <AlertDescription>
@@ -155,7 +155,7 @@ export default function EmergencyActionsPage() {
             </AlertDescription>
           </Alert>
 
-          <div className="flex items-center space-x-4 rounded-md border p-4">
+          <div className={`flex items-center space-x-4 rounded-md border-2 p-4 ${isLocked ? 'border-red-500' : 'border-green-500'}`}>
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 {isLocked ? 'Unlock System' : 'Enable System Lockdown'}
