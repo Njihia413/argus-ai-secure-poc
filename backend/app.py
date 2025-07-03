@@ -2149,6 +2149,27 @@ def login():
                 'lockdown_message': system_status.lockdown_message
             }), 403
 
+    # Then, check for maintenance mode
+    system_config = SystemConfiguration.query.first()
+    if system_config and system_config.maintenance_mode:
+        data = request.get_json()
+        identifier = data.get('username')
+        # Robustly find the user to check their role.
+        user = None
+        if identifier.isdigit():
+            user = Users.query.filter_by(national_id=int(identifier)).first()
+        if not user:
+            user = Users.query.filter_by(email=identifier).first()
+        if not user:
+            user = Users.query.filter_by(username=identifier).first()
+
+        # If the user is not found, or if they are not an admin, block login.
+        if not user or user.role != 'admin':
+            return jsonify({
+                'error': 'System is currently under maintenance.',
+                'maintenance_message': system_config.maintenance_message
+            }), 403
+
     data = request.get_json()
 
     if not data or not data.get('username') or not data.get('password'):
