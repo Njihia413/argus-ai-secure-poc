@@ -83,7 +83,7 @@ export default function SystemConfigurationPage() {
         params: {
           page: pagination.pageIndex + 1,
           per_page: pagination.pageSize,
-          action_type: 'MAINTENANCE_MODE_UPDATE', // Filter for maintenance mode events
+          action_type: 'MAINTENANCE_MODE_ENABLED,MAINTENANCE_MODE_DISABLED', // Filter for maintenance mode events
         },
       });
       setLogs(response.data.logs);
