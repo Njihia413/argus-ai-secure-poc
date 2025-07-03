@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Wrench, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/app/utils/store';
 import { API_URL } from '@/app/utils/constants';
 import { DataTable } from '@/components/data-table/data-table';
@@ -18,6 +18,8 @@ import { SortingState, ColumnFiltersState, VisibilityState, PaginationState } fr
 interface SystemConfigurationResponse {
   maintenance_mode: boolean;
   maintenance_message: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
 }
 
 interface UpdateSystemConfigurationResponse {
@@ -30,6 +32,8 @@ export default function SystemConfigurationPage() {
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [updatedBy, setUpdatedBy] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [pageCount, setPageCount] = useState(0);
@@ -56,6 +60,8 @@ export default function SystemConfigurationPage() {
       });
       setMaintenanceMode(response.data.maintenance_mode);
       setCurrentMessage(response.data.maintenance_message || '');
+      setUpdatedBy(response.data.updated_by);
+      setUpdatedAt(response.data.updated_at);
     } catch (error) {
       toast.error('Failed to fetch system configuration.');
     } finally {
@@ -95,13 +101,18 @@ export default function SystemConfigurationPage() {
   }, [fetchConfiguration, fetchLogs]);
 
   const handleToggleMaintenanceMode = async () => {
+    if (!maintenanceMode && !maintenanceMessage) {
+      toast.error('A message is required to enable maintenance mode.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await axios.post<UpdateSystemConfigurationResponse>(
         `${API_URL}/system-configuration`,
-        { 
+        {
           maintenance_mode: !maintenanceMode,
-          maintenance_message: maintenanceMessage 
+          maintenance_message: maintenanceMessage,
         },
         { headers: { Authorization: `Bearer ${JSON.parse(sessionStorage.getItem("user") || "{}").authToken}` } }
       );
@@ -136,17 +147,17 @@ export default function SystemConfigurationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <Alert variant={maintenanceMode ? 'destructive' : 'default'}>
-            {maintenanceMode ? <Wrench className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+          <Alert variant={maintenanceMode ? 'destructive' : 'default'} className={`border-2 ${maintenanceMode ? 'border-red-500' : 'border-green-500'}`}>
+            {maintenanceMode ? <ShieldAlert className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             <AlertTitle>{maintenanceMode ? 'System is in Maintenance Mode' : 'System is Operational'}</AlertTitle>
             <AlertDescription>
               {maintenanceMode
-                ? `The system is currently in maintenance mode. The following message is displayed to users: "${currentMessage}"`
+                ? `The system was put into maintenance mode by ${updatedBy || 'an admin'} at ${new Date(updatedAt!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${new Date(updatedAt!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}. The following message is displayed to users: "${currentMessage}"`
                 : 'The system is fully operational.'}
             </AlertDescription>
           </Alert>
 
-          <div className="flex items-center space-x-4 rounded-md border p-4">
+          <div className={`flex items-center space-x-4 rounded-md border-2 p-4 ${maintenanceMode ? 'border-red-500' : 'border-green-500'}`}>
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 {maintenanceMode ? 'Disable Maintenance Mode' : 'Enable Maintenance Mode'}
@@ -177,6 +188,9 @@ export default function SystemConfigurationPage() {
                 onChange={(e) => setMaintenanceMessage(e.target.value)}
                 className="min-h-[100px]"
               />
+              <Button onClick={handleToggleMaintenanceMode} disabled={isLoading || !maintenanceMessage}>
+                Enable Maintenance Mode
+              </Button>
             </div>
           )}
         </CardContent>
@@ -197,7 +211,10 @@ export default function SystemConfigurationPage() {
             </div>
           ) : (
             <DataTable
-              columns={logColumns}
+              columns={logColumns.filter(column => {
+                const key = 'accessorKey' in column ? column.accessorKey : column.id;
+                return key !== 'user_username' && key !== 'target_entity_id';
+              })}
               data={logs}
               pageCount={pageCount}
               state={{
