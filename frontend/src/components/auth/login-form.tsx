@@ -258,9 +258,11 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
         response?: {
             data?: {
                 error?: string;
+                message?: string;
                 accountLocked?: boolean;
                 accountLockedUntil?: string;
                 status?: string;
+                lockdown_message?: string;
             };
         };
     }
@@ -333,11 +335,15 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             const apiError = err as ApiError;
             setIsLoading(false)
 
-            if (apiError.response?.data?.accountLocked) {
-                setAccountLocked(true)
-                toast.error("Account locked due to too many failed attempts. Please contact your administrator.");
+            const errorData = apiError.response?.data;
+            if (errorData) {
+                if (errorData.accountLocked) {
+                    setAccountLocked(true);
+                }
+                const message = errorData.lockdown_message || errorData.error || errorData.message || "Invalid credentials. Please try again.";
+                toast.error(message);
             } else {
-                toast.error("Invalid credentials. Please try again.");
+                toast.error("An unexpected error occurred. Please try again.");
             }
         }
     }
@@ -399,11 +405,15 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             setIsLoading(false)
             console.error("Login error:", error)
 
-            if (apiError.response?.data?.accountLocked) {
-                setAccountLocked(true)
-                toast.error("Account locked due to too many failed attempts. Please contact your administrator.")
+            const errorData = apiError.response?.data;
+            if (errorData) {
+                if (errorData.accountLocked) {
+                    setAccountLocked(true);
+                }
+                const message = errorData.lockdown_message || errorData.error || errorData.message || "Invalid credentials. Please try again.";
+                toast.error(message);
             } else {
-                toast.error("Invalid credentials. Please try again.")
+                toast.error("An unexpected error occurred. Please try again.");
             }
         }
     }
