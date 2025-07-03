@@ -59,11 +59,11 @@ class Users(db.Model):
     password_hash = db.Column(db.String(200), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
-    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # User timezone for risk-based authentication
     timezone = db.Column(db.String(50), default='UTC')
-    last_login_time = db.Column(db.DateTime)
+    last_login_time = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_ip = db.Column(db.String(45))
     successful_login_attempts = db.Column(db.Integer, default=0)  # Track successful logins
     failed_login_attempts = db.Column(db.Integer, default=0)  # Track failed logins
@@ -188,7 +188,7 @@ class SecurityKeyChallenge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     challenge = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     expired = db.Column(db.Boolean, default=False)
     is_second_factor = db.Column(db.Boolean, default=False)
 
@@ -198,14 +198,14 @@ class AuthenticationSession(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     password_verified = db.Column(db.Boolean, default=False)
     security_key_verified = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    expires_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
     session_token = db.Column(db.String(100), unique=True, default=lambda: str(uuid.uuid4()))
     client_binding = db.Column(db.String(255))
     binding_nonce = db.Column(db.String(100))
     risk_score = db.Column(db.Integer, default=0)
     requires_additional_verification = db.Column(db.Boolean, default=False)
-    last_used = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class AuthenticationAttempt(db.Model):
@@ -214,7 +214,7 @@ class AuthenticationAttempt(db.Model):
     ip_address = db.Column(db.String(45))  # IPv6 compatible
     user_agent = db.Column(db.String(255))
     device_type = db.Column(db.String(50))  # New column for device type
-    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     success = db.Column(db.Boolean, default=False)
     auth_type = db.Column(db.String(50))
     risk_score = db.Column(db.Integer, default=0)
@@ -522,7 +522,10 @@ def elevated_admin_required(f):
             return jsonify({'error': 'Invalid session'}), 401
 
         # Check if session is expired
-        if auth_session.expires_at < datetime.now(timezone.utc):
+        expires_at = auth_session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
             return jsonify({'error': 'Session expired'}), 401
 
         user = Users.query.get(auth_session.user_id)
