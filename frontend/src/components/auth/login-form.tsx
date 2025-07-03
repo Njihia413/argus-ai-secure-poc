@@ -263,6 +263,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                 accountLockedUntil?: string;
                 status?: string;
                 lockdown_message?: string;
+                maintenance_message?: string;
             };
         };
     }
@@ -340,7 +341,16 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                 if (errorData.accountLocked) {
                     setAccountLocked(true);
                 }
-                const message = errorData.lockdown_message || errorData.error || errorData.message || "Invalid credentials. Please try again.";
+                let message = "Invalid credentials. Please try again.";
+                if (errorData.maintenance_message) {
+                    message = errorData.maintenance_message;
+                } else if (errorData.lockdown_message) {
+                    message = errorData.lockdown_message;
+                } else if (errorData.error) {
+                    message = errorData.error;
+                } else if (errorData.message) {
+                    message = errorData.message;
+                }
                 toast.error(message);
             } else {
                 toast.error("An unexpected error occurred. Please try again.");
@@ -410,7 +420,16 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                 if (errorData.accountLocked) {
                     setAccountLocked(true);
                 }
-                const message = errorData.lockdown_message || errorData.error || errorData.message || "Invalid credentials. Please try again.";
+                let message = "Invalid credentials. Please try again.";
+                if (errorData.maintenance_message) {
+                    message = errorData.maintenance_message;
+                } else if (errorData.lockdown_message) {
+                    message = errorData.lockdown_message;
+                } else if (errorData.error) {
+                    message = errorData.error;
+                } else if (errorData.message) {
+                    message = errorData.message;
+                }
                 toast.error(message);
             } else {
                 toast.error("An unexpected error occurred. Please try again.");
