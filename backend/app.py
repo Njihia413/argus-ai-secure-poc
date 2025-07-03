@@ -23,6 +23,7 @@ from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserE
     PublicKeyCredentialType, AuthenticatorData
 from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
+from functools import wraps
 
 from sqlalchemy import func, case, MetaData, or_
 from sqlalchemy.orm import aliased
@@ -280,6 +281,29 @@ class SecurityKey(db.Model):
     user = db.relationship('Users', backref=db.backref('security_keys', lazy=True))
 
 
+
+# Model for system-wide status, like emergency lockdown
+class SystemStatus(db.Model):
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    is_locked_down = db.Column(db.Boolean, default=False, nullable=False)
+    lockdown_message = db.Column(db.Text, nullable=True)
+    locked_down_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    locked_down_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    locked_down_by = db.relationship('Users', foreign_keys=[locked_down_by_user_id])
+
+
+# Model for system-wide configuration, like maintenance mode
+class SystemConfiguration(db.Model):
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    maintenance_mode = db.Column(db.Boolean, default=False, nullable=False)
+    maintenance_message = db.Column(db.Text, nullable=True)
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    updated_by = db.relationship('Users', foreign_keys=[updated_by_user_id])
+
+
 # Configure SecurityKey
 rp = PublicKeyCredentialRpEntity(name="Athens AI", id="localhost")
 server = Fido2Server(rp)
@@ -483,6 +507,44 @@ def assess_risk(user_id, request):
         return 100  # High risk if user not found
 
     # Start with a base risk score - start at 30 for first-time logins
+
+def elevated_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_token = request.headers.get('Authorization')
+        if not auth_token or not auth_token.startswith('Bearer '):
+            return jsonify({'error': 'Authorization required'}), 401
+
+        token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
+
+        if not auth_session:
+            return jsonify({'error': 'Invalid session'}), 401
+
+        # Check if session is expired
+        if auth_session.expires_at < datetime.now(timezone.utc):
+            return jsonify({'error': 'Session expired'}), 401
+
+        user = Users.query.get(auth_session.user_id)
+        if not user or user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        if not auth_session.security_key_verified:
+            return jsonify({'error': 'Elevated access required (Security Key authentication needed)'}), 403
+
+        # Add the authenticated admin user to the request context
+        kwargs['admin_user'] = user
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Function to assess risk for risk-based authentication
+def assess_risk(user_id, request):
+    # Get user's authentication history
+    user = Users.query.get(user_id)
+    if not user:
+        return 100  # High risk if user not found
+
+    # Start with a base risk score - start at 30 for all logins
     risk_score = 30
     print(f"Risk: Starting with base score of 30 for all logins")
 
@@ -5755,3 +5817,133 @@ if __name__ == '__main__':
     # if using Flask-Migrate and a proper seeding mechanism.
     # Consider moving them to a dedicated init-db command or manage via migrations.
     app.run(debug=True, host='0.0.0.0', port=5000)
+
+
+@app.route('/api/emergency/status', methods=['GET'])
+def get_emergency_status():
+    auth_token = request.headers.get('Authorization')
+    if not auth_token or not auth_token.startswith('Bearer '):
+        return jsonify({'error': 'Authorization required'}), 401
+    token = auth_token.replace('Bearer ', '')
+    auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
+    if not auth_session:
+        return jsonify({'error': 'Invalid session'}), 401
+    
+    status = SystemStatus.query.first()
+    if not status:
+        status = SystemStatus(is_locked_down=False)
+        db.session.add(status)
+        db.session.commit()
+
+    locked_down_by_user = Users.query.get(status.locked_down_by_user_id) if status.locked_down_by_user_id else None
+
+    return jsonify({
+        'is_locked_down': status.is_locked_down,
+        'lockdown_message': status.lockdown_message,
+        'locked_down_at': status.locked_down_at.isoformat() if status.locked_down_at else None,
+        'locked_down_by': locked_down_by_user.username if locked_down_by_user else None
+    })
+
+@app.route('/api/emergency/toggle-lockdown', methods=['POST'])
+@elevated_admin_required
+def toggle_system_lockdown(admin_user):
+    data = request.get_json()
+    action = data.get('action')
+    message = data.get('message', '')
+
+    if action not in ['lock', 'unlock']:
+        return jsonify({'error': 'Invalid action specified. Use "lock" or "unlock".'}), 400
+
+    status = SystemStatus.query.first()
+    if not status:
+        status = SystemStatus()
+        db.session.add(status)
+
+    if action == 'lock':
+        if status.is_locked_down:
+            return jsonify({'message': 'System is already locked down.'}), 200
+        
+        status.is_locked_down = True
+        status.lockdown_message = message
+        status.locked_down_at = datetime.now(timezone.utc)
+        status.locked_down_by_user_id = admin_user.id
+        
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SYSTEM_LOCKDOWN_ENABLED',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"System lockdown enabled by admin '{admin_user.username}'. Message: {message}"
+        )
+        
+    elif action == 'unlock':
+        if not status.is_locked_down:
+            return jsonify({'message': 'System is not locked down.'}), 200
+            
+        status.is_locked_down = False
+        status.lockdown_message = None
+        status.locked_down_at = None
+        status.locked_down_by_user_id = None
+
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='SYSTEM_LOCKDOWN_DISABLED',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"System lockdown disabled by admin '{admin_user.username}'."
+        )
+
+    db.session.commit()
+    return jsonify({
+        'message': f'System lockdown has been {"enabled" if action == "lock" else "disabled"}.',
+        'is_locked_down': status.is_locked_down
+    })
+
+
+@app.route('/api/system-configuration', methods=['GET'])
+@elevated_admin_required
+def get_system_configuration(admin_user):
+    config = SystemConfiguration.query.first()
+    if not config:
+        return jsonify({'maintenance_mode': False, 'maintenance_message': ''})
+    
+    return jsonify({
+        'maintenance_mode': config.maintenance_mode,
+        'maintenance_message': config.maintenance_message
+    })
+
+
+@app.route('/api/system-configuration', methods=['POST'])
+@elevated_admin_required
+def update_system_configuration(admin_user):
+    data = request.get_json()
+    maintenance_mode = data.get('maintenance_mode')
+    maintenance_message = data.get('maintenance_message')
+
+    config = SystemConfiguration.query.first()
+    if not config:
+        config = SystemConfiguration()
+        db.session.add(config)
+
+    config.maintenance_mode = maintenance_mode
+    config.maintenance_message = maintenance_message
+    config.updated_at = datetime.now(timezone.utc)
+    config.updated_by_user_id = admin_user.id
+    
+    db.session.commit()
+
+    log_system_event(
+        user_id=None,
+        performed_by_user_id=admin_user.id,
+        action_type='MAINTENANCE_MODE_UPDATE',
+        status='SUCCESS',
+        target_entity_type='SYSTEM',
+        details=f"Maintenance mode {'enabled' if maintenance_mode else 'disabled'} by admin '{admin_user.username}'. Message: '{maintenance_message}'"
+    )
+    
+    return jsonify({
+        'message': f"System maintenance mode {'enabled' if config.maintenance_mode else 'disabled'}.",
+        'maintenance_mode': config.maintenance_mode
+    })
