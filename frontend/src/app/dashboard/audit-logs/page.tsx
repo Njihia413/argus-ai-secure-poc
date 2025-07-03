@@ -75,6 +75,8 @@ const actionOptions = [
   // System Actions
   { value: "DATABASE_RESET_SUCCESS", label: "DB Reset Success" },
   { value: "DATABASE_RESET_FAILURE", label: "DB Reset Failure" },
+  { value: "SYSTEM_LOCKDOWN_ENABLED", label: "System Lockdown Enabled" },
+  { value: "SYSTEM_LOCKDOWN_DISABLED", label: "System Lockdown Disabled" },
 ];
 
 interface TableInstance {
