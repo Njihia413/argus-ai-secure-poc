@@ -308,13 +308,8 @@ export default function ChatPage() {
     );
 
     if (loggedInWithSecurityKeyAtAuthTime) {
-      if (hidKey.isConnected) { 
-        newAvailableModels = ALL_MODELS;
-        reasonForChange = "Logged in with WebAuthn & Security Key (HID) is connected.";
-      } else {
-        newAvailableModels = RESTRICTED_MODELS;
-        reasonForChange = "Logged in with WebAuthn, but Security Key (HID) is NOT connected.";
-      }
+      newAvailableModels = ALL_MODELS;
+      reasonForChange = "Logged in with an active security key.";
     } else {
       if (hidKey.isConnected && isHelperAppConnected) {
         newAvailableModels = ALL_MODELS;
