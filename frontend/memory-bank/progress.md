@@ -91,6 +91,10 @@
         - [x] Updated global search input to filter across multiple relevant fields using the `filterFn` in `audit-log-columns.tsx`.
         - [x] Ensured action type filter correctly queries the backend.
 - [x] User activity tracking
+- [x] **New: Elevated Access Feature**
+    - [x] **Backend**: Added `has_elevated_access` to login response. Implemented `SystemStatus` and `SystemConfiguration` models, an `@elevated_admin_required` decorator, and API endpoints for emergency actions and system configuration.
+    - [x] **Frontend State**: Added `hasElevatedAccess` to the Zustand store and persisted it to `sessionStorage`.
+    - [x] **Frontend UI**: Conditionally rendered "Emergency Actions" and "System Configuration" menu items in the sidebar. Created the corresponding pages and resolved all TypeScript errors.
 
 ### AI Integration
 - [x] AI chat implementation ([`src/app/chat/page.tsx`](src/app/chat/page.tsx:1))

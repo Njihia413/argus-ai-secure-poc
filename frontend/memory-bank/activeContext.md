@@ -1,9 +1,25 @@
 # Active Context: Argus AI Secure
 
 ## Current Focus
-Based on open files and recent activity, development is focused on security management features, UI enhancements for the dashboard, and theme refinements.
+The primary focus has been the implementation of a secure administrative context, allowing for privileged actions only after a high-security login. This involved backend session management, frontend state handling, and the creation of new secure pages.
 
-0.  **System-Wide Audit Logging (New Feature - Completed):**
+### 1. Secure Admin Context and Controls (New Feature)
+*   **Backend ([`../backend/app.py`](../backend/app.py:1)):**
+    *   Added `has_elevated_access` to the login response for admins using a security key.
+    *   Added `SystemStatus` and `SystemConfiguration` models to manage emergency lockdown and maintenance mode.
+    *   Implemented an `@elevated_admin_required` decorator to protect sensitive endpoints.
+    *   Created API endpoints for emergency actions (`/api/emergency/status`, `/api/emergency/toggle-lockdown`) and system configuration (`/api/system-configuration`).
+    *   Modified the login endpoint to check for maintenance mode.
+*   **Frontend State ([`src/app/utils/store.ts`](src/app/utils/store.ts:1)):**
+    *   The Zustand store now includes `hasElevatedAccess` to manage the elevated access state.
+    *   Implemented `persist` middleware to save the `hasElevatedAccess` state to `sessionStorage`.
+*   **Frontend UI:**
+    *   The dashboard sidebar ([`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1)) now conditionally renders "Emergency Actions" and "System Configuration" menu items based on the `hasElevatedAccess` state.
+    *   Created the "Emergency Actions" page ([`src/app/dashboard/emergency-actions/page.tsx`](src/app/dashboard/emergency-actions/page.tsx:1)) to allow admins with elevated access to manage system-wide lockdown.
+    *   Created the "System Configuration" page ([`src/app/dashboard/system-configuration/page.tsx`](src/app/dashboard/system-configuration/page.tsx:1)) to allow admins with elevated access to manage maintenance mode.
+    *   Resolved all TypeScript errors in the new pages by adding correct types for API responses and using `useCallback` where necessary.
+
+### 2. System-Wide Audit Logging (Previously Completed)
     *   **Backend ([`../backend/app.py`](../backend/app.py:1)):**
         *   Implemented a new `AuditLog` SQLAlchemy model.
         *   Added a `log_system_event` helper function.
@@ -94,8 +110,10 @@ Based on open files and recent activity, development is focused on security mana
     *   Chat Page HID FIDO Security Key integration for dynamic model availability.
 
 ## Recent Decisions
-1.  **Key Reassignment Security:** Implemented backend check to prevent reassigning a key to a user who already has an active one. Frontend toast notification added for this specific error.
-2.  **Dashboard Styling:**
+1.  **Secure Admin Context**: Implemented a session-based `authentication_level` to differentiate between password-only and security key-based logins. This is used to control access to high-privilege UI and API endpoints.
+2.  **State Persistence**: Adopted Zustand's `persist` middleware to ensure the authentication state (including the new `authenticationLevel`) survives page reloads, fixing a critical race condition.
+3.  **Key Reassignment Security:** Implemented backend check to prevent reassigning a key to a user who already has an active one. Frontend toast notification added for this specific error.
+4.  **Dashboard Styling:**
     *   Sidebar background colors updated for both light (`#F5F5F1`) and dark (`#1c1819`) modes.
     *   Dashboard search input and sidebar trigger button styling refined (border radius, background).
     *   Active sidebar menu items now have a `rounded-full` border radius.
@@ -107,8 +125,9 @@ Based on open files and recent activity, development is focused on security mana
 
 ## Active Technical Patterns
 1.  **Data Table Pattern:** Consistent use for displaying security-related information, with features like filtering, pagination, and standardized action handling.
-2.  **Security Patterns:** WebAuthn, locked account management, audit logging, refined key reassignment logic.
-3.  **Layout Patterns:** Dashboard layout with a collapsible, theme-aware sidebar.
+2.  **Security Patterns:** WebAuthn, locked account management, audit logging, refined key reassignment logic, and the new session-based Secure Admin Context.
+3.  **State Management**: Zustand with `persist` middleware for robust, persistent global state.
+4.  **Layout Patterns:** Dashboard layout with a collapsible, theme-aware sidebar.
 4.  **Notification Pattern:** Standardized use of `sonner` for toast notifications.
 5.  **Theming Pattern:** `next-themes` for theme management, extensive use of CSS custom properties for theme-specific styling (colors, gradients, borders, radii).
 

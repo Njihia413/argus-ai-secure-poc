@@ -46,7 +46,7 @@
         - `hid`: For detecting HID FIDO security key devices.
 
 ### Data Management & Display
-- Zustand for state management
+- Zustand for state management, with `persist` middleware for session storage.
 - TanStack React Table for data grids
 - Recharts for data visualization
 - Date-fns for date manipulation

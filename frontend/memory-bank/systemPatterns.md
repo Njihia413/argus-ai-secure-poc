@@ -16,6 +16,8 @@ The application follows Next.js 13+ App Router architecture with a clear separat
         ├── audit-logs/
         ├── users/
         └── settings/
+        └── system-configuration/
+        └── emergency-actions/
     ```
 
 2.  **Component Organization**
@@ -60,6 +62,7 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 -   React `useState` for local component state (e.g., dialog open/closed, loading states for actions).
 -   Custom store implementation for global state.
 -   Server-side data fetching using Next.js patterns.
+-   **State Persistence**: Zustand's `persist` middleware is used to save the authentication state to `sessionStorage`, ensuring it survives page reloads. The application correctly handles the asynchronous rehydration of this state to prevent race conditions.
 
 ### 3. Security Implementation
 -   WebAuthn integration for passwordless authentication.
@@ -78,6 +81,11 @@ The application follows Next.js 13+ App Router architecture with a clear separat
         -   Dedicated page for viewing system audit logs.
         -   Utilizes the generic `DataTable` component with updated columns (`action_type`, `status`, `user_username`, `performed_by_username`, etc.) and filtering capabilities.
 -   Locked account management system (manual admin unlock with confirmation step, locks at 5 attempts, `failed_login_attempts` are reset to 0 upon admin unlock, `unlocked_by` stores admin username, includes check for admin's username before unlock).
+-   **Secure Admin Context (New Pattern)**:
+    -   **Backend**: A new `authentication_level` field in the `AuthenticationSession` model ([`../backend/app.py`](../backend/app.py:195)) tracks the method of authentication for the current session (e.g., `password_only`, `direct_key_auth`). This level is set upon successful login and returned to the client.
+    -   **Frontend**: The `authentication_level` is stored in the global Zustand store ([`src/app/utils/store.ts`](src/app/utils/store.ts:1)).
+    -   **Conditional UI**: The application sidebar ([`src/components/app-sidebar.tsx`](src/components/app-sidebar.tsx:1)) uses this state to conditionally render a "Secure Admin" menu, which is only visible if the user has the `admin` role AND has an `authentication_level` indicating they have used a security key for the current session.
+    -   **System State Management**: A new `SystemState` model in the backend allows for storing global application settings, such as the "System Lockdown" status. Secure endpoints are provided to modify this state.
 
 ### 4. AI Integration
 -   Provider-based AI service architecture.

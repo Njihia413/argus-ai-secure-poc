@@ -11,6 +11,7 @@ A secure web application focused on user authentication, security management, an
 - Audit logging
 - User management with detailed views
 - AI chat integration
+- Secure Admin Controls (session-based)
 
 ## Technical Stack
 - Frontend: Next.js with TypeScript
