@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Bell, LogOut, Search, Settings } from "lucide-react" // Added Search and Settings
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,24 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const [userInitials, setUserInitials] = useState("SA"); // Default to SA
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const userData = sessionStorage.getItem("user");
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          if (user.firstName && user.lastName) {
+            const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`;
+            setUserInitials(initials.toUpperCase());
+          }
+        } catch (e) {
+          console.error("Failed to parse user data from sessionStorage", e);
+        }
+      }
+    }
+  }, []);
 
   const handleLogout = () => {
     sessionStorage.clear()
@@ -106,7 +125,7 @@ export default function DashboardLayout({
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-xl">
                     <Avatar>
-                      <AvatarFallback className="bg-primary text-white">SA</AvatarFallback>
+                      <AvatarFallback className="bg-primary text-white">{userInitials}</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
