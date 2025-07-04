@@ -123,6 +123,7 @@ The primary focus has been the implementation of a secure administrative context
 3.  **Login Page UI:** The "OR" divider on the login page was updated for clarity and modern styling. The "Login with Security Key" button background was also updated to match input fields.
 4.  **Theming Variables:** Introduced new CSS variables in `globals.css` for card gradients. Card border color for dark mode set to `#252521`. Input border color for dark mode reverted to `#46442f`.
 
+5.  **URL Structure**: Refactored the main landing page from `/home` to `/` for a cleaner URL structure.
 ## Active Technical Patterns
 1.  **Data Table Pattern:** Consistent use for displaying security-related information, with features like filtering, pagination, and standardized action handling.
 2.  **Security Patterns:** WebAuthn, locked account management, audit logging, refined key reassignment logic, and the new session-based Secure Admin Context.

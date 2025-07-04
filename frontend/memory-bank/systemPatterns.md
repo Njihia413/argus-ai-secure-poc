@@ -8,6 +8,7 @@ The application follows Next.js 13+ App Router architecture with a clear separat
 1.  **Route Structure**
     ```
     app/
+    ├── page.tsx       # Main landing page
     ├── login/         # Authentication routes
     ├── signup/
     └── dashboard/     # Protected routes

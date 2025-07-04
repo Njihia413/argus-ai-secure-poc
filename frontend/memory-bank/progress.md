@@ -162,6 +162,7 @@
     - Corrected a malformed JSX comment block in `src/app/dashboard/page.tsx`.
     - Resolved linter errors on line 839 of `src/app/dashboard/page.tsx` by wrapping the `>` character in a JSX expression `{'>'}`.
 
+- [x] **URL Structure:** Refactored the main landing page from `/home` to `/` for a cleaner URL structure.
 ## In Progress
 1.  Security Dashboard Enhancements
     *   Data visualization improvements
