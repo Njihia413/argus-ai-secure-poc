@@ -277,7 +277,7 @@ export const Header = () => {
   const handleLogout = () => {
     clearBindingData();
     sessionStorage.removeItem('user');
-    router.push('/home');
+    router.push('/');
   };
 
   // Handle security key registration success

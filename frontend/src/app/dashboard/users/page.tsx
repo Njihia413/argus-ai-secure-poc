@@ -161,7 +161,7 @@ export default function UsersPage() {
 
       if (!userInfo || !userInfo.authToken) {
         toast.error("You need to log in");
-        router.push("/home");
+        router.push("/");
         return;
       }
 

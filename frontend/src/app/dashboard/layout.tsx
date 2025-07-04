@@ -55,7 +55,7 @@ export default function DashboardLayout({
   const handleLogout = () => {
     sessionStorage.clear()
     localStorage.clear()
-    router.push("/home")
+    router.push("/")
   }
 
   return (
