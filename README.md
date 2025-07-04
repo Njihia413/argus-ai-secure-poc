@@ -123,7 +123,7 @@ The project is organized into two main directories: `frontend/` and `backend/`.
     ```bash
     npm run dev
     ```
-    The frontend application will be available at `http://localhost:3000/home`.
+    The frontend application will be available at `http://localhost:3000`.
 
 ### 3. Run the USB Detector (Optional)
 
@@ -147,7 +147,7 @@ To enable dynamic AI model availability based on hardware security key presence,
 
 ## Usage
 
-- **Admin Login:** Access the application at `http://localhost:3000/home`, click "Sign In", and use the default credentials `admin` / `admin123`.
+- **Admin Login:** Access the application at `http://localhost:3000`, click "Sign In", and use the default credentials `admin` / `admin123`.
 - **User Management:** Navigate to the "Users" section in the dashboard to create, manage, and view user details.
 - **Security Key Management:** Register and manage security keys for users through their individual details page.
 
