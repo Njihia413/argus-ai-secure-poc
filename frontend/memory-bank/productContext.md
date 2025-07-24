@@ -1,50 +1,26 @@
-# Product Context: Argus AI Secure
+# Product Context: Argus AI Secure POC
 
-## Problem Space
-Organizations need robust security management tools that combine traditional security controls with modern AI assistance. Key challenges include:
-- Managing user authentication securely
-- Monitoring and responding to security incidents
-- Tracking and auditing security-related actions
-- Handling locked accounts efficiently
+## 1. The Problem We're Solving
 
-## User Experience Goals
+In many organizations, access to powerful AI tools is becoming widespread. However, controlling access to the most advanced or sensitive AI models is a growing security concern. Standard username/password authentication is often not enough to prevent unauthorized access, especially when dealing with models that might process confidential data or perform critical tasks.
 
-### Security Administrators
-- Quick access to security-related information via dashboard
-- Efficient management of locked accounts
-- Easy monitoring of security keys
-- Comprehensive audit trail visibility
-- AI-assisted security operations
-- Privileged access controls for highly sensitive operations
+There is a need for a higher level of assurance that the person accessing a powerful AI model is who they say they are, and that they are doing so from a trusted environment.
 
-### End Users
-- Streamlined login/signup process
-- Secure authentication using WebAuthn
-- Clear feedback on security status
-- Easy access to personal security settings
+## 2. How Argus AI Solves It
 
-## Key Workflows
+Argus AI introduces a "something you have" factor into the authentication process by requiring a physical hardware security key. This concept, often called "step-up authentication," provides a practical and secure way to manage access to high-privilege resources.
 
-### Account Security
-1. User authentication via login/signup
-2. WebAuthn security key management
-3. Locked account detection and resolution
+The core product idea is:
+-   **Baseline Access:** All authenticated users can access standard AI models.
+-   **Elevated Access:** To access premium, more powerful, or specialized AI models, a user must have their company-issued, registered security key physically plugged into their computer.
 
-### Security Monitoring
-1. Dashboard overview of security status
-2. Detailed audit logging of all security events
-3. User activity tracking and management
+This approach ensures that even if a user's credentials are compromised, an attacker cannot gain access to the most sensitive AI capabilities without also having physical possession of the user's security key.
 
-### Secure Admin Actions
-1.  Access to critical system controls (e.g., database reset) only after secure authentication.
-2.  Ability to perform emergency actions like system lockdown.
+## 3. User Experience Goals
 
-### AI Integration
-1. Chat-based security assistance (model availability can be enhanced for certain users by connecting a generic USB device, facilitated by a local helper app).
-2. AI-powered security insights and recommendations
-
-## Success Metrics
-- Reduced time to resolve security incidents
-- Improved audit compliance
-- Enhanced security posture through AI assistance
-- Higher user satisfaction with authentication process
+-   **Seamless Elevation:** The process of gaining access to advanced models should be as simple as plugging in the security key. The UI should update automatically without requiring the user to re-authenticate or refresh the page.
+-   **Clear Feedback:** The user should always have clear, immediate feedback about their current access level.
+    -   When a key is connected, a success notification should appear, and the list of available models should expand.
+    -   When a key is disconnected, a notification should inform the user, and the model list should revert to the restricted set.
+-   **Security Transparency:** Users, and especially administrators, should have a clear view of security-related events, including login attempts, key usage, and access changes.
+-   **Error Handling:** If an incorrect (unregistered or belonging to another user) security key is plugged in, the user should receive a clear error message explaining why access is not being granted. This prevents confusion and reinforces the security model.
