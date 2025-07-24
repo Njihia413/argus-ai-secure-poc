@@ -10,7 +10,10 @@ from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_socketio import SocketIO, emit
+from threading import Lock
 import os
+import subprocess
 
 from flask_sqlalchemy.session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -25,12 +28,17 @@ from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
 from functools import wraps
 
-from sqlalchemy import func, case, MetaData, or_
+from sqlalchemy import func, case, MetaData, or_, BigInteger
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import aliased
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Background task for monitoring YubiKeys
+thread = None
+thread_lock = Lock()
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@localhost/argus_ai_secure_poc'
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -272,7 +280,11 @@ class SecurityKey(db.Model):
     # Security key details
     model = db.Column(db.String(100), nullable=True)
     type = db.Column(db.String(100), nullable=True)
-    serial_number = db.Column(db.String(100), nullable=True)
+    serial_number = db.Column(db.BigInteger, unique=True, nullable=True)
+    version = db.Column(db.String(50), nullable=True)
+    form_factor = db.Column(db.String(50), nullable=True)
+    is_fips = db.Column(db.Boolean, default=False, nullable=False)
+    is_sky = db.Column(db.Boolean, default=False, nullable=False)
     pin = db.Column(db.String(500), nullable=True)
     product_id = db.Column(db.String(100), nullable=True)
     vendor_id = db.Column(db.String(100), nullable=True)
@@ -302,6 +314,44 @@ class SystemConfiguration(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     updated_by = db.relationship('Users', foreign_keys=[updated_by_user_id])
+
+
+def run_ykman_command(args):
+    """Run ykman command and return output"""
+    try:
+        result = subprocess.run(['ykman'] + args,
+                                capture_output=True,
+                                text=True,
+                                timeout=10)
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            raise Exception(f"ykman error: {result.stderr.strip()}")
+    except FileNotFoundError:
+        raise Exception("ykman command not found. Please install yubikey-manager.")
+    except subprocess.TimeoutExpired:
+        raise Exception("ykman command timed out")
+
+
+def parse_yubikey_info(info_output):
+    """Parse ykman info output into structured data"""
+    info = {
+        'version': 'Unknown',
+        'form_factor': 'Unknown',
+        'device_type': 'YubiKey'
+    }
+
+    lines = info_output.split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith('Firmware version:'):
+            info['version'] = line.split(':', 1)[1].strip()
+        elif line.startswith('Form factor:'):
+            info['form_factor'] = line.split(':', 1)[1].strip()
+        elif line.startswith('Device type:'):
+            info['device_type'] = line.split(':', 1)[1].strip()
+
+    return info
 
 
 # Configure SecurityKey
@@ -1135,6 +1185,63 @@ def get_all_security_keys():
        import traceback
        print(traceback.format_exc())
        return jsonify({'error': 'Failed to fetch all security keys'}), 500
+
+@app.route('/api/security-keys/detect-yubikeys', methods=['GET'])
+def detect_yubikeys():
+    try:
+        # Try to list devices with serials
+        output = run_ykman_command(['list', '--serials'])
+
+        if not output:
+            return jsonify({
+                'success': True,
+                'yubikeys': [],
+                'count': 0
+            })
+
+        # Parse serials (one per line)
+        serials = [int(line.strip()) for line in output.split('\n') if line.strip()]
+
+        yubikeys = []
+        for serial in serials:
+            try:
+                # Get info for each device
+                info_output = run_ykman_command(['--device', str(serial), 'info'])
+
+                # Parse the info output
+                info = parse_yubikey_info(info_output)
+                info['serial'] = serial
+
+                # Add FIPS and SKY detection
+                info['is_fips'] = 'FIPS' in info_output
+                info['is_sky'] = 'SKY' in info_output
+
+                yubikeys.append(info)
+
+            except Exception as e:
+                # If we can't get detailed info, add basic info
+                basic_info = {
+                    'serial': serial,
+                    'version': 'Unknown',
+                    'form_factor': 'Unknown',
+                    'device_type': 'YubiKey',
+                    'is_fips': False,
+                    'is_sky': False,
+                    'error': str(e)
+                }
+                yubikeys.append(basic_info)
+
+        return jsonify({
+            'success': True,
+            'yubikeys': yubikeys,
+            'count': len(yubikeys)
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/api/security-keys/<int:key_id>', methods=['GET'])
 def get_security_key_details(key_id):
@@ -5881,6 +5988,7 @@ def toggle_system_lockdown(admin_user):
         db.session.add(status)
 
     if action == 'lock':
+
         if status.is_locked_down:
             return jsonify({'message': 'System is already locked down.'}), 200
         
@@ -5987,7 +6095,73 @@ def update_system_configuration(admin_user):
         'message': f"System maintenance mode {'enabled' if config.maintenance_mode else 'disabled'}.",
         'maintenance_mode': config.maintenance_mode
     })
+def yubikey_monitor_task():
+    """Background task to monitor YubiKey connections."""
+    previous_serials = set()
+    while True:
+        try:
+            with app.app_context():
+                # Get current YubiKeys
+                output = run_ykman_command(['list', '--serials'])
+                if output:
+                    current_serials = set(int(s) for s in output.split('\n') if s.strip())
+                else:
+                    current_serials = set()
 
+                # Check for changes
+                if current_serials != previous_serials:
+                    print(f"Change detected: {previous_serials} -> {current_serials}")
+                    # Fetch full details for current keys
+                    yubikeys = []
+                    for serial in current_serials:
+                        try:
+                            info_output = run_ykman_command(['--device', str(serial), 'info'])
+                            info = parse_yubikey_info(info_output)
+                            info['serial'] = serial
+                            info['is_fips'] = 'FIPS' in info_output
+                            info['is_sky'] = 'SKY' in info_output
+                            yubikeys.append(info)
+                        except Exception as e:
+                            print(f"Could not get info for {serial}: {e}")
+                            yubikeys.append({'serial': serial, 'version': 'Unknown', 'form_factor': 'Unknown', 'device_type': 'YubiKey', 'is_fips': False, 'is_sky': False})
+
+                    # Emit update to clients
+                    socketio.emit('yubikeys_update', {'yubikeys': yubikeys})
+                    previous_serials = current_serials
+
+        except Exception as e:
+            print(f"Error in monitor task: {e}")
+
+        socketio.sleep(2)  # Check every 2 seconds
+
+
+@socketio.on('connect')
+def handle_connect():
+    global thread
+    with thread_lock:
+        if thread is None:
+            thread = socketio.start_background_task(yubikey_monitor_task)
+            print("Started background task.")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """
+    This function is called when a client disconnects.
+    In this implementation, we don't need to do anything special,
+    as the background thread will continue to run as long as the server is alive.
+    """
+    print("Client disconnected")
+
+if __name__ == '__main__':
+    # Note: db.create_all() and create_admin_user() are usually not called here
+    # if using Flask-Migrate and a proper seeding mechanism.
+    # Consider moving them to a dedicated init-db command or manage via migrations.
+    with app.app_context():
+        db.create_all()
+        create_admin_user()
+        db.session.commit()
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
 if __name__ == '__main__':
     # Note: db.create_all() and create_admin_user() are usually not called here
     # if using Flask-Migrate and a proper seeding mechanism.
