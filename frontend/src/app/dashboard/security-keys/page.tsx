@@ -107,6 +107,13 @@ export default function SecurityKeysPage() {
     fetchSecurityKeys(userInfo.authToken)
   }, [router])
 
+  const refreshData = () => {
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+    if (userInfo.authToken) {
+      fetchSecurityKeys(userInfo.authToken);
+    }
+  };
+
   const fetchSecurityKeys = async (authToken: string) => {
     setLoading(true)
     try {
@@ -150,6 +157,9 @@ export default function SecurityKeysPage() {
               columns={securityKeysColumns}
               data={paginatedData}
               pageCount={pageCount}
+              meta={{
+                refreshData
+              }}
             state={{
               sorting,
               columnFilters,
