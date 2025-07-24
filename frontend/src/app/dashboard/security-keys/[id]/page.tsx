@@ -41,8 +41,8 @@ const actionOptions = [
 // Interface for the detailed security key object from backend
 interface SecurityKeyDetail {
   id: number;
-  model: string | null;
-  type: string | null;
+  device_type: string | null;
+  form_factor: string | null;
   serialNumber: string | null;
   status: "active" | "inactive";
   isActive: boolean;
@@ -199,7 +199,7 @@ export default function SecurityKeyDetailsPage() {
           <ChevronRight className="h-4 w-4 mx-1" />
           <Link href="/dashboard/security-keys" className="hover:text-foreground">Security Keys</Link>
           <ChevronRight className="h-4 w-4 mx-1" />
-          <span className="text-foreground">{securityKey.model || `Key ID: ${securityKey.id}`}</span>
+          <span className="text-foreground">{securityKey.device_type || `Key ID: ${securityKey.id}`}</span>
         </div>
         <Button onClick={() => router.push("/dashboard/security-keys")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -223,12 +223,12 @@ export default function SecurityKeyDetailsPage() {
             <p className="text-lg">{securityKey.id}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">Model</p>
-            <p className="text-lg">{securityKey.model || "N/A"}</p>
+            <p className="text-sm font-medium text-muted-foreground">Device Type</p>
+            <p className="text-lg">{securityKey.device_type || "N/A"}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">Type</p>
-            <p className="text-lg">{securityKey.type || "N/A"}</p>
+            <p className="text-sm font-medium text-muted-foreground">Form Factor</p>
+            <p className="text-lg">{securityKey.form_factor || "N/A"}</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Serial Number</p>
