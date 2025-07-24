@@ -203,8 +203,8 @@ export default function UserDetailsPage() {
         toast.error(`This YubiKey is already registered to another user.`);
       } else {
         setKeyDetails({
-          model: key.form_factor,
-          type: key.device_type,
+          model: 'YubiKey',
+          type: key.form_factor,
           serialNumber: key.serial.toString(),
           pin: ''
         });
