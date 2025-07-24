@@ -1,95 +1,40 @@
-# Technical Context: Argus AI Secure
+# Tech Context: Argus AI Secure POC
 
-## Development Environment
+## 1. Frontend
 
-### Core Technologies
-- Next.js 15.2.4 with App Router
-- React 19.0.0
-- TypeScript 5
-- Tailwind CSS 4
+-   **Framework:** Next.js 14 with App Router
+-   **Language:** TypeScript
+-   **UI Components:** `shadcn/ui` and `tailwindcss`
+-   **State Management:** React Hooks (`useState`, `useEffect`, `useRef`). No external state management library like Redux or Zustand is currently in use.
+-   **API Communication:**
+    -   `@ai-sdk/react` for AI chat interactions.
+    -   Standard `fetch` API for other backend communication.
+-   **Real-time:** Native Browser `WebSocket` API to connect to the `usb_detector.py` script.
+-   **Authentication:** `sessionStorage` is used to persist user data and the session token on the client-side.
 
-### Build & Development
-- Development: `next dev --turbopack` (using Turbopack for faster builds)
-- Production Build: `next build`
-- Production Start: `next start`
-- Linting: `next lint`
+## 2. Backend
 
-## Key Dependencies
+-   **Framework:** Flask
+-   **Language:** Python
+-   **Database ORM:** SQLAlchemy
+-   **Database Migrations:** Flask-Migrate (which uses Alembic).
+-   **API:** Standard RESTful API endpoints.
+-   **Real-time:** Flask-SocketIO is available but is currently only used for a YubiKey detection feature in the admin dashboard, not for the main chat model-switching logic. The primary real-time channel for the chat page is the separate WebSocket server in `usb_detector.py`.
+-   **Security Key Logic:** The `fido2` library is used for handling WebAuthn ceremonies.
 
-### UI Framework
-- Radix UI Components:
-  - Alert Dialog
-  - Avatar
-  - Dialog
-  - Dropdown Menu
-  - Label
-  - Progress
-  - Scroll Area
-  - Select
-  - Separator
-  - Tabs
-  - Tooltip
-- Class Variance Authority & Tailwind Merge for styling utilities
-- Lucide React for icons
-- Sonner for toast notifications (**Standardized for user feedback**)
-- `next-themes` for theme management (light/dark/system)
-- shadcn `chart` components (e.g., `ChartContainer`) used in conjunction with `Recharts` for interactive data visualizations.
+## 3. USB Detector
 
-### Authentication & Security
-- SimpleWebAuthn Browser SDK (v13.1.0)
-- Axios for HTTP requests
-- Backend:
-    - Flask (Python) for API endpoints including authentication and account management.
-    - Local Python Helper (`../backend/usb_detector.py`):
-        - `websockets` (v15.0.1): For WebSocket server to communicate with frontend.
-        - `psutil`: For detecting USB storage device connections.
-        - `hid`: For detecting HID FIDO security key devices.
+-   **Language:** Python
+-   **Core Libraries:**
+    -   `websockets`: To run the WebSocket server that the frontend connects to.
+    -   `psutil`: For detecting general removable USB drives (a secondary feature).
+    -   `hid` (or `hidapi`): The crucial library for enumerating HID devices to find security keys. This is a low-level library that provides device path, vendor ID, and product ID.
+    -   `requests`: To make internal API calls to the Flask backend.
+-   **Execution:** This is a standalone script intended to be run as a persistent background process on the user's local machine. It is not part of the Flask application server.
 
-### Data Management & Display
-- Zustand for state management, with `persist` middleware for session storage.
-- TanStack React Table for data grids
-- Recharts for data visualization
-- Date-fns for date manipulation
+## 4. Key Constraints & Considerations
 
-### AI Integration
-- AI SDK (Groq provider)
-- AI SDK React components
-- React Markdown with GFM for content rendering
-- Frontend uses native Browser WebSocket API to connect to the local Python helper.
-
-## Development Tools
-- TypeScript with React types
-- Tailwind CSS tooling
-- Vercel OpenTelemetry for monitoring
-
-## Configuration Files
-- `next.config.ts`: Next.js configuration
-- `tsconfig.json`: TypeScript settings
-- `components.json`: UI component configuration
-- `postcss.config.mjs`: PostCSS setup for Tailwind
-
-## Development Patterns
-1.  **Type Safety**
-    - Strong TypeScript typing
-    - Type-safe API requests
-    - Component prop validation
-
-2.  **Styling**
-    - Tailwind CSS for utility-first styling.
-    - CSS Custom Properties (variables) in `globals.css` for theme colors (light/dark modes), including the primary color `#2563eb` (blue), dark theme background `#0b0a0a`, and a derived blue-based chart palette.
-    - Component-level style composition using `Card` and `CardContent` for consistent table layouts.
-    - Consistent `rounded-xl` applied to most buttons and inputs for unified styling.
-    - CSS animation utilities.
-
-3.  **Performance**
-    - Turbopack for fast development
-    - Optimized production builds
-    - Component-level code splitting
-
-4.  **Code Quality**
-    - ESLint configuration
-    - TypeScript strict mode
-    - Consistent code formatting
-
-5.  **User Feedback**
-    - Standardized use of `sonner` for toast notifications for actions like account unlock, user creation, etc.
+-   **Decoupled Detector:** The `usb_detector.py` script is completely decoupled from the Flask application's user session management. It has no direct access to user information or authentication state. This is the primary technical constraint driving the need for the proposed architecture change.
+-   **WebSocket vs. Socket.IO:** The frontend uses the native `WebSocket` API to talk to the `usb_detector.py` script. The backend has `Flask-SocketIO`. The new implementation will need to bridge this gap. The most direct path is to have the detector call a REST endpoint on the backend, and the backend can then use Socket.IO to talk back to the specific user on the frontend.
+-   **Serial Number Access:** The `hid` library in `usb_detector.py` does not natively provide the *serial number* for all devices; it reliably provides `vendor_id`, `product_id`, and `path`. The `ykman` CLI tool is used in the backend to get the serial number, but this is for admin-side registration. The `usb_detector.py` script must be updated to extract the serial number directly if possible, or we must rely on another identifier. **Correction:** The `hid.enumerate()` function *can* provide a serial number string if the device exposes one. This will be the key to the new implementation.
+-   **Database Schema:** The `SecurityKey` table in the database already has a `serial_number` column, which is populated during the admin-driven registration process. This is perfect for the new verification logic.
