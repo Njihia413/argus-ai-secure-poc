@@ -278,8 +278,7 @@ class SecurityKey(db.Model):
     deactivation_reason = db.Column(db.String(100), nullable=True)
 
     # Security key details
-    model = db.Column(db.String(100), nullable=True)
-    type = db.Column(db.String(100), nullable=True)
+    device_type = db.Column(db.String(100), nullable=True)
     serial_number = db.Column(db.BigInteger, unique=True, nullable=True)
     version = db.Column(db.String(50), nullable=True)
     form_factor = db.Column(db.String(50), nullable=True)
@@ -1116,8 +1115,9 @@ def get_user_security_keys(user_id):
             'isActive': key.is_active,
             'createdAt': key.created_at.isoformat(),
             'lastUsed': key.last_used.isoformat() if key.last_used else None,
-            'model': key.model,
-            'type': key.type,
+            'device_type': key.device_type,
+            'form_factor': key.form_factor,
+            'version': key.version,
             'serialNumber': key.serial_number
         })
 
@@ -1147,8 +1147,9 @@ def get_all_security_keys():
 
        query = db.session.query(
            SecurityKey.id,
-           SecurityKey.model,
-           SecurityKey.type,
+           SecurityKey.device_type,
+           SecurityKey.form_factor,
+           SecurityKey.version,
            SecurityKey.serial_number,
            SecurityKey.is_active,
            SecurityKey.created_at,
@@ -1169,8 +1170,9 @@ def get_all_security_keys():
        for key_data in keys:
            keys_list.append({
                'id': key_data.id,
-               'model': key_data.model,
-               'type': key_data.type,
+               'device_type': key_data.device_type,
+               'form_factor': key_data.form_factor,
+               'version': key_data.version,
                'serialNumber': key_data.serial_number,
                'status': 'active' if key_data.is_active else 'inactive', # Derived status
                'registeredOn': key_data.created_at.isoformat() if key_data.created_at else None,
@@ -1288,8 +1290,9 @@ def get_security_key_details(key_id):
    try:
        key = db.session.query(
            SecurityKey.id,
-           SecurityKey.model,
-           SecurityKey.type,
+           SecurityKey.device_type,
+           SecurityKey.form_factor,
+           SecurityKey.version,
            SecurityKey.serial_number,
            SecurityKey.is_active,
            SecurityKey.created_at,
@@ -1310,8 +1313,9 @@ def get_security_key_details(key_id):
 
        key_details = {
            'id': key.id,
-           'model': key.model,
-           'type': key.type,
+           'device_type': key.device_type,
+           'form_factor': key.form_factor,
+           'version': key.version,
            'serialNumber': key.serial_number,
            'status': 'active' if key.is_active else 'inactive',
            'isActive': key.is_active, # Keep boolean for logic
@@ -1789,7 +1793,7 @@ def update_security_key(key_id):
         return jsonify({'error': 'Request data is required'}), 400
 
     # Check required fields
-    required_fields = ['model', 'type', 'serialNumber']
+    required_fields = ['device_type', 'form_factor', 'version', 'serialNumber']
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
         log_system_event(
@@ -1818,8 +1822,9 @@ def update_security_key(key_id):
         return jsonify({'error': 'Security key not found'}), 404
 
     # Update the fields
-    key.model = data['model']
-    key.type = data['type']
+    key.device_type = data['device_type']
+    key.form_factor = data['form_factor']
+    key.version = data['version']
     key.serial_number = data['serialNumber']
     
     # Only update PIN if provided and not empty
@@ -1835,14 +1840,15 @@ def update_security_key(key_id):
         status='SUCCESS',
         target_entity_type='SECURITY_KEY',
         target_entity_id=key.id,
-        details=f"Security key ID {key.id} (User: {key.user.username}) updated by admin '{admin_user.username}'. New details - Model: {key.model}, Type: {key.type}, SN: {key.serial_number}."
+        details=f"Security key ID {key.id} (User: {key.user.username}) updated by admin '{admin_user.username}'. New details - Device Type: {key.device_type}, Form Factor: {key.form_factor}, Version: {key.version}, SN: {key.serial_number}."
     )
     return jsonify({
         'message': 'Security key updated successfully',
         'key': {
             'id': key.id,
-            'model': key.model,
-            'type': key.type,
+            'device_type': key.device_type,
+            'form_factor': key.form_factor,
+            'version': key.version,
             'serialNumber': key.serial_number
         }
     })
@@ -1868,7 +1874,7 @@ def save_security_key_details():
         return jsonify({'error': 'Admin privileges required'}), 403
 
     data = request.get_json()
-    required_fields = ['userId', 'model', 'type', 'serialNumber', 'pin']
+    required_fields = ['userId', 'device_type', 'form_factor', 'version', 'serialNumber', 'pin']
 
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1876,8 +1882,9 @@ def save_security_key_details():
     # Store the details in the auth session instead of Flask session
     auth_session.client_binding = json.dumps({
         'user_id': data['userId'],
-        'model': data['model'],
-        'type': data['type'],
+        'device_type': data['device_type'],
+        'form_factor': data['form_factor'],
+        'version': data['version'],
         'serial_number': data['serialNumber'],
         'pin': data['pin']
     })
@@ -2718,7 +2725,9 @@ def webauthn_register_complete():
 
     # Get security key details
     model = data.get('model')
-    type_ = data.get('type')
+    device_type = data.get('device_type')
+    form_factor = data.get('form_factor')
+    version = data.get('version')
     serial_number = data.get('serialNumber')
     pin = data.get('pin')
 
@@ -2942,8 +2951,9 @@ def webauthn_register_complete():
             
             # Create key details dictionary from the provided data
             key_details = {
-                'model': model,
-                'type': type_,
+                'device_type': device_type,
+                'form_factor': form_factor,
+                'version': version,
                 'serial_number': serial_number,
                 'pin': pin
             }
@@ -2978,8 +2988,9 @@ def webauthn_register_complete():
                     
                     # Update with new key details if provided
                     if key_details:
-                        target_key.model = key_details.get('model')
-                        target_key.type = key_details.get('type')
+                        target_key.device_type = key_details.get('device_type')
+                        target_key.form_factor = key_details.get('form_factor')
+                        target_key.version = key_details.get('version')
                         target_key.serial_number = key_details.get('serial_number')
                         if key_details.get('pin'):
                             target_key.pin = generate_password_hash(key_details.get('pin'))
@@ -2995,8 +3006,9 @@ def webauthn_register_complete():
                         new_state={
                             'user_id': user.id,
                             'credential_id': credential_id,
-                            'model': target_key.model,
-                            'type': target_key.type,
+                            'device_type': target_key.device_type,
+                            'form_factor': target_key.form_factor,
+                            'version': target_key.version,
                             'serial_number': target_key.serial_number,
                             'is_active': True,
                             'created_at': target_key.created_at.isoformat()
@@ -3141,16 +3153,18 @@ def webauthn_register_complete():
                     # If we couldn't get details from session, use the ones from the request
                     if not session_key_details:
                         session_key_details = {
-                            'model': model,
-                            'type': type_,
+                            'device_type': device_type,
+                            'form_factor': form_factor,
+                            'version': version,
                             'serial_number': serial_number,
                             'pin': generate_password_hash(pin) if pin else None
                         }
                 except Exception as e:
                     print(f"Error processing key details: {str(e)}")
                     session_key_details = {
-                        'model': model,
-                        'type': type_,
+                        'device_type': device_type,
+                        'form_factor': form_factor,
+                        'version': version,
                         'serial_number': serial_number,
                         'pin': generate_password_hash(pin) if pin else None
                     }
@@ -3163,8 +3177,9 @@ def webauthn_register_complete():
                     sign_count=sign_count,
                     is_active=True,
                     created_at=datetime.now(timezone.utc),
-                    model=session_key_details.get('model'),
-                    type=session_key_details.get('type'),
+                    device_type=session_key_details.get('device_type'),
+                    form_factor=session_key_details.get('form_factor'),
+                    version=session_key_details.get('version'),
                     serial_number=session_key_details.get('serial_number'),
                     pin=session_key_details.get('pin')
                 )
@@ -3188,8 +3203,9 @@ def webauthn_register_complete():
                     new_state={
                         'user_id': user.id,
                         'credential_id': credential_id,
-                        'model': session_key_details.get('model'),
-                        'type': session_key_details.get('type'),
+                        'device_type': session_key_details.get('device_type'),
+                        'form_factor': session_key_details.get('form_factor'),
+                        'version': session_key_details.get('version'),
                         'serial_number': session_key_details.get('serial_number'),
                         'is_active': True,
                         'created_at': new_key.created_at.isoformat()
@@ -3844,12 +3860,12 @@ def webauthn_login_complete():
                 status='SUCCESS',
                 target_entity_type='SECURITY_KEY',
                 target_entity_id=security_key.id,
-                details=f"Direct SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.model}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                details=f"Direct SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.device_type}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
             )
             # Return success with the session token
             return jsonify({
                 'status': 'success',
-                'message': f"Authentication successful with security key '{security_key.model}'",
+                'message': f"Authentication successful with security key '{security_key.device_type}'",
                 'user_id': user.id,
                 'firstName': user.first_name,
                 'lastName': user.last_name,
@@ -3862,7 +3878,7 @@ def webauthn_login_complete():
                 'has_elevated_access': user.role == 'admin',
                 'securityKey': {
                     'id': security_key.id,
-                    'name': security_key.model
+                    'name': security_key.device_type
                 }
             })
         elif second_factor:
@@ -3903,12 +3919,12 @@ def webauthn_login_complete():
                     status='SUCCESS',
                     target_entity_type='SECURITY_KEY',
                     target_entity_id=security_key.id,
-                    details=f"2FA SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.model}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
+                    details=f"2FA SecurityKey login successful for user '{user.username}' (ID: {user.id}) with key '{security_key.device_type}' (ID: {security_key.id}). IP: {request.remote_addr}. Location: {auth_attempt.location}. Risk: {risk_score}."
                 )
                 # This is a second factor after password authentication
                 return jsonify({
                     'status': 'success',
-                    'message': f"Authentication successful with security key '{security_key.model}'",
+                    'message': f"Authentication successful with security key '{security_key.device_type}'",
                     'user_id': user.id,
                     'firstName': user.first_name,
                     'lastName': user.last_name,
@@ -3921,7 +3937,7 @@ def webauthn_login_complete():
                     'has_elevated_access': user.role == 'admin',
                     'securityKey': {
                         'id': security_key.id,
-                        'name': security_key.model
+                        'name': security_key.device_type
                     }
                 })
             else:
