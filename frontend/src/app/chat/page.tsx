@@ -233,13 +233,11 @@ export default function ChatPage() {
         if (wsRef.current === socket) {
           wsRef.current = null;
         }
-        if (userData && event.code !== 1000) { // If not a clean, intentional close by the server or client
-            // Always attempt to reconnect if the closure was not intentional and user is logged in.
-            // The hasLoggedWebSocketErrorRef is primarily to prevent the initial error overlay/toast spam,
-            // but we still want to keep trying to connect in the background.
-            console.log(`WebSocket closed unexpectedly. Will attempt to reconnect in ${retryDelay / 1000}s. Error logged previously: ${hasLoggedWebSocketErrorRef.current}`);
+        if (userData && event.code !== 1000) { // If not a clean, intentional close
+            const currentDelay = Math.min(retryDelay * Math.pow(2, (connectTimeoutId ? 1 : 0)), 30000); // Exponential backoff up to 30s
+            console.log(`WebSocket closed unexpectedly. Will attempt to reconnect in ${currentDelay / 1000}s.`);
             if (connectTimeoutId) clearTimeout(connectTimeoutId);
-            connectTimeoutId = setTimeout(connectWebSocket, retryDelay);
+            connectTimeoutId = setTimeout(connectWebSocket, currentDelay);
         }
       };
     }
@@ -356,54 +354,6 @@ export default function ChatPage() {
   }, [userData]);
 
 
-  useEffect(() => {
-    if (!userData?.hasSecurityKey || !userData?.securityKeyAuthenticated) {
-      return; 
-    }
-    console.log("Setting up security key monitoring (WebAuthn API)");
-    const checkKeyStatus = async () => {
-      if (keyCheckInProgress.current) return;
-      keyCheckInProgress.current = true;
-      try {
-        const isConnected = await checkSecurityKeyStatus(userData.username);
-        console.log("Security key status check result (WebAuthn API):", isConnected, "Current state:", securityKeyStatus);
-        if (isConnected !== securityKeyStatus) {
-          console.log("Security key status (WebAuthn API) changed from", securityKeyStatus, "to", isConnected);
-          setSecurityKeyStatus(isConnected);
-        }
-      } catch (error) {
-        console.error('Error checking security key status (WebAuthn API):', error);
-      } finally {
-        keyCheckInProgress.current = false;
-      }
-    };
-    checkKeyStatus();
-    securityKeyDetectionInterval.current = setInterval(checkKeyStatus, KEY_CHECK_INTERVAL);
-    const handleKeyPress = (event: KeyboardEvent) => {
-      if (event.altKey && event.key === 'k') {
-        const newKeyState = !securityKeyStatus;
-        console.log("Simulating securityKeyStatus (WebAuthn API) change:", newKeyState);
-        setSecurityKeyStatus(newKeyState);
-      }
-    };
-    window.addEventListener('keydown', handleKeyPress);
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'securityKeyConnected') { 
-        const newState = e.newValue === 'true';
-        if (newState !== securityKeyStatus) {
-          setSecurityKeyStatus(newState);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      if (securityKeyDetectionInterval.current) {
-        clearInterval(securityKeyDetectionInterval.current);
-      }
-      window.removeEventListener('keydown', handleKeyPress);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [userData, securityKeyStatus]);
 
   if (error) return <div>{error.message}</div>;
 
