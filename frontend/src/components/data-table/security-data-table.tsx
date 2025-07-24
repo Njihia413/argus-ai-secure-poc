@@ -116,7 +116,7 @@ export function SecurityDataTable<TData extends SecurityKey, TValue>({
 
     return (
         <div>
-            <div className="rounded-md border border-solid border-[var(--card-border-themed)]">
+            <div className="rounded-md border border-zinc-200 dark:border-zinc-800">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
