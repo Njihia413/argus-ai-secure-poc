@@ -427,20 +427,37 @@ interface DeleteResponse {
             <AlertDialogContent className="font-montserrat">
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the security key
-                  and remove its data from our servers.
-                  <div className="mt-2 p-2 border rounded bg-muted text-sm">
-                    <p><strong>Model:</strong> {securityKey.model || 'N/A'}</p>
-                    <p><strong>Serial:</strong> {securityKey.serialNumber || 'N/A'}</p>
-                    <p><strong>User:</strong> {securityKey.username}</p>
+                <AlertDialogDescription asChild>
+                  <div className="space-y-4">
+                    <p>
+                      This action cannot be undone. This will permanently delete the security key
+                      and remove its data from our servers.
+                    </p>
+                    <div className="bg-muted p-3 mt-2 rounded border border-yellow-400 dark:border-yellow-600">
+                      <div className="text-sm space-y-1">
+                        <div><strong>Model:</strong> {securityKey.model || 'N/A'}</div>
+                        <div><strong>Serial:</strong> {securityKey.serialNumber || 'N/A'}</div>
+                        <div><strong>User:</strong> {securityKey.username}</div>
+                      </div>
+                    </div>
                   </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
-                  {isDeleting ? "Deleting..." : "Delete"}
+                <AlertDialogCancel onClick={() => setShowDeleteDialog(false)}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isDeleting ? (
+                    <>
+                      <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2"></span>
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete Key"
+                  )}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
