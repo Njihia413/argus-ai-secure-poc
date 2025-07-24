@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 from threading import Lock
 import os
 import subprocess
@@ -5976,6 +5976,67 @@ def hid_security_key_event():
     else:
         return jsonify({'error': 'Invalid status provided'}), 400
 
+@app.route('/api/verify_key_ownership', methods=['POST'])
+def verify_key_ownership():
+    """
+    Verifies that a connected security key belongs to the authenticated user.
+    This is called by the usb_detector.py script.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    serial_number = data.get('serial_number')
+    auth_token = data.get('auth_token')
+
+    if not serial_number or not auth_token:
+        return jsonify({'error': 'Missing serial_number or auth_token'}), 400
+
+    # 1. Find session from auth_token
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+    if not auth_session:
+        return jsonify({'error': 'Invalid or expired session token'}), 401
+
+    # 2. Find user from session
+    user = Users.query.get(auth_session.user_id)
+    if not user:
+        return jsonify({'error': 'User not found for this session'}), 404
+
+    # 3. Find key from serial_number
+    # Ensure serial_number is treated as a long/big integer for the query
+    try:
+        key_serial_number = int(serial_number)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid serial number format'}), 400
+        
+    security_key = SecurityKey.query.filter_by(serial_number=key_serial_number).first()
+
+    if not security_key:
+        # Key is not registered in the system at all.
+        # We can choose to notify the user that the key is unrecognized.
+        socketio.emit('key_mismatch_error', {
+            'message': 'The connected security key is not registered in the system.'
+        }, room=auth_session.session_token) # Use session token as a room
+        return jsonify({'status': 'error', 'message': 'Unregistered security key'}), 404
+
+    # 4. Compare user_id
+    if security_key.user_id == user.id:
+        # SUCCESS: The key belongs to the authenticated user.
+        print(f"SUCCESS: Key SN {serial_number} verified for user {user.username}")
+        # 5. Emit Socket.IO event to the specific user
+        socketio.emit('models_unlocked', {
+            'message': f'Security key verified. Welcome, {user.first_name}!'
+        }, room=auth_session.session_token)
+        return jsonify({'status': 'success', 'message': 'Key ownership verified.'}), 200
+    else:
+        # FAILURE: The key belongs to a different user.
+        print(f"FAILURE: Key SN {serial_number} belongs to another user, not {user.username}")
+        socketio.emit('key_mismatch_error', {
+            'message': 'This security key is registered to another user.'
+        }, room=auth_session.session_token)
+        return jsonify({'status': 'error', 'message': 'Key ownership mismatch'}), 403
+
 @app.route('/api/emergency-actions', methods=['GET'])
 @elevated_admin_required
 def get_emergency_status(admin_user):
@@ -6113,10 +6174,19 @@ def update_system_configuration(admin_user):
     
     db.session.commit()
     
-    return jsonify({
-        'message': f"System maintenance mode {'enabled' if config.maintenance_mode else 'disabled'}.",
-        'maintenance_mode': config.maintenance_mode
-    })
+
+@socketio.on('join')
+def handle_join(data):
+    """
+    Allows a client to join a room based on their auth token.
+    This is used for targeted messaging.
+    """
+    token = data.get('auth_token')
+    if token:
+        # The 'room' is the session token itself, ensuring privacy.
+        join_room(token)
+        print(f"Client joined room: {token[:10]}...")
+
 def yubikey_monitor_task():
     """Background task to monitor YubiKey connections."""
     previous_serials = set()
