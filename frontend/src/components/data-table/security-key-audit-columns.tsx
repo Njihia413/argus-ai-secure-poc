@@ -44,17 +44,7 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
   },
   {
     accessorKey: "action",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Action
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
+    header: "Action",
     cell: ({ row }) => {
       const action = row.getValue("action") as string
       const actionStyles = {
@@ -85,31 +75,11 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
   },
   {
     accessorKey: "details",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Details
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
+    header: "Details",
   },
   {
     accessorKey: "timestamp",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Timestamp
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
+    header: "Timestamp",
     cell: ({ row }) => {
       const timestamp = row.getValue("timestamp") as string;
       if (!timestamp) return <span className="text-sm text-muted-foreground">Not available</span>;
@@ -136,17 +106,7 @@ export const columns: ColumnDef<SecurityKeyAuditLog>[] = [
   },
   {
     accessorKey: "performedBy",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Performed By
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
+    header: "Performed By",
     cell: ({ row }) => {
       const performedBy = row.original.performedBy
       return (
