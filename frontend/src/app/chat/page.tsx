@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from 'sonner';
+import { io, Socket } from "socket.io-client";
 import { Textarea } from "@/components/textarea";
 import { ProjectOverview } from "@/components/project-overview";
 import { Messages } from "@/components/messages";
@@ -73,6 +74,7 @@ export default function ChatPage() {
 
   const [isHelperAppConnected, setIsHelperAppConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const socketIoRef = useRef<Socket | null>(null);
   const securityKeyDetectionInterval = useRef<NodeJS.Timeout | null>(null);
   const keyCheckInProgress = useRef<boolean>(false);
   const initialLoadComplete = useRef<boolean>(false);
@@ -157,13 +159,20 @@ export default function ChatPage() {
       let hasConnectedSuccessfully = false;
 
       socket.onopen = () => {
-        // Removed: hasLoggedWebSocketErrorRef.current = false;
-        // Now, the error will only be logged once per component lifecycle if it occurs.
         hasConnectedSuccessfully = true;
         if (connectTimeoutId) clearTimeout(connectTimeoutId);
         console.log("Connected to USB helper WebSocket.");
         setIsHelperAppConnected(true);
         toast.success("USB Helper: Connected");
+
+        // Send the auth token to the detector script for user identification
+        if (userData?.authToken) {
+          console.log("Sending auth token to USB helper...");
+          socket.send(JSON.stringify({
+            type: 'auth',
+            token: userData.authToken
+          }));
+        }
       };
 
       socket.onmessage = (event) => {
@@ -182,44 +191,20 @@ export default function ChatPage() {
               setIsNormalUsbConnected(false);
               break;
             case "SECURITY_KEY_HID_CONNECTED":
-              console.log("FRONTEND: Processing SECURITY_KEY_HID_CONNECTED event:", message);
-              setHidKey({
-                isConnected: true,
-                path: message.path,
-                vendorId: message.vendorId,
-                productId: message.productId
-              });
-              toast.success(`Security Key (HID) Connected: VID=${message.vendorId}, PID=${message.productId}`);
+              // This case is now deprecated. The backend will handle model unlocking.
+              // We can still keep the toast notification for user feedback.
+              console.log("FRONTEND: Received deprecated SECURITY_KEY_HID_CONNECTED event:", message);
+              toast.info(`Security Key (HID) detected. Verifying ownership...`);
               break;
             case "SECURITY_KEY_HID_DISCONNECTED":
               console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
-              console.log("Disconnect Handler - State at entry (from ref): hidKeyRef.current.isConnected:", hidKeyRef.current.isConnected, "hidKeyRef.current.path:", hidKeyRef.current.path);
-              console.log("Disconnect Handler - Message path:", message.path);
-
-              if (hidKeyRef.current.path && hidKeyRef.current.path === message.path) {
-                console.log("Disconnect Case 1: Tracked key matches disconnected path.");
-                setHidKey(initialHidKeyInfo); 
-                toast.error(`Security Key (HID) Disconnected: VID=${hidKeyRef.current.vendorId || 'N/A'}, PID=${hidKeyRef.current.productId || 'N/A'}`);
-              } else if (hidKeyRef.current.isConnected && message.path && (!hidKeyRef.current.path || hidKeyRef.current.path !== message.path)) {
-                console.log("Disconnect Case 2: A HID key disconnected, and we thought one was connected (path mismatch or no specific stored path).");
-                setHidKey(initialHidKeyInfo);
-                toast.error(`A Security Key (HID) Disconnected: VID=${message.vendorId || 'N/A'}, PID=${message.productId || 'N/A'} (Path: ${message.path || 'N/A'})`);
-              } else if (hidKeyRef.current.isConnected && !message.path) {
-                console.log("Disconnect Case 3: Generic HID disconnect (no path in message), and we thought one was connected.");
-                setHidKey(initialHidKeyInfo);
-                toast.error("Security Key (HID) Disconnected (Generic)"); // Updated
-              } else {
-                console.log("Disconnect Case 4: No conditions met to update state for HID disconnect.");
-                if (!hidKeyRef.current.isConnected) {
-                    console.log("Reason: hidKeyRef.current.isConnected is already false (at disconnect handler entry).");
-                }
-                if (hidKeyRef.current.path && hidKeyRef.current.path !== message.path) {
-                    console.log(`Reason: Path mismatch. Stored (ref): '${hidKeyRef.current.path}', Received: '${message.path}' (at disconnect handler entry).`);
-                }
-                 if (!hidKeyRef.current.path && message.path) {
-                    console.log("Reason: hidKeyRef.current.path is null, but message has a path (at disconnect handler entry).");
-                }
+              // If the user didn't log in with a key, a disconnect event should restrict models.
+              if (userData && !userData.securityKeyAuthenticated) {
+                  setAvailableModels(RESTRICTED_MODELS);
+                  toast.error("Security Key disconnected. Model access restricted.");
               }
+              // Also update the local hidKey state for any other UI indicators
+              setHidKey(initialHidKeyInfo);
               break;
             default:
               console.warn("Received unknown message event from USB helper:", message);
@@ -279,69 +264,97 @@ export default function ChatPage() {
       setIsNormalUsbConnected(false);
       setHidKey(initialHidKeyInfo); 
     };
-  }, [userData]); 
+  }, [userData]);
 
   useEffect(() => {
-    if (!userData) {
-      if (JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
-        setAvailableModels(RESTRICTED_MODELS);
+    if (!userData || !userData.authToken) return;
+
+    // Establish connection to the backend Socket.IO server
+    const newSocket = io("http://localhost:5000");
+    socketIoRef.current = newSocket;
+
+    newSocket.on("connect", () => {
+      console.log("Connected to backend Socket.IO server.");
+      // Join the user-specific room
+      newSocket.emit("join", { auth_token: userData.authToken });
+    });
+
+    newSocket.on("joined_room", (data) => {
+      console.log(`Successfully joined room: ${data.room.substring(0, 10)}...`);
+    });
+
+    newSocket.on("models_unlocked", (data) => {
+      console.log("Received models_unlocked event:", data);
+      toast.success(data.message || "Security key verified. Full models enabled.");
+      setAvailableModels(ALL_MODELS);
+    });
+
+    newSocket.on("key_mismatch_error", (data) => {
+      console.error("Received key_mismatch_error event:", data);
+      toast.error(data.message || "Security key does not belong to this user.");
+    });
+
+    // Handle disconnection
+    newSocket.on("disconnect", () => {
+      console.log("Disconnected from backend Socket.IO server.");
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      if (socketIoRef.current) {
+        socketIoRef.current.disconnect();
+        socketIoRef.current = null;
       }
+    };
+  }, [userData]);
+
+  useEffect(() => {
+    if (!userData || !userData.authToken) return;
+
+    // Establish connection to the backend Socket.IO server
+    const newSocket = io("http://localhost:5000");
+    socketIoRef.current = newSocket;
+
+    newSocket.on("connect", () => {
+      console.log("Connected to backend Socket.IO server.");
+      // Join the user-specific room
+      newSocket.emit("join", { auth_token: userData.authToken });
+    });
+
+    newSocket.on("joined_room", (data) => {
+      console.log(`Successfully joined room: ${data.room.substring(0, 10)}...`);
+    });
+
+    // Handle disconnection
+    newSocket.on("disconnect", () => {
+      console.log("Disconnected from backend Socket.IO server.");
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      if (socketIoRef.current) {
+        socketIoRef.current.disconnect();
+        socketIoRef.current = null;
+      }
+    };
+  }, [userData]);
+
+  // This useEffect now only sets the initial model availability when the user data is loaded.
+  useEffect(() => {
+    if (!userData) {
+      setAvailableModels(RESTRICTED_MODELS);
       return;
     }
-    console.log(
-      "availableModels useEffect - HID States: hidKey.isConnected:", hidKey.isConnected,
-      "hidKey.path:", hidKey.path 
-    );
 
     const loggedInWithSecurityKeyAtAuthTime = userData.securityKeyAuthenticated === true;
-    let newAvailableModels = RESTRICTED_MODELS;
-    let reasonForChange = "Default: Restricted models.";
-
-    console.log(
-      "Model Availability Check:",
-      { loggedInWithSecurityKeyAtAuthTime },
-      { securityKeyStatus }, 
-      { isNormalUsbConnected },
-      { isSecurityKeyHidConnected: hidKey.isConnected }, 
-      { isHelperAppConnected },
-      { currentModels: Object.keys(availableModels) }
-    );
 
     if (loggedInWithSecurityKeyAtAuthTime) {
-      newAvailableModels = ALL_MODELS;
-      reasonForChange = "Logged in with an active security key.";
+      setAvailableModels(ALL_MODELS);
+      toast.success("Logged in with security key. Full model access enabled.");
     } else {
-      if (hidKey.isConnected && isHelperAppConnected) {
-        newAvailableModels = ALL_MODELS;
-        reasonForChange = "Security Key (HID) connected (email/password login).";
-      } else if (isNormalUsbConnected && isHelperAppConnected) {
-        newAvailableModels = ALL_MODELS;
-        reasonForChange = "Normal USB connected (email/password login).";
-      } else {
-        newAvailableModels = RESTRICTED_MODELS;
-        if (!isHelperAppConnected && initialLoadComplete.current) {
-            reasonForChange = "USB Helper not connected. Model access restricted.";
-        } else if (isHelperAppConnected && !isNormalUsbConnected && !hidKey.isConnected && initialLoadComplete.current) {
-            reasonForChange = "No recognized USB device connected. Model access restricted.";
-        } else {
-            reasonForChange = "Default for email/password login without recognized USB device.";
-        }
-      }
+      setAvailableModels(RESTRICTED_MODELS);
     }
-    
-    if (JSON.stringify(availableModels) !== JSON.stringify(newAvailableModels)) {
-        console.log(`Setting new available models due to: ${reasonForChange}. New models: ${Object.keys(newAvailableModels).join(', ')}`);
-        setAvailableModels(newAvailableModels);
-        if (JSON.stringify(newAvailableModels) === JSON.stringify(ALL_MODELS) && JSON.stringify(availableModels) !== JSON.stringify(ALL_MODELS)) {
-            toast.success("Full model access enabled. " + reasonForChange);
-        } else if (JSON.stringify(newAvailableModels) === JSON.stringify(RESTRICTED_MODELS) && JSON.stringify(availableModels) !== JSON.stringify(RESTRICTED_MODELS)) {
-            toast.error("Model access restricted. " + reasonForChange);
-        }
-    } else {
-         console.log(`Available models did not change (${Object.keys(availableModels).join(', ')}). Reason: ${reasonForChange}`);
-    }
-
-  }, [userData, securityKeyStatus, isNormalUsbConnected, hidKey, isHelperAppConnected, availableModels, initialLoadComplete]);
+  }, [userData]);
 
 
   useEffect(() => {
