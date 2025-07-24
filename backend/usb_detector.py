@@ -10,11 +10,13 @@ HOST = "localhost"
 PORT = 12345
 CHECK_INTERVAL = 2 # For normal USB drives
 HID_CHECK_INTERVAL = 1 # For HID security keys (can be more frequent)
-FLASK_API_URL = "http://localhost:5000/api/internal/hid_security_key_event" # URL for Flask endpoint
+FLASK_API_URL = "http://localhost:5000/api/verify_key_ownership" # URL for the new verification endpoint
 
-connected_clients = set()
+# Dictionary to store client connections and their associated auth tokens
+# {websocket_client: "user_auth_token"}
+connected_clients = {}
 known_usb_drives = set()
-known_hid_security_keys = {} # Store as dict: path -> {vendor_id, product_id}
+known_hid_security_keys = {} # Store as dict: path -> {vendor_id, product_id, serial_number}
 
 # Helper function to identify FIDO devices
 def is_fido_device(device_info):
@@ -66,7 +68,7 @@ def get_removable_drives():
 async def send_to_all(message):
     if connected_clients:
         # print(f"Python: Attempting to send to {len(connected_clients)} client(s): {message}") # Can be noisy
-        await asyncio.gather(*[client.send(json.dumps(message)) for client in connected_clients])
+        await asyncio.gather(*[client.send(json.dumps(message)) for client in connected_clients.keys()])
     # else:
         # print(f"Python: No clients connected. Message not sent: {message}") # Can be noisy
 
@@ -103,7 +105,8 @@ async def hid_security_key_monitor():
                 current_hid_devices_initial_scan[path] = {
                     'vendor_id': dev_info['vendor_id'],
                     'product_id': dev_info['product_id'],
-                    'product_string': dev_info.get('product_string', 'N/A')
+                    'product_string': dev_info.get('product_string', 'N/A'),
+                    'serial_number': dev_info.get('serial_number', 'N/A')
                 }
     except Exception as e:
         print(f"Python hid_security_key_monitor: Error during initial HID scan: {e}")
@@ -126,7 +129,8 @@ async def hid_security_key_monitor():
                     current_active_fido_devices_in_this_scan[path] = {
                         'vendor_id': dev_info_loop['vendor_id'],
                         'product_id': dev_info_loop['product_id'],
-                        'product_string': dev_info_loop.get('product_string', 'N/A')
+                        'product_string': dev_info_loop.get('product_string', 'N/A'),
+                        'serial_number': dev_info_loop.get('serial_number', 'N/A')
                     }
         except Exception as e:
             print(f"Python hid_security_key_monitor: Error during HID enumeration loop: {e}")
@@ -139,25 +143,38 @@ async def hid_security_key_monitor():
             if path not in known_hid_security_keys: # Device is in current scan but not in our known list
                 new_connections_found_this_cycle = True
                 print(f"Python hid_security_key_monitor: New FIDO Security Key Connected: VID={info['vendor_id']:04x}, PID={info['product_id']:04x}, Name='{info['product_string']}', Path={path}")
-                
-                await send_to_all({
-                    "event": "SECURITY_KEY_HID_CONNECTED",
-                    "vendorId": f"{info['vendor_id']:04x}",
-                    "productId": f"{info['product_id']:04x}",
-                    "path": path
-                })
-                
+
+                # Use ykman to get the serial number reliably
                 try:
-                    payload = {
-                        'vendor_id': f"{info['vendor_id']:04x}",
-                        'product_id': f"{info['product_id']:04x}",
-                        'path': path,
-                        'status': 'connected'
-                    }
-                    response = requests.post(FLASK_API_URL, json=payload, timeout=5)
-                    print(f"Python hid_security_key_monitor: Notified Flask of connection: {payload}, Response: {response.status_code}")
-                except requests.exceptions.RequestException as e:
-                    print(f"Python hid_security_key_monitor: Failed to notify Flask of HID connection: {e}")
+                    import subprocess
+                    result = subprocess.run(['ykman', 'list', '--serials'], capture_output=True, text=True, check=True)
+                    serials = [s for s in result.stdout.strip().split('\n') if s]
+                    if not serials:
+                        print("Warning: ykman found a key but did not return a serial number.")
+                        continue # Skip to the next device
+
+                    # For simplicity, we'll assume the first serial found is the one just plugged in.
+                    # A more complex system might need to track which serials are already known.
+                    serial_number = serials[0]
+                    print(f"Successfully retrieved serial number via ykman: {serial_number}")
+
+                    # Call the backend for verification for each connected client
+                    for client, token in connected_clients.items():
+                        if token:
+                            try:
+                                payload = {
+                                    'serial_number': serial_number,
+                                    'auth_token': token
+                                }
+                                response = requests.post(FLASK_API_URL, json=payload, timeout=5)
+                                print(f"Notified Flask for verification: User token {token[:10]}..., SN {serial_number}. Response: {response.status_code} - {response.text}")
+                            except requests.exceptions.RequestException as e:
+                                print(f"Failed to notify Flask for verification: {e}")
+                        else:
+                            print(f"Skipping notification for unauthenticated client.")
+
+                except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                    print(f"Error running ykman to get serial number: {e}")
                 
                 known_hid_security_keys[path] = info # Add to our tracked list of connected FIDO keys
 
@@ -174,24 +191,14 @@ async def hid_security_key_monitor():
                 disconnected_info = known_hid_security_keys.pop(path_disconnected, {}) # Remove from known and get its info
                 print(f"Python hid_security_key_monitor: FIDO Security Key Disconnected: Path={path_disconnected}, VID={disconnected_info.get('vendor_id', 'N/A'):04x}, PID={disconnected_info.get('product_id', 'N/A'):04x}")
                 
+                # The disconnection event can still be broadcast, as the frontend
+                # will now handle the logic to restrict models if necessary.
                 await send_to_all({
                     "event": "SECURITY_KEY_HID_DISCONNECTED",
                     "path": path_disconnected,
                     "vendorId": f"{disconnected_info.get('vendor_id', 0):04x}",
                     "productId": f"{disconnected_info.get('product_id', 0):04x}"
                 })
-                
-                try:
-                    payload = {
-                        'path': path_disconnected,
-                        'status': 'disconnected',
-                        'vendor_id': f"{disconnected_info.get('vendor_id', 0):04x}",
-                        'product_id': f"{disconnected_info.get('product_id', 0):04x}"
-                    }
-                    response = requests.post(FLASK_API_URL, json=payload, timeout=5)
-                    print(f"Python hid_security_key_monitor: Notified Flask of disconnection: {payload}, Response: {response.status_code}")
-                except requests.exceptions.RequestException as e:
-                    print(f"Python hid_security_key_monitor: Failed to notify Flask of HID disconnection: {e}")
         
         if not new_connections_found_this_cycle and not disconnections_found_this_cycle:
             # print("Python hid_security_key_monitor: Still scanning for FIDO keys... (no changes detected)") # Optional
@@ -205,32 +212,44 @@ async def handler(websocket):  # Single argument for websockets v15+
     elif isinstance(remote_addr_info, (str, bytes)):
         client_id_str = str(remote_addr_info)
 
-    print(f"Python Handler: Client {client_id_str} connected. Adding to connected_clients.")
-    connected_clients.add(websocket)
+    print(f"Python Handler: Client {client_id_str} connected.")
+    # Add client to the dictionary with a placeholder for the token
+    connected_clients[websocket] = None
     print(f"Python Handler: connected_clients now has {len(connected_clients)} client(s).")
     try:
-        print(f"Python Handler: Sending initial state to client {client_id_str}.")
-        # Send initial state for normal USB drives
-        if known_usb_drives: # Check if set is not empty
-            await websocket.send(json.dumps(
-                {"event": "NORMAL_USB_CONNECTED", "drive": list(known_usb_drives)[0], "initial_state": True}))
-        else:
-            await websocket.send(json.dumps({"event": "NORMAL_USB_DISCONNECTED", "initial_state": True}))
-        
-        # Send initial state for known HID FIDO keys
-        # This ensures client knows about already connected FIDO keys on its connection
-        for path, info in known_hid_security_keys.items():
-            await websocket.send(json.dumps({
-                "event": "SECURITY_KEY_HID_CONNECTED",
-                "vendorId": f"{info['vendor_id']:04x}", # Ensure formatting
-                "productId": f"{info['product_id']:04x}", # Ensure formatting
-                "path": path,
-                "initial_state": True
-            }))
-
-        print(f"Python Handler: Initial state sent to client {client_id_str}.")
+        # The first message from the client should be an auth message
         async for message in websocket:
             print(f"Python Handler: Client {client_id_str} sent message: {message}")
+            try:
+                data = json.loads(message)
+                if data.get('type') == 'auth' and 'token' in data:
+                    # Associate the token with this client connection
+                    connected_clients[websocket] = data['token']
+                    print(f"Authenticated client {client_id_str} with token: {data['token'][:10]}...")
+                    
+                    # After auth, send initial state
+                    print(f"Python Handler: Sending initial state to client {client_id_str}.")
+                    if known_usb_drives:
+                        await websocket.send(json.dumps(
+                            {"event": "NORMAL_USB_CONNECTED", "drive": list(known_usb_drives)[0], "initial_state": True}))
+                    else:
+                        await websocket.send(json.dumps({"event": "NORMAL_USB_DISCONNECTED", "initial_state": True}))
+                    
+                    for path, info in known_hid_security_keys.items():
+                        await websocket.send(json.dumps({
+                            "event": "SECURITY_KEY_HID_CONNECTED",
+                            "vendorId": f"{info['vendor_id']:04x}",
+                            "productId": f"{info['product_id']:04x}",
+                            "path": path,
+                            "initial_state": True
+                        }))
+                    print(f"Python Handler: Initial state sent to client {client_id_str}.")
+
+                else:
+                    print(f"Warning: Received non-auth message from {client_id_str} before authentication.")
+
+            except json.JSONDecodeError:
+                print(f"Error: Could not decode JSON message from {client_id_str}")
     except websockets.exceptions.ConnectionClosedError as e:
         print(f"Python Handler: Client {client_id_str} connection closed normally. Code: {e.code}, Reason: {e.reason}")
     except websockets.exceptions.ConnectionClosedOK as e:
@@ -239,7 +258,8 @@ async def handler(websocket):  # Single argument for websockets v15+
         print(f"Python Handler: Error with client {client_id_str}: {type(e).__name__} - {e}")
     finally:
         print(f"Python Handler: Client {client_id_str} finalizing. Removing from connected_clients.")
-        connected_clients.discard(websocket)
+        if websocket in connected_clients:
+            del connected_clients[websocket]
         print(
             f"Python Handler: connected_clients now has {len(connected_clients)} client(s) after removal of {client_id_str}.")
 
