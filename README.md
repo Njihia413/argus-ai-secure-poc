@@ -10,7 +10,7 @@ Argus AI Secure is a comprehensive, full-stack web application designed for robu
 - **Account Lockout System:** Automatically locks user accounts after multiple failed login attempts, with a dedicated interface for administrators to manage and unlock accounts.
 - **System-Wide Audit Trail:** Detailed logging of all critical security and system events, providing a clear and searchable history for compliance and investigation.
 - **AI-Powered Chat Assistant:** An integrated chat interface that leverages AI models to assist with security-related queries and operations. Model availability can be dynamically enhanced by connecting a security key.
-- **Local Hardware Detection:** A local Python helper application detects USB and HID FIDO security key connections, enabling real-time interaction between the user's hardware and the application.
+- **Local Hardware Detection:** A local Python helper application detects USB and HID FIDO security key connections, enabling real-time interaction between the user's hardware and the application. This includes the automatic detection and extraction of YubiKey details (serial number, model, firmware version) to simplify the registration process.
 - **Elevated Access Controls:** A secure administrative context that grants access to high-privilege actions only after authentication with a security key. This includes:
     - **Emergency Actions:** A dedicated page for administrators to perform system-wide lockdowns in case of a security incident.
     - **System Configuration:** A page for managing system-level settings, such as enabling or disabling maintenance mode.
