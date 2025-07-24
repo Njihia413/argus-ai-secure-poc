@@ -2584,20 +2584,21 @@ def webauthn_register_begin():
     # Only gather exclude credentials if we're not forcing registration
     if not force_registration:
         print("Getting existing credentials to exclude them")
-        users_with_credentials = Users.query.filter(Users.credential_id.isnot(None)).all()
+        user_credentials = SecurityKey.query.filter_by(user_id=user.id).all()
 
-        for existing_user in users_with_credentials:
-            try:
-                credential_id = websafe_decode(existing_user.credential_id)
-                all_credentials.append(
-                    PublicKeyCredentialDescriptor(
-                        type=PublicKeyCredentialType.PUBLIC_KEY,
-                        id=credential_id
+        for cred in user_credentials:
+            if cred.credential_id:
+                try:
+                    credential_id = websafe_decode(cred.credential_id)
+                    all_credentials.append(
+                        PublicKeyCredentialDescriptor(
+                            type=PublicKeyCredentialType.PUBLIC_KEY,
+                            id=credential_id
+                        )
                     )
-                )
-            except Exception as e:
-                print(f"Error decoding credential ID: {e}")
-                continue
+                except Exception as e:
+                    print(f"Error decoding credential ID for key {cred.id}: {e}")
+                    continue
     else:
         print("Force registration enabled - not excluding any existing credentials")
 
