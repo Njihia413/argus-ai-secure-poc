@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { Eye, EyeOff, ShieldCheck, Key, AlertTriangle, Plus, Power, Trash, Edit, ChevronRight, ArrowLeft } from 'lucide-react'
+import { Key, ChevronRight, ArrowLeft } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 
@@ -32,18 +31,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { SecurityDataTable } from "@/components/data-table/security-data-table"
 import { securityKeyColumns } from "@/components/data-table/security-key-columns"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-
+import { YubiKeyDetectionModal } from "@/components/data-table/yubikey-detection-modal"
 import { registerSecurityKey } from "@/app/utils/webauthn"
 import { API_URL } from "@/app/utils/constants"
-import {Textarea} from "../../../../components/textarea";
 
 interface User {
   id: number
@@ -59,8 +50,8 @@ interface User {
   lastLogin: string | null
   loginAttempts: number
   failedAttempts: number
-  account_locked: boolean // Added for lock status
-  locked_time: string | null // Added for lock time
+  account_locked: boolean
+  locked_time: string | null
 }
 
 interface SecurityKey {
@@ -85,10 +76,18 @@ interface SecurityKeyDetails {
   pin: string
 }
 
+interface YubiKey {
+  serial: number;
+  version: string;
+  form_factor: string;
+  device_type: string;
+  is_fips: boolean;
+  is_sky: boolean;
+}
+
 export default function UserDetailsPage() {
   const router = useRouter()
   const params = useParams()
-  const [showAuditLog, setShowAuditLog] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [securityKeys, setSecurityKeys] = useState<SecurityKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -106,13 +105,6 @@ export default function UserDetailsPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [keyIdToReset, setKeyIdToReset] = useState<number | null>(null);
   const [showReassignDialog, setShowReassignDialog] = useState(false);
-
-  // Fetch users when reassign dialog opens
-  useEffect(() => {
-    if (showReassignDialog) {
-      fetchAvailableUsers();
-    }
-  }, [showReassignDialog]);
   const [usersList, setUsersList] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [isReassigning, setIsReassigning] = useState(false);
@@ -124,71 +116,43 @@ export default function UserDetailsPage() {
     serialNumber: '',
     pin: ''
   })
+  const [isDetectionModalOpen, setIsDetectionModalOpen] = useState(false)
 
   const securityKeyModels = {
-    'YubiKey': [
-      'YubiKey 5 NFC',
-      'YubiKey 5C',
-      'YubiKey 5 Nano',
-      'YubiKey Bio',
-      'YubiKey 5Ci',
-      'YubiKey FIPS'
-    ],
-    'Google Titan': [
-      'Titan Security Key USB-C',
-      'Titan Security Key USB-A',
-      'Titan Security Key NFC',
-      'Titan Security Key Bluetooth'
-    ],
-    'Feitian': [
-      'ePass FIDO2',
-      'MultiPass FIDO',
-      'BioPass FIDO2',
-      'AllinPass FIDO2',
-      'K40 FIDO2'
-    ],
-    'Thetis': [
-      'Thetis FIDO2',
-      'Thetis Bio',
-      'Thetis PRO',
-      'Thetis Forte'
-    ],
-    'SoloKeys': [
-      'Solo V2',
-      'SoloKey',
-      'Solo Tap',
-      'Solo Hacker'
-    ]
+    'YubiKey': ['YubiKey 5 NFC', 'YubiKey 5C', 'YubiKey 5 Nano', 'YubiKey Bio', 'YubiKey 5Ci', 'YubiKey FIPS'],
+    'Google Titan': ['Titan Security Key USB-C', 'Titan Security Key USB-A', 'Titan Security Key NFC', 'Titan Security Key Bluetooth'],
+    'Feitian': ['ePass FIDO2', 'MultiPass FIDO', 'BioPass FIDO2', 'AllinPass FIDO2', 'K40 FIDO2'],
+    'Thetis': ['Thetis FIDO2', 'Thetis Bio', 'Thetis PRO', 'Thetis Forte'],
+    'SoloKeys': ['Solo V2', 'SoloKey', 'Solo Tap', 'Solo Hacker']
   }
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-
     if (!userInfo || !userInfo.authToken) {
       toast.error("You need to log in")
       router.push("/")
       return
     }
-
     if (userInfo.role !== "admin") {
       toast.error("Admin access required")
       router.push("/")
       return
     }
-
     fetchUserDetails(userInfo.authToken)
   }, [router, params.id])
+
+  useEffect(() => {
+    if (showReassignDialog) {
+      fetchAvailableUsers();
+    }
+  }, [showReassignDialog]);
 
   const fetchUserDetails = async (authToken: string) => {
     try {
       setIsLoading(true)
-      // Fetch user details
       const response = await axios.get<{ user: User }>(`${API_URL}/users/${params.id}`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { Authorization: `Bearer ${authToken}` },
       })
-
       if (response.data && response.data.user) {
         setUser(response.data.user)
         await fetchSecurityKeys(authToken)
@@ -205,15 +169,11 @@ export default function UserDetailsPage() {
     }
   }
 
-
   const fetchSecurityKeys = async (authToken: string) => {
     try {
       const response = await axios.get<{ securityKeys: SecurityKey[] }>(`${API_URL}/users/${params.id}/security-keys`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { Authorization: `Bearer ${authToken}` },
       })
-
       if (response.data && response.data.securityKeys) {
         setSecurityKeys(response.data.securityKeys)
       }
@@ -223,86 +183,108 @@ export default function UserDetailsPage() {
     }
   }
 
+  const handleSelectYubiKey = async (key: YubiKey) => {
+    try {
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+      const response = await axios.post<{ exists: boolean, user?: User }>(`${API_URL}/security-keys/check-serial`,
+        { serialNumber: key.serial },
+        {
+          headers: {
+            Authorization: `Bearer ${userInfo.authToken}`,
+          },
+        }
+      );
 
-const handleKeyDetailsSubmit = async () => {
-  const isUpdate = selectedKey !== null && !isKeyReassigned;
-  const isReassignedKey = selectedKey !== null && isKeyReassigned;
-  
-  if (isUpdate) {
-    setIsUpdating(true);
-  }
-  
-  if (!keyDetails.model || !keyDetails.type || !keyDetails.serialNumber) {
-    toast.error("Please fill in the required fields");
-    return;
-  }
-  
-  // For reassigned keys, PIN is required
-  if (isReassignedKey && !keyDetails.pin) {
-    toast.error("Please provide a PIN for the security key");
-    return;
-  }
+      if (response.data.exists && response.data.user) {
+        const existingUser = response.data.user;
+        toast.error(`This YubiKey is already registered to ${existingUser.firstName} ${existingUser.lastName}.`);
+        console.log("Key already registered to:", existingUser);
+      } else if (response.data.exists) {
+        toast.error(`This YubiKey is already registered to another user.`);
+      } else {
+        setKeyDetails({
+          model: key.form_factor,
+          type: key.device_type,
+          serialNumber: key.serial.toString(),
+          pin: ''
+        });
+        setIsDetectionModalOpen(false);
+        setShowKeyDetailsModal(true);
+      }
+    } catch (error: any) {
+      console.error("Error checking serial number:", error);
+      toast.error(error.response?.data?.error || "Failed to check YubiKey status.");
+    }
+  };
 
-  try {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-
-    // If this is a reassigned key being prepared for registration
-    if (isReassignedKey) {
+  const handleKeyDetailsSubmit = async () => {
+    const isUpdate = selectedKey !== null && !isKeyReassigned;
+    const isReassignedKey = selectedKey !== null && isKeyReassigned;
+    
+    if (isUpdate) {
       setIsUpdating(true);
-      // Just close the details modal and open the registration modal
-      // The key details are already set in the state
-      setShowKeyDetailsModal(false);
-      setShowRegistrationModal(true);
-      
-      // Store in session for the actual registration process
-      sessionStorage.setItem('pendingKeyDetails', JSON.stringify({
-        ...keyDetails,
-        keyId: selectedKey.id // Include the key ID to ensure we update, not create
-      }));
-      
-      setIsUpdating(false);
+    }
+    
+    if (!keyDetails.model || !keyDetails.type || !keyDetails.serialNumber) {
+      toast.error("Please fill in the required fields");
+      return;
+    }
+    
+    if (isReassignedKey && !keyDetails.pin) {
+      toast.error("Please provide a PIN for the security key");
       return;
     }
 
-    // Normal flow for updates or new keys
-    const endpoint = isUpdate
-      ? `${API_URL}/security-keys/${selectedKey.id}`
-      : `${API_URL}/security-keys/details`;
-    const method = isUpdate ? 'put' : 'post';
+    try {
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
 
-    const response = await axios({
-      method,
-      url: endpoint,
-      data: {
-        userId: params.id,
-        ...keyDetails
-      },
-      headers: {
-        Authorization: `Bearer ${userInfo.authToken}`,
-      },
-    });
-
-    if (response.data) {
-      if (isUpdate) {
-        // For updates, just close the modal and refresh the security keys
-        setShowKeyDetailsModal(false);
-        fetchSecurityKeys(userInfo.authToken);
-        toast.success("Security Key details updated successfully");
-      } else {
-        // For new keys, proceed with WebAuthn registration
+      if (isReassignedKey) {
+        setIsUpdating(true);
         setShowKeyDetailsModal(false);
         setShowRegistrationModal(true);
-        sessionStorage.setItem('pendingKeyDetails', JSON.stringify(keyDetails));
+        sessionStorage.setItem('pendingKeyDetails', JSON.stringify({
+          ...keyDetails,
+          keyId: selectedKey.id
+        }));
+        setIsUpdating(false);
+        return;
       }
-    }
-  } catch (error: any) {
-    console.error("Error saving key details:", error);
-    toast.error(error.response?.data?.error || "Failed to save key details");
-  } finally {
-    setIsUpdating(false);
-  }
-};
 
+      const endpoint = isUpdate
+        ? `${API_URL}/security-keys/${selectedKey.id}`
+        : `${API_URL}/security-keys/details`;
+      const method = isUpdate ? 'put' : 'post';
+
+      const response = await axios({
+        method,
+        url: endpoint,
+        data: {
+          userId: params.id,
+          ...keyDetails
+        },
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      });
+
+      if (response.data) {
+        if (isUpdate) {
+          setShowKeyDetailsModal(false);
+          fetchSecurityKeys(userInfo.authToken);
+          toast.success("Security Key details updated successfully");
+        } else {
+          setShowKeyDetailsModal(false);
+          setShowRegistrationModal(true);
+          sessionStorage.setItem('pendingKeyDetails', JSON.stringify(keyDetails));
+        }
+      }
+    } catch (error: any) {
+      console.error("Error saving key details:", error);
+      toast.error(error.response?.data?.error || "Failed to save key details");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleDeactivate = async () => {
     if (!selectedKey || !deactivationReason.trim()) {
@@ -310,7 +292,6 @@ const handleKeyDetailsSubmit = async () => {
       return
     }
 
-    // Don't allow reactivating an already deactivated key
     if (!selectedKey.isActive) {
       toast.error("Cannot reactivate a deactivated key")
       return
@@ -349,106 +330,93 @@ const handleKeyDetailsSubmit = async () => {
     }
   }
 
+  const initiateKeyReset = (keyId: number, key: SecurityKey | undefined) => {
+    if (!key) return;
+    if (!key.credentialId && key.deactivationReason === "Reset by admin") {
+      setKeyIdForReassignment(keyId);
+      setShowReassignDialog(true);
+    } else {
+      setKeyIdToReset(keyId);
+      setKeyIdForReassignment(keyId);
+      setShowResetConfirm(true);
+    }
+  };
 
-const initiateKeyReset = (keyId: number, key: SecurityKey | undefined) => {
-  if (!key) return;
-  // Check if the key was already reset
-  if (!key.credentialId && key.deactivationReason === "Reset by admin") {
-    // If already reset, go straight to reassignment
-    setKeyIdForReassignment(keyId);
-    setShowReassignDialog(true);
-  } else {
-    // Otherwise show reset confirmation
-    setKeyIdToReset(keyId);
-    setKeyIdForReassignment(keyId);
-    setShowResetConfirm(true);
-  }
-};
+  const handleResetKey = async () => {
+    if (!keyIdToReset) return;
+    
+    try {
+      setIsResetting(true);
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+      if (!userInfo.authToken) {
+        toast.error("Authentication required");
+        return;
+      }
+      
+      const response = await axios.post(
+        `${API_URL}/security-keys/${keyIdToReset}/reset`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${userInfo.authToken}`,
+          },
+        }
+      );
+      
+      toast.success("Security key reset successfully");
+      setIsKeyReassigned(true);
+      setKeyIdForReassignment(keyIdToReset);
+      
+      await fetchSecurityKeys(userInfo.authToken);
+      await fetchUserDetails(userInfo.authToken);
+      
+    } catch (error: any) {
+      console.error("Error resetting security key:", error);
+      toast.error(error.response?.data?.error || "Failed to reset security key");
+    } finally {
+      setIsResetting(false);
+      setShowResetConfirm(false);
+    }
+  };
 
-
-const handleResetKey = async () => {
-  if (!keyIdToReset) return;
-  
-  try {
-    setIsResetting(true);
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    if (!userInfo.authToken) {
-      toast.error("Authentication required");
+  const beginRegistration = async () => {
+    if (!user) {
+      toast.error("User information not available");
       return;
     }
-    
-    const response = await axios.post(
-      `${API_URL}/security-keys/${keyIdToReset}/reset`,
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+    try {
+      setIsRegistering(true);
+      
+      const storedKeyDetails = JSON.parse(sessionStorage.getItem('pendingKeyDetails') || '{}');
+      
+      await registerSecurityKey(
+        user.username,
+        async (message) => {
+          toast.success(message);
+          setShowRegistrationModal(false);
+          
+          const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+          await fetchUserDetails(userInfo.authToken);
+          await fetchSecurityKeys(userInfo.authToken);
+          
+          setIsKeyReassigned(false);
+          
+          sessionStorage.removeItem('pendingKeyDetails');
+          setSelectedKey(null);
         },
-      }
-    );
-    
-    toast.success("Security key reset successfully");
-    setIsKeyReassigned(true); // Mark as reassigned
-    setKeyIdForReassignment(keyIdToReset);
-    
-    // Refresh data
-    await fetchSecurityKeys(userInfo.authToken);
-    await fetchUserDetails(userInfo.authToken);
-    
-  } catch (error: any) {
-    console.error("Error resetting security key:", error);
-    toast.error(error.response?.data?.error || "Failed to reset security key");
-  } finally {
-    setIsResetting(false);
-    setShowResetConfirm(false);
-  }
-};
-
-
-const beginRegistration = async () => {
-  if (!user) {
-    toast.error("User information not available");
-    return;
-  }
-  try {
-    setIsRegistering(true);
-    
-    // Get stored key details (may include keyId for reassigned keys)
-    const storedKeyDetails = JSON.parse(sessionStorage.getItem('pendingKeyDetails') || '{}');
-    
-    await registerSecurityKey(
-      user.username,
-      async (message) => {
-        // Success handler
-        toast.success(message);
-        setShowRegistrationModal(false);
-        
-        // Refresh data
-        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-        await fetchUserDetails(userInfo.authToken);
-        await fetchSecurityKeys(userInfo.authToken);
-        
-        // Reset the reassigned flag
-        setIsKeyReassigned(false);
-        
-        // Clean up
-        sessionStorage.removeItem('pendingKeyDetails');
-        setSelectedKey(null);
-      },
-      (error) => {
-        // Error handler
-        toast.error(error);
-      },
-      storedKeyDetails,
-      isKeyReassigned // Pass the flag
-    );
-  } catch (error) {
-    console.error("Error during registration:", error);
-    toast.error("Failed to register security key");
-  } finally {
-    setIsRegistering(false);
-  }
-};
+        (error) => {
+          toast.error(error);
+        },
+        storedKeyDetails,
+        isKeyReassigned
+      );
+    } catch (error) {
+      console.error("Error during registration:", error);
+      toast.error("Failed to register security key");
+    } finally {
+      setIsRegistering(false);
+    }
+  };
 
   const handleDeleteKey = async () => {
     if (!selectedKey) {
@@ -485,93 +453,89 @@ const beginRegistration = async () => {
   }
 
   const fetchAvailableUsers = async () => {
-  try {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    if (!userInfo.authToken) {
-      toast.error("Authentication required");
-      return;
-    }
-    
-    // Use the /all endpoint to get all users from the database
-    const response = await axios.get(`${API_URL}/users`, {
-      headers: {
-        Authorization: `Bearer ${userInfo.authToken}`,
-      },
-    });
-    
-    interface UsersResponse {
-      users: User[];
-    }
-    
-    const responseData = response.data as UsersResponse;
-    if (responseData.users) {
-      console.log('All users fetched:', responseData.users); // Debug log
-      setUsersList(responseData.users);
-    }
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    toast.error("Failed to load available users");
-  }
-};
-
-// Add function to handle reassignment
-const handleReassignKey = async () => {
-  console.log("Key ID for reassignment:", keyIdForReassignment);
-  
-  if (!keyIdForReassignment) {
-    toast.error("No key selected for reassignment");
-    return;
-  }
-  
-  if (!selectedUserId) {
-    toast.error("Please select a user to reassign the key to");
-    return;
-  }
-  
-  try {
-    setIsReassigning(true);
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    if (!userInfo.authToken) {
-      toast.error("Authentication required");
-      return;
-    }
-    
-    const response = await axios.post(
-      `${API_URL}/security-keys/${keyIdForReassignment}/reassign`,
-      { new_user_id: selectedUserId },
-      {
+    try {
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+      if (!userInfo.authToken) {
+        toast.error("Authentication required");
+        return;
+      }
+      
+      const response = await axios.get(`${API_URL}/users`, {
         headers: {
           Authorization: `Bearer ${userInfo.authToken}`,
         },
+      });
+      
+      interface UsersResponse {
+        users: User[];
       }
-    );
+      
+      const responseData = response.data as UsersResponse;
+      if (responseData.users) {
+        console.log('All users fetched:', responseData.users);
+        setUsersList(responseData.users);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      toast.error("Failed to load available users");
+    }
+  };
+
+  const handleReassignKey = async () => {
+    console.log("Key ID for reassignment:", keyIdForReassignment);
     
-    interface ReassignResponse {
-      message: string;
+    if (!keyIdForReassignment) {
+      toast.error("No key selected for reassignment");
+      return;
     }
     
-    const responseData = response.data as ReassignResponse;
-    toast.success(responseData.message || "Security key reassigned successfully");
-    
-    // Refresh data
-    await fetchSecurityKeys(userInfo.authToken);
-    await fetchUserDetails(userInfo.authToken);
-    
-  } catch (error: any) {
-    console.error("Error reassigning key:", error);
-    if (error.response?.data?.error === "New user already has an active security key. Cannot reassign.") {
-      toast.error("Failed to reassign key: The selected user already has an active security key.");
-    } else {
-      toast.error(error.response?.data?.error || "Failed to reassign security key");
+    if (!selectedUserId) {
+      toast.error("Please select a user to reassign the key to");
+      return;
     }
-  } finally {
-    setIsReassigning(false);
-    setShowReassignDialog(false);
-    setSelectedUserId(null);
-    // Also reset the reassignment key ID
-    setKeyIdForReassignment(null);
-  }
-};
+    
+    try {
+      setIsReassigning(true);
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+      if (!userInfo.authToken) {
+        toast.error("Authentication required");
+        return;
+      }
+      
+      const response = await axios.post(
+        `${API_URL}/security-keys/${keyIdForReassignment}/reassign`,
+        { new_user_id: selectedUserId },
+        {
+          headers: {
+            Authorization: `Bearer ${userInfo.authToken}`,
+          },
+        }
+      );
+      
+      interface ReassignResponse {
+        message: string;
+      }
+      
+      const responseData = response.data as ReassignResponse;
+      toast.success(responseData.message || "Security key reassigned successfully");
+      
+      await fetchSecurityKeys(userInfo.authToken);
+      await fetchUserDetails(userInfo.authToken);
+      
+    } catch (error: any) {
+      console.error("Error reassigning key:", error);
+      if (error.response?.data?.error === "New user already has an active security key. Cannot reassign.") {
+        toast.error("Failed to reassign key: The selected user already has an active security key.");
+      } else {
+        toast.error(error.response?.data?.error || "Failed to reassign security key");
+      }
+    } finally {
+      setIsReassigning(false);
+      setShowReassignDialog(false);
+      setSelectedUserId(null);
+      setKeyIdForReassignment(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -586,6 +550,7 @@ const handleReassignKey = async () => {
   }
 
   return (
+    <React.Fragment>
       <div className="grid gap-6 w-full font-montserrat">
         <div className="flex justify-between items-center bg-background p-4">
           <div className="flex items-center text-sm text-muted-foreground">
@@ -674,7 +639,7 @@ const handleReassignKey = async () => {
               </div>
 
               {user.account_locked && user.locked_time && (
-                <div className="grid grid-cols-1 gap-4"> {/* Changed to grid-cols-1 */}
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
                     <Label className="text-red-600 dark:text-red-400">Account Locked At</Label>
                     <Input
@@ -717,7 +682,7 @@ const handleReassignKey = async () => {
                     <div className="text-center p-4 border rounded-md bg-muted">
                       <p className="text-muted-foreground">No security keys registered yet</p>
                       <Button
-                          onClick={() => setShowKeyDetailsModal(true)}
+                          onClick={() => setIsDetectionModalOpen(true)}
                           className="mt-2"
                       >
                         <Key className="h-4 w-4 mr-1"/>
@@ -1176,5 +1141,11 @@ const handleReassignKey = async () => {
         </DialogContent>
       </Dialog>
       </div>
+      <YubiKeyDetectionModal
+        isOpen={isDetectionModalOpen}
+        onClose={() => setIsDetectionModalOpen(false)}
+        onSelect={handleSelectYubiKey}
+      />
+    </React.Fragment>
   )
 }
