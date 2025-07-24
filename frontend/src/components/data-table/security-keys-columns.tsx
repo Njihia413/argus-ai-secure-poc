@@ -433,7 +433,7 @@ interface DeleteResponse {
                       This action cannot be undone. This will permanently delete the security key
                       and remove its data from our servers.
                     </p>
-                    <div className="bg-muted p-3 mt-2 rounded border border-yellow-400 dark:border-yellow-600">
+                    <div className="bg-muted p-3 mt-2 rounded border border-yellow-500">
                       <div className="text-sm space-y-1">
                         <div><strong>Model:</strong> {securityKey.model || 'N/A'}</div>
                         <div><strong>Serial:</strong> {securityKey.serialNumber || 'N/A'}</div>
@@ -498,4 +498,3 @@ interface DeleteResponse {
 import { API_URL } from "@/app/utils/constants";
 import axios from "axios";
 import { toast } from "sonner";
-// Select imports were moved to the top
