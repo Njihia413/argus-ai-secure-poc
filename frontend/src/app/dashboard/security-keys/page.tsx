@@ -33,8 +33,8 @@ import {
 
 export interface SecurityKey {
   id: string | number // Backend uses integer ID
-  model: string | null
-  type: string | null
+  device_type: string | null
+  form_factor: string | null
   serialNumber: string | null
   status: "active" | "inactive" // Simplified as per feedback
   registeredOn: string // ISO date string
@@ -67,8 +67,8 @@ export default function SecurityKeysPage() {
         const searchTerm = searchFilter.toLowerCase()
         if (!searchTerm) return true
         return (
-          (key.model && key.model.toLowerCase().includes(searchTerm)) ||
-          (key.type && key.type.toLowerCase().includes(searchTerm)) ||
+          (key.device_type && key.device_type.toLowerCase().includes(searchTerm)) ||
+          (key.form_factor && key.form_factor.toLowerCase().includes(searchTerm)) ||
           (key.serialNumber && key.serialNumber.toLowerCase().includes(searchTerm)) ||
           key.username.toLowerCase().includes(searchTerm)
         )
