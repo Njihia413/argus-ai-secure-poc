@@ -2909,34 +2909,14 @@ def webauthn_register_complete():
         attestation_object = response_section.get('attestationObject', '')
         attestation_object_bytes = base64url_to_bytes(attestation_object)
 
-        try:
-            attestation_obj = AttestationObject(attestation_object_bytes)
-        except Exception as e:
-            raise ValueError(f"Failed to parse AttestationObject: {str(e)}")
-
-        client_data_obj['challenge'] = client_data_obj['challenge'].decode() if isinstance(client_data_obj['challenge'],
-                                                                                           bytes) else client_data_obj[
-            'challenge']
-
-        client_data_json_fixed = json.dumps(client_data_obj)
-        client_data = CollectedClientData(client_data_json_fixed.encode('utf-8'))
-
         state = {
             'challenge': base64.urlsafe_b64encode(challenge_bytes).decode().rstrip('='),
-            'user_verification': 'required'  # or 'preferred' based on what your app expects
+            'user_verification': 'required'
         }
-
-        print("\n=== Debug: SecurityKey Objects Before Register Complete ===")
-        print(f"CollectedClientData Raw JSON: {client_data_bytes.decode('utf-8')}")
-        print(f"CollectedClientData Parsed: {client_data_obj}")
-        print(f"CollectedClientData (Object Dict): {client_data.__dict__}")
-        print(f"Attestation Object AuthenticatorData (Hex): {attestation_obj.auth_data.hex()}")
-        print(f"State (Challenge): {state}")
-        print("=========================================================\n")
 
         try:
             print("\nAttempting register_complete...")
-            auth_data = server.register_complete(state, client_data, attestation_obj)
+            auth_data = server.register_complete(state, attestation_response)
             print("Registration successful!")
 
             # Mark the challenge as expired
