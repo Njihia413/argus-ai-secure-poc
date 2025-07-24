@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Moved imports up
 import React from "react";
 import { useRouter } from "next/navigation";
 // import { DataTableColumnHeader } from "./data-table-column-header" // Component does not exist
@@ -43,6 +42,7 @@ export interface SecurityKey {
   device_type: string | null;
   form_factor: string | null;
   serialNumber: string | null;
+  version: string | null;
   status: "active" | "inactive"; // Simplified status
   registeredOn: string; // ISO date string
   lastUsed: string; // ISO date string or "Never"
@@ -54,45 +54,11 @@ interface SecurityKeyDetailsForm {
   device_type: string;
   form_factor: string;
   serialNumber: string;
+  version: string;
   pin: string; // Keep as string, backend handles optional empty string
 }
 
-// Copied from src/app/dashboard/users/[id]/page.tsx
-const securityKeyModels = {
-  'YubiKey': [
-    'YubiKey 5 NFC',
-    'YubiKey 5C',
-    'YubiKey 5 Nano',
-    'YubiKey Bio',
-    'YubiKey 5Ci',
-    'YubiKey FIPS'
-  ],
-  'Google Titan': [
-    'Titan Security Key USB-C',
-    'Titan Security Key USB-A',
-    'Titan Security Key NFC',
-    'Titan Security Key Bluetooth'
-  ],
-  'Feitian': [
-    'ePass FIDO2',
-    'MultiPass FIDO',
-    'BioPass FIDO2',
-    'AllinPass FIDO2',
-    'K40 FIDO2'
-  ],
-  'Thetis': [
-    'Thetis FIDO2',
-    'Thetis Bio',
-    'Thetis PRO',
-    'Thetis Forte'
-  ],
-  'SoloKeys': [
-    'Solo V2',
-    'SoloKey',
-    'Solo Tap',
-    'Solo Hacker'
-  ]
-};
+
 
 const selectionColumn: ColumnDef<SecurityKey> = {
   id: "select",
@@ -125,18 +91,23 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
   },
   {
     accessorKey: "device_type",
-    header: "Model",
+    header: "Device Type",
     cell: ({ row }) => <div>{row.getValue("device_type") || "N/A"}</div>,
   },
   {
     accessorKey: "form_factor",
-    header: "Type",
+    header: "Form Factor",
     cell: ({ row }) => <div>{row.getValue("form_factor") || "N/A"}</div>,
   },
   {
     accessorKey: "serialNumber",
     header: "Serial Number",
     cell: ({ row }) => <div>{row.getValue("serialNumber") || "N/A"}</div>,
+  },
+  {
+    accessorKey: "version",
+    header: "Version",
+    cell: ({ row }) => <div>{row.getValue("version") || "N/A"}</div>,
   },
   {
     accessorKey: "status",
@@ -225,6 +196,7 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
         device_type: securityKey.device_type || "",
         form_factor: securityKey.form_factor || "",
         serialNumber: securityKey.serialNumber || "",
+        version: securityKey.version || "",
         pin: "",
       });
 
@@ -235,6 +207,7 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
             device_type: securityKey.device_type || "",
             form_factor: securityKey.form_factor || "",
             serialNumber: securityKey.serialNumber || "",
+            version: securityKey.version || "",
             pin: "",
           });
         }
@@ -263,6 +236,7 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
             device_type: editingKeyDetails.device_type,
             form_factor: editingKeyDetails.form_factor,
             serialNumber: editingKeyDetails.serialNumber,
+            version: editingKeyDetails.version,
           };
           if (editingKeyDetails.pin && editingKeyDetails.pin.trim() !== "") {
             payload.pin = editingKeyDetails.pin;
@@ -332,52 +306,23 @@ interface DeleteResponse {
               <form onSubmit={handleEditDetailsSubmit}>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label htmlFor={`edit-model-${securityKey.id}`}>Security Key Model</Label>
-                    <Select
-                      value={editingKeyDetails.device_type}
-                      onValueChange={(value) => {
-                        setEditingKeyDetails({
-                          ...editingKeyDetails,
-                          device_type: value,
-                          form_factor: '' // Reset type when model changes
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-full border border-input">
-                        <SelectValue placeholder="Select Model" />
-                      </SelectTrigger>
-                      <SelectContent className="w-full min-w-[300px]">
-                        <SelectGroup>
-                          {Object.keys(securityKeyModels).map((model) => (
-                            <SelectItem key={model} value={model}>
-                              {model}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor={`edit-device_type-${securityKey.id}`}>Device Type</Label>
+                    <Input
+                        id={`edit-device_type-${securityKey.id}`}
+                        placeholder="Enter device type"
+                        value={editingKeyDetails.device_type}
+                        onChange={(e) => setEditingKeyDetails({ ...editingKeyDetails, device_type: e.target.value })}
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`edit-type-${securityKey.id}`}>Key Type</Label>
-                    <Select
-                      value={editingKeyDetails.form_factor}
-                      onValueChange={(value) => setEditingKeyDetails({ ...editingKeyDetails, form_factor: value })}
-                      disabled={!editingKeyDetails.device_type}
-                    >
-                      <SelectTrigger className="w-full border border-input">
-                        <SelectValue placeholder="Select Type" />
-                      </SelectTrigger>
-                      <SelectContent className="w-full min-w-[300px]">
-                        <SelectGroup>
-                          {editingKeyDetails.device_type && securityKeyModels[editingKeyDetails.device_type as keyof typeof securityKeyModels]?.map((form_factor) => (
-                            <SelectItem key={form_factor} value={form_factor}>
-                              {form_factor}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor={`edit-form_factor-${securityKey.id}`}>Form Factor</Label>
+                    <Input
+                        id={`edit-form_factor-${securityKey.id}`}
+                        placeholder="Enter form factor"
+                        value={editingKeyDetails.form_factor}
+                        onChange={(e) => setEditingKeyDetails({ ...editingKeyDetails, form_factor: e.target.value })}
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -387,6 +332,17 @@ interface DeleteResponse {
                         placeholder="Enter serial number"
                         value={editingKeyDetails.serialNumber}
                         onChange={(e) => setEditingKeyDetails({ ...editingKeyDetails, serialNumber: e.target.value })}
+                        required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`edit-version-${securityKey.id}`}>Version</Label>
+                    <Input
+                        id={`edit-version-${securityKey.id}`}
+                        placeholder="Enter version"
+                        value={editingKeyDetails.version}
+                        onChange={(e) => setEditingKeyDetails({ ...editingKeyDetails, version: e.target.value })}
                         required
                     />
                   </div>
