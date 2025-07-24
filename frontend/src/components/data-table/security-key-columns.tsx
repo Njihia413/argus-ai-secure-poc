@@ -19,8 +19,9 @@ export interface SecurityKey {
   lastUsed: string | null
   deactivatedAt: string | null
   deactivationReason: string | null
-  model?: string
-  type?: string
+  device_type?: string
+  form_factor?: string
+  version?: string
   serialNumber?: string
   public_key?: string
   sign_count?: number
@@ -29,7 +30,7 @@ export interface SecurityKey {
 export interface SecurityKeyTableMeta extends TableMeta<SecurityKey> {
   setSelectedKey: (key: SecurityKey | null) => void
   setShowKeyDetailsModal: (show: boolean) => void
-  setKeyDetails: (details: { model: string; type: string; serialNumber: string; pin: string }) => void
+  setKeyDetails: (details: { device_type: string; form_factor: string; version: string; serialNumber: string; pin: string }) => void
   setShowDeactivateDialog: (show: boolean) => void
   setShowDeleteConfirm: (show: boolean) => void
   handleResetKey: (keyId: number) => Promise<void>
@@ -39,17 +40,24 @@ export interface SecurityKeyTableMeta extends TableMeta<SecurityKey> {
 
 export const securityKeyColumns: ColumnDef<SecurityKey, unknown>[] = [
   {
-    accessorKey: "model",
-    header: "Model",
+    accessorKey: "device_type",
+    header: "Device Type",
     cell: ({ row }) => {
-      return row.getValue("model") || "N/A"
+      return row.original.device_type || "N/A"
     }
   },
   {
-    accessorKey: "type",
-    header: "Type",
+    accessorKey: "form_factor",
+    header: "Form Factor",
     cell: ({ row }) => {
-      return row.getValue("type") || "N/A"
+      return row.original.form_factor || "N/A"
+    }
+  },
+  {
+    accessorKey: "version",
+    header: "Version",
+    cell: ({ row }) => {
+      return row.original.version || "N/A"
     }
   },
   {
@@ -122,8 +130,9 @@ export const securityKeyColumns: ColumnDef<SecurityKey, unknown>[] = [
                  const meta = table.options.meta as SecurityKeyTableMeta
                  meta.setSelectedKey(key)
                  meta.setKeyDetails({
-                   model: key.model || '',
-                   type: key.type || '',
+                   device_type: key.device_type || '',
+                   form_factor: key.form_factor || '',
+                   version: key.version || '',
                    serialNumber: key.serialNumber || '',
                    pin: ''
                  })
@@ -144,8 +153,9 @@ export const securityKeyColumns: ColumnDef<SecurityKey, unknown>[] = [
                         const meta = table.options.meta as SecurityKeyTableMeta
                         meta.setSelectedKey(key)
                         meta.setKeyDetails({
-                            model: key.model || '',
-                            type: key.type || '',
+                            device_type: key.device_type || '',
+                            form_factor: key.form_factor || '',
+                            version: key.version || '',
                             serialNumber: key.serialNumber || '',
                             pin: ''
                         })
