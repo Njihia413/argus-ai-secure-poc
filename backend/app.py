@@ -1243,6 +1243,31 @@ def detect_yubikeys():
             'error': str(e)
         }), 500
 
+
+@app.route('/api/security-keys/check-serial', methods=['POST'])
+def check_serial():
+    data = request.get_json()
+    serial_number = data.get('serialNumber')
+
+    if not serial_number:
+        return jsonify({'error': 'Serial number is required'}), 400
+
+    key = SecurityKey.query.filter_by(serial_number=serial_number).first()
+
+    if key:
+        user = Users.query.get(key.user_id)
+        return jsonify({
+            'exists': True,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'firstName': user.first_name,
+                'lastName': user.last_name
+            }
+        }), 200
+    else:
+        return jsonify({'exists': False}), 200
+
 @app.route('/api/security-keys/<int:key_id>', methods=['GET'])
 def get_security_key_details(key_id):
    # Verify admin token and authorization
