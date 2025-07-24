@@ -62,16 +62,18 @@ interface SecurityKey {
   lastUsed: string | null
   deactivatedAt: string | null
   deactivationReason: string | null
-  model?: string
-  type?: string
+  device_type?: string
+  form_factor?: string
+  version?: string
   serialNumber?: string
   public_key?: string
   sign_count?: number
 }
 
 interface SecurityKeyDetails {
-  model: string
-  type: string
+  device_type: string
+  form_factor: string
+  version: string
   serialNumber: string
   pin: string
 }
@@ -111,20 +113,13 @@ export default function UserDetailsPage() {
   const [keyIdForReassignment, setKeyIdForReassignment] = useState<number | null>(null);
   const [isKeyReassigned, setIsKeyReassigned] = useState<boolean>(false);
   const [keyDetails, setKeyDetails] = useState<SecurityKeyDetails>({
-    model: '',
-    type: '',
+    device_type: '',
+    form_factor: '',
+    version: '',
     serialNumber: '',
     pin: ''
   })
   const [isDetectionModalOpen, setIsDetectionModalOpen] = useState(false)
-
-  const securityKeyModels = {
-    'YubiKey': ['YubiKey 5 NFC', 'YubiKey 5C', 'YubiKey 5 Nano', 'YubiKey Bio', 'YubiKey 5Ci', 'YubiKey FIPS'],
-    'Google Titan': ['Titan Security Key USB-C', 'Titan Security Key USB-A', 'Titan Security Key NFC', 'Titan Security Key Bluetooth'],
-    'Feitian': ['ePass FIDO2', 'MultiPass FIDO', 'BioPass FIDO2', 'AllinPass FIDO2', 'K40 FIDO2'],
-    'Thetis': ['Thetis FIDO2', 'Thetis Bio', 'Thetis PRO', 'Thetis Forte'],
-    'SoloKeys': ['Solo V2', 'SoloKey', 'Solo Tap', 'Solo Hacker']
-  }
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -203,8 +198,9 @@ export default function UserDetailsPage() {
         toast.error(`This YubiKey is already registered to another user.`);
       } else {
         setKeyDetails({
-          model: 'YubiKey',
-          type: key.form_factor,
+          device_type: key.device_type,
+          form_factor: key.form_factor,
+          version: key.version,
           serialNumber: key.serial.toString(),
           pin: ''
         });
@@ -225,7 +221,7 @@ export default function UserDetailsPage() {
       setIsUpdating(true);
     }
     
-    if (!keyDetails.model || !keyDetails.type || !keyDetails.serialNumber) {
+    if (!keyDetails.device_type || !keyDetails.form_factor || !keyDetails.serialNumber || !keyDetails.version) {
       toast.error("Please fill in the required fields");
       return;
     }
@@ -728,52 +724,13 @@ export default function UserDetailsPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="model">Security Key Model</Label>
-                <Select
-                  value={keyDetails.model}
-                  onValueChange={(value) => {
-                    setKeyDetails({
-                      ...keyDetails,
-                      model: value,
-                      type: '' // Reset type when model changes
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-full border border-input">
-                    <SelectValue placeholder="Select Model" />
-                  </SelectTrigger>
-                  <SelectContent className="w-full min-w-[300px]">
-                    <SelectGroup>
-                      {Object.keys(securityKeyModels).map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="type">Key Type</Label>
-                <Select
-                  value={keyDetails.type}
-                  onValueChange={(value) => setKeyDetails({ ...keyDetails, type: value })}
-                  disabled={!keyDetails.model}
-                >
-                  <SelectTrigger className="w-full border border-input">
-                    <SelectValue placeholder="Select Type" />
-                  </SelectTrigger>
-                  <SelectContent className="w-full min-w-[300px]">
-                    <SelectGroup>
-                      {keyDetails.model && securityKeyModels[keyDetails.model as keyof typeof securityKeyModels].map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="device_type">Device Type</Label>
+                <Input
+                    id="device_type"
+                    placeholder="Enter device type"
+                    value={keyDetails.device_type}
+                    onChange={(e) => setKeyDetails({ ...keyDetails, device_type: e.target.value })}
+                />
               </div>
 
               <div className="space-y-2">
@@ -784,6 +741,26 @@ export default function UserDetailsPage() {
                     placeholder="Enter serial number"
                     value={keyDetails.serialNumber}
                     onChange={(e) => setKeyDetails({ ...keyDetails, serialNumber: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="form_factor">Form Factor</Label>
+                <Input
+                    id="form_factor"
+                    placeholder="Enter form factor"
+                    value={keyDetails.form_factor}
+                    onChange={(e) => setKeyDetails({ ...keyDetails, form_factor: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="version">Version</Label>
+                <Input
+                    id="version"
+                    placeholder="Enter version"
+                    value={keyDetails.version}
+                    onChange={(e) => setKeyDetails({ ...keyDetails, version: e.target.value })}
                 />
               </div>
 
@@ -812,8 +789,9 @@ export default function UserDetailsPage() {
                   onClick={() => {
                     setShowKeyDetailsModal(false);
                     setKeyDetails({
-                      model: '',
-                      type: '',
+                      device_type: '',
+                      form_factor: '',
+                      version: '',
                       serialNumber: '',
                       pin: ''
                     });
@@ -922,8 +900,9 @@ export default function UserDetailsPage() {
             <div className="space-y-4 py-4">
               {selectedKey && (
                 <div className="bg-muted p-3 rounded border mb-4">
-                  <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
-                  <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
+                  <p><strong>Device Type:</strong> {selectedKey.device_type || 'N/A'}</p>
+                  <p><strong>Form Factor:</strong> {selectedKey.form_factor || 'N/A'}</p>
+                  <p><strong>Version:</strong> {selectedKey.version || 'N/A'}</p>
                   <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
                 </div>
               )}
@@ -978,8 +957,9 @@ export default function UserDetailsPage() {
                 will no longer be able to use this key for authentication.
                 {selectedKey && (
                     <div className="bg-muted p-3 mt-2 rounded border">
-                      <div><strong>Model:</strong> {selectedKey.model || 'N/A'}</div>
-                      <div><strong>Type:</strong> {selectedKey.type || 'N/A'}</div>
+                      <div><strong>Device Type:</strong> {selectedKey.device_type || 'N/A'}</div>
+                      <div><strong>Form Factor:</strong> {selectedKey.form_factor || 'N/A'}</div>
+                      <div><strong>Version:</strong> {selectedKey.version || 'N/A'}</div>
                       <div><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</div>
                     </div>
                 )}
@@ -1082,8 +1062,9 @@ export default function UserDetailsPage() {
           <div className="space-y-4 py-4">
             {selectedKey && (
               <div className="bg-muted p-3 rounded border mb-4">
-                <p><strong>Model:</strong> {selectedKey.model || 'N/A'}</p>
-                <p><strong>Type:</strong> {selectedKey.type || 'N/A'}</p>
+                <p><strong>Device Type:</strong> {selectedKey.device_type || 'N/A'}</p>
+                <p><strong>Form Factor:</strong> {selectedKey.form_factor || 'N/A'}</p>
+                <p><strong>Version:</strong> {selectedKey.version || 'N/A'}</p>
                 <p><strong>Serial Number:</strong> {selectedKey.serialNumber || 'N/A'}</p>
                 {/* <p className="mt-2 text-amber-600">
                   {selectedKey.isActive 
