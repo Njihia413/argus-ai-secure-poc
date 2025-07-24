@@ -679,7 +679,7 @@ export default function UserDetailsPage() {
                       }}
                     />
                 ) : (
-                    <div className="text-center p-4 border rounded-md bg-muted">
+                    <div className="text-center p-4 border rounded-md bg-muted border-zinc-200 dark:border-zinc-800">
                       <p className="text-muted-foreground">No security keys registered yet</p>
                       <Button
                           onClick={() => setIsDetectionModalOpen(true)}
