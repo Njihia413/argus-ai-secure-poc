@@ -40,8 +40,8 @@ import { useRouter } from "next/navigation";
 // Updated data type to match backend and page component
 export interface SecurityKey {
   id: string | number;
-  model: string | null;
-  type: string | null;
+  device_type: string | null;
+  form_factor: string | null;
   serialNumber: string | null;
   status: "active" | "inactive"; // Simplified status
   registeredOn: string; // ISO date string
@@ -51,8 +51,8 @@ export interface SecurityKey {
 
 // This interface will be used for the edit form state
 interface SecurityKeyDetailsForm {
-  model: string;
-  type: string;
+  device_type: string;
+  form_factor: string;
   serialNumber: string;
   pin: string; // Keep as string, backend handles optional empty string
 }
@@ -124,14 +124,14 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
     cell: ({ row }) => <div className="font-medium">{row.getValue("username")}</div>,
   },
   {
-    accessorKey: "model",
+    accessorKey: "device_type",
     header: "Model",
-    cell: ({ row }) => <div>{row.getValue("model") || "N/A"}</div>,
+    cell: ({ row }) => <div>{row.getValue("device_type") || "N/A"}</div>,
   },
   {
-    accessorKey: "type",
+    accessorKey: "form_factor",
     header: "Type",
-    cell: ({ row }) => <div>{row.getValue("type") || "N/A"}</div>,
+    cell: ({ row }) => <div>{row.getValue("form_factor") || "N/A"}</div>,
   },
   {
     accessorKey: "serialNumber",
@@ -222,8 +222,8 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
       const [showEditModal, setShowEditModal] = React.useState(false);
       const [isUpdatingDetails, setIsUpdatingDetails] = React.useState(false);
       const [editingKeyDetails, setEditingKeyDetails] = React.useState<SecurityKeyDetailsForm>({ // Corrected type
-        model: securityKey.model || "",
-        type: securityKey.type || "",
+        device_type: securityKey.device_type || "",
+        form_factor: securityKey.form_factor || "",
         serialNumber: securityKey.serialNumber || "",
         pin: "",
       });
@@ -232,8 +232,8 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
       React.useEffect(() => {
         if (securityKey && showEditModal) {
           setEditingKeyDetails({
-            model: securityKey.model || "",
-            type: securityKey.type || "",
+            device_type: securityKey.device_type || "",
+            form_factor: securityKey.form_factor || "",
             serialNumber: securityKey.serialNumber || "",
             pin: "",
           });
@@ -260,8 +260,8 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
             return;
           }
           const payload: Partial<SecurityKeyDetailsForm> = { // Corrected type
-            model: editingKeyDetails.model,
-            type: editingKeyDetails.type,
+            device_type: editingKeyDetails.device_type,
+            form_factor: editingKeyDetails.form_factor,
             serialNumber: editingKeyDetails.serialNumber,
           };
           if (editingKeyDetails.pin && editingKeyDetails.pin.trim() !== "") {
@@ -334,12 +334,12 @@ interface DeleteResponse {
                   <div className="space-y-2">
                     <Label htmlFor={`edit-model-${securityKey.id}`}>Security Key Model</Label>
                     <Select
-                      value={editingKeyDetails.model}
+                      value={editingKeyDetails.device_type}
                       onValueChange={(value) => {
                         setEditingKeyDetails({
                           ...editingKeyDetails,
-                          model: value,
-                          type: '' // Reset type when model changes
+                          device_type: value,
+                          form_factor: '' // Reset type when model changes
                         });
                       }}
                     >
@@ -361,18 +361,18 @@ interface DeleteResponse {
                   <div className="space-y-2">
                     <Label htmlFor={`edit-type-${securityKey.id}`}>Key Type</Label>
                     <Select
-                      value={editingKeyDetails.type}
-                      onValueChange={(value) => setEditingKeyDetails({ ...editingKeyDetails, type: value })}
-                      disabled={!editingKeyDetails.model}
+                      value={editingKeyDetails.form_factor}
+                      onValueChange={(value) => setEditingKeyDetails({ ...editingKeyDetails, form_factor: value })}
+                      disabled={!editingKeyDetails.device_type}
                     >
                       <SelectTrigger className="w-full border border-input">
                         <SelectValue placeholder="Select Type" />
                       </SelectTrigger>
                       <SelectContent className="w-full min-w-[300px]">
                         <SelectGroup>
-                          {editingKeyDetails.model && securityKeyModels[editingKeyDetails.model as keyof typeof securityKeyModels]?.map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {type}
+                          {editingKeyDetails.device_type && securityKeyModels[editingKeyDetails.device_type as keyof typeof securityKeyModels]?.map((form_factor) => (
+                            <SelectItem key={form_factor} value={form_factor}>
+                              {form_factor}
                             </SelectItem>
                           ))}
                         </SelectGroup>
@@ -435,7 +435,7 @@ interface DeleteResponse {
                     </p>
                     <div className="bg-muted p-3 mt-2 rounded border border-yellow-500">
                       <div className="text-sm space-y-1">
-                        <div><strong>Model:</strong> {securityKey.model || 'N/A'}</div>
+                        <div><strong>Model:</strong> {securityKey.device_type || 'N/A'}</div>
                         <div><strong>Serial:</strong> {securityKey.serialNumber || 'N/A'}</div>
                         <div><strong>User:</strong> {securityKey.username}</div>
                       </div>
