@@ -199,10 +199,9 @@ export default function ChatPage() {
             case "SECURITY_KEY_HID_DISCONNECTED":
               console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
               // If the user didn't log in with a key, a disconnect event should restrict models.
-              if (userData && !userData.securityKeyAuthenticated) {
-                  setAvailableModels(RESTRICTED_MODELS);
-                  toast.error("Security Key disconnected. Model access restricted.");
-              }
+              // Always restrict models on disconnect, regardless of initial auth method.
+              setAvailableModels(RESTRICTED_MODELS);
+              toast.error("Security Key disconnected. Model access restricted.");
               // Also update the local hidKey state for any other UI indicators
               setHidKey(initialHidKeyInfo);
               break;
