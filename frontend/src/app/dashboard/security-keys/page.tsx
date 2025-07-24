@@ -36,6 +36,7 @@ export interface SecurityKey {
   device_type: string | null
   form_factor: string | null
   serialNumber: string | null
+  version: string | null
   status: "active" | "inactive" // Simplified as per feedback
   registeredOn: string // ISO date string
   lastUsed: string // ISO date string or "Never"
@@ -70,6 +71,7 @@ export default function SecurityKeysPage() {
           (key.device_type && key.device_type.toLowerCase().includes(searchTerm)) ||
           (key.form_factor && key.form_factor.toLowerCase().includes(searchTerm)) ||
           (key.serialNumber && key.serialNumber.toLowerCase().includes(searchTerm)) ||
+          (key.version && key.version.toLowerCase().includes(searchTerm)) ||
           key.username.toLowerCase().includes(searchTerm)
         )
       })
