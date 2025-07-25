@@ -952,17 +952,19 @@ export default function UserDetailsPage() {
           <AlertDialogContent className="font-montserrat">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Security Key</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete this security key? This action cannot be undone and the user
-                will no longer be able to use this key for authentication.
-                {selectedKey && (
+              <AlertDialogDescription asChild>
+                <div className="text-sm text-muted-foreground">
+                  Are you sure you want to delete this security key? This action cannot be undone and the user
+                  will no longer be able to use this key for authentication.
+                  {selectedKey && (
                     <div className="bg-muted p-3 mt-2 rounded border">
                       <div><strong>Device Type:</strong> {selectedKey.device_type || 'N/A'}</div>
                       <div><strong>Form Factor:</strong> {selectedKey.form_factor || 'N/A'}</div>
                       <div><strong>Version:</strong> {selectedKey.version || 'N/A'}</div>
                       <div><strong>Status:</strong> {selectedKey.isActive ? 'Active' : 'Inactive'}</div>
                     </div>
-                )}
+                  )}
+                </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
