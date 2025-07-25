@@ -299,8 +299,12 @@ export default function UsersPage() {
       }
       
       toast.success(`User account ${selectedUser.username} unlocked successfully`);
+      setUsers(prevUsers =>
+        prevUsers.map(user =>
+          user.id === selectedUser.id ? { ...user, account_locked: false } : user
+        )
+      );
       setIsUnlockAccountDialogOpen(false); // Close dialog on success
-      // No need to call fetchUsers, useEffect will refetch
     } catch (error) {
       console.error('Error unlocking account:', error);
       toast.error((error as Error).message || "Failed to unlock account. Please try again.");
