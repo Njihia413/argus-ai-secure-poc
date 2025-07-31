@@ -214,6 +214,7 @@ class AuthenticationSession(db.Model):
     risk_score = db.Column(db.Integer, default=0)
     requires_additional_verification = db.Column(db.Boolean, default=False)
     last_used = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    pending_pin_verification_serial = db.Column(db.BigInteger, nullable=True)
 
 
 class AuthenticationAttempt(db.Model):
@@ -6024,10 +6025,27 @@ def verify_key_ownership():
     if security_key.user_id == user.id:
         # SUCCESS: The key belongs to the authenticated user.
         print(f"SUCCESS: Key SN {serial_number} verified for user {user.username}")
-        # 5. Emit Socket.IO event to the specific user
-        socketio.emit('models_unlocked', {
-            'message': f'Security key verified. Welcome, {user.first_name}!'
-        }, room=auth_session.session_token)
+
+        # Store the serial number in the auth session for the PIN verification step
+        auth_session.pending_pin_verification_serial = key_serial_number
+        db.session.commit()
+
+        # Check if the key has a PIN
+        if security_key.pin:
+            print(f"Key SN {serial_number} requires a PIN.")
+            # 5a. Emit event indicating PIN is required
+            socketio.emit('models_unlocked', {
+                'message': 'Security key verified. Please enter your PIN.',
+                'requires_pin': True
+            }, room=auth_session.session_token)
+        else:
+            # 5b. Emit event to unlock models directly
+            print(f"Key SN {serial_number} does not require a PIN. Unlocking models.")
+            socketio.emit('models_unlocked', {
+                'message': f'Security key verified. Welcome, {user.first_name}!',
+                'requires_pin': False
+            }, room=auth_session.session_token)
+        
         return jsonify({'status': 'success', 'message': 'Key ownership verified.'}), 200
     else:
         # FAILURE: The key belongs to a different user.
@@ -6186,6 +6204,50 @@ def handle_join(data):
         # The 'room' is the session token itself, ensuring privacy.
         join_room(token)
         print(f"Client joined room: {token[:10]}...")
+        emit('joined_room', {'room': token})
+
+@socketio.on('verify_pin')
+def handle_verify_pin(data):
+    """
+    Verifies the PIN for a security key after ownership has been confirmed.
+    """
+    pin_to_check = data.get('pin')
+    auth_token = data.get('auth_token')
+
+    if not pin_to_check or not auth_token:
+        emit('pin_incorrect', {'message': 'PIN or authentication token is missing.'})
+        return
+
+    auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+    if not auth_session:
+        emit('pin_incorrect', {'message': 'Invalid authentication session. Please reconnect.'})
+        return
+
+    verified_serial = auth_session.pending_pin_verification_serial
+    if not verified_serial:
+        emit('pin_incorrect', {'message': 'No security key is pending PIN verification.'})
+        return
+
+    security_key = SecurityKey.query.filter_by(serial_number=verified_serial).first()
+
+    if not security_key or security_key.user_id != auth_session.user_id:
+        emit('pin_incorrect', {'message': 'Security key mismatch or not found.'})
+        return
+
+    # Check the PIN
+    if security_key.pin and check_password_hash(security_key.pin, pin_to_check):
+        user = Users.query.get(auth_session.user_id)
+        print(f"PIN verification successful for key SN {verified_serial}")
+        emit('pin_verified', {
+            'message': f'Security key verified! Welcome, {user.first_name}!'
+        })
+        # Clear the pending serial from the auth session
+        auth_session.pending_pin_verification_serial = None
+        db.session.commit()
+    else:
+        print(f"PIN verification failed for key SN {verified_serial}")
+        emit('pin_incorrect', {'message': 'The PIN entered is incorrect. Please try again.'})
+
 
 def yubikey_monitor_task():
     """Background task to monitor YubiKey connections."""
@@ -6254,9 +6316,4 @@ if __name__ == '__main__':
         create_admin_user()
         db.session.commit()
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
-if __name__ == '__main__':
-    # Note: db.create_all() and create_admin_user() are usually not called here
-    # if using Flask-Migrate and a proper seeding mechanism.
-    # Consider moving them to a dedicated init-db command or manage via migrations.
-    app.run(debug=True, host='0.0.0.0', port=5000)
 
