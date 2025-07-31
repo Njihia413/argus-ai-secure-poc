@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import axios from "axios";
+import { API_URL } from "@/app/utils/constants";
 import { Bell, LogOut, Search, Settings } from "lucide-react" // Added Search and Settings
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -71,10 +73,27 @@ export default function DashboardLayout({
     }
   }, []);
 
-  const handleLogout = () => {
-    sessionStorage.clear()
-    localStorage.clear()
-    router.push("/")
+  const handleLogout = async () => {
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+
+    if (!userInfo || !userInfo.authToken) {
+      router.push("/");
+      return;
+    }
+
+    try {
+      await axios.post(`${API_URL}/logout`, {}, {
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      });
+    } catch (error) {
+      console.error('Logout failed', error);
+    } finally {
+      sessionStorage.clear()
+      localStorage.clear()
+      router.push("/")
+    }
   }
 
   return (
@@ -151,3 +170,4 @@ export default function DashboardLayout({
     </SidebarProvider>
   )
 }
+
