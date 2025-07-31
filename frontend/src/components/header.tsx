@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { User, Settings, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearBindingData } from "@/app/utils/webauthn";
+import axios from "axios";
+import { API_URL } from "@/app/utils/constants";
+import { toast } from "sonner";
 
 // Import ShadCN components
 import {
@@ -23,7 +26,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -274,10 +276,29 @@ export const Header = () => {
   }, []);
 
   // Handle logout
-  const handleLogout = () => {
-    clearBindingData();
-    sessionStorage.removeItem('user');
-    router.push('/');
+  const handleLogout = async () => {
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+
+    if (!userInfo || !userInfo.authToken) {
+      toast.error("You need to log in");
+      router.push("/");
+      return;
+    }
+
+    try {
+      await axios.post(`${API_URL}/logout`, {}, {
+        headers: {
+          Authorization: `Bearer ${userInfo.authToken}`,
+        },
+      });
+      toast.success('Logged out successfully');
+    } catch (error) {
+      toast.error('Logout failed');
+    } finally {
+      clearBindingData();
+      sessionStorage.removeItem('user');
+      router.push('/');
+    }
   };
 
   // Handle security key registration success
