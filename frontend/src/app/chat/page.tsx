@@ -72,14 +72,13 @@ export default function ChatPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelDict>(RESTRICTED_MODELS);
   const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
-  const [securityKeyStatus, setSecurityKeyStatus] = useState<boolean>(false); 
 
   const [isNormalUsbConnected, setIsNormalUsbConnected] = useState<boolean>(false);
   const [hidKey, setHidKey] = useState<HidKeyInfo>(initialHidKeyInfo);
-  const hidKeyRef = useRef(hidKey); 
+  const hidKeyRef = useRef(hidKey);
   useEffect(() => {
     hidKeyRef.current = hidKey;
-    console.log("STATE TRACE: hidKey changed to:", hidKey, "and hidKeyRef updated."); 
+    console.log("STATE TRACE: hidKey changed to:", hidKey, "and hidKeyRef updated.");
   }, [hidKey]);
 
   const [isHelperAppConnected, setIsHelperAppConnected] = useState<boolean>(false);
@@ -125,8 +124,7 @@ export default function ChatPage() {
           return;
         }
         setUserData(sessionUserData as UserData);
-        const isSecurityKeyAuth = sessionUserData.securityKeyAuthenticated === true;
-        setSecurityKeyStatus(isSecurityKeyAuth);
+        // The securityKeyStatus state has been removed and is now derived from userData.
         if (!initialLoadComplete.current) {
             initialLoadComplete.current = true;
         }
@@ -177,7 +175,11 @@ export default function ChatPage() {
         if (connectTimeoutId) clearTimeout(connectTimeoutId);
         console.log("Connected to USB helper WebSocket.");
         setIsHelperAppConnected(true);
-        toast.success("USB Helper: Connected");
+        // Show toast only if the helper was not previously connected in this session
+        if (!sessionStorage.getItem('usbHelperConnected')) {
+            toast.success("USB Helper: Connected");
+            sessionStorage.setItem('usbHelperConnected', 'true');
+        }
 
         // Send the auth token to the detector script for user identification
         if (userData?.authToken) {
@@ -205,10 +207,10 @@ export default function ChatPage() {
               setIsNormalUsbConnected(false);
               break;
             case "SECURITY_KEY_HID_CONNECTED":
-              // This case is now deprecated. The backend will handle model unlocking.
-              // We can still keep the toast notification for user feedback.
+              // This case is now deprecated. The backend will handle model unlocking
+              // and provide the necessary user feedback via Socket.IO events.
               console.log("FRONTEND: Received deprecated SECURITY_KEY_HID_CONNECTED event:", message);
-              toast.info(`Security Key (HID) detected. Verifying ownership...`);
+              // The toast has been removed to prevent duplicate notifications.
               break;
             case "SECURITY_KEY_HID_DISCONNECTED":
               console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
@@ -238,9 +240,10 @@ export default function ChatPage() {
         console.log(`Disconnected from USB helper WebSocket. Code: ${event.code}, Reason: '${event.reason}', Clean: ${event.wasClean}`);
         if (isHelperAppConnected && hasConnectedSuccessfully) {
            toast.info("USB Helper: Disconnected.");
+           sessionStorage.removeItem('usbHelperConnected'); // Clear the flag on disconnect
         }
         setIsHelperAppConnected(false);
-        setIsNormalUsbConnected(false); 
+        setIsNormalUsbConnected(false);
         if (!event.wasClean) {
             console.warn("WebSocket closed uncleanly. HID key state might be stale if detector crashed.");
         }
@@ -265,7 +268,7 @@ export default function ChatPage() {
         wsRef.current.onopen = null;
         wsRef.current.onmessage = null;
         wsRef.current.onerror = null;
-        wsRef.current.onclose = null; 
+        wsRef.current.onclose = null;
         if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
           wsRef.current.close(1000, "Component unmounting");
         }
@@ -273,7 +276,7 @@ export default function ChatPage() {
       }
       setIsHelperAppConnected(false);
       setIsNormalUsbConnected(false);
-      setHidKey(initialHidKeyInfo); 
+      setHidKey(initialHidKeyInfo);
     };
   }, [userData]);
 
@@ -310,9 +313,19 @@ export default function ChatPage() {
     newSocket.on("pin_verified", (data) => {
         console.log("PIN verification successful:", data);
         toast.success(data.message || "PIN verified. Full models enabled.");
-        setAvailableModels(ALL_MODELS);
         setIsPinModalOpen(false);
         setEnteredPin("");
+
+        // Persist the authenticated state to survive page reloads
+        if (userData) {
+            const updatedUserData = {
+                ...userData,
+                securityKeyAuthenticated: true,
+            };
+            setUserData(updatedUserData);
+            sessionStorage.setItem('user', JSON.stringify(updatedUserData));
+        }
+        setAvailableModels(ALL_MODELS);
     });
 
     newSocket.on("pin_incorrect", (data) => {
@@ -351,7 +364,8 @@ export default function ChatPage() {
 
     if (loggedInWithSecurityKeyAtAuthTime) {
       setAvailableModels(ALL_MODELS);
-      toast.success("Logged in with security key. Full model access enabled.");
+      // This toast is now redundant because the pin_verified handler shows a more specific one.
+      // We keep the logic to set models but remove the generic toast.
     } else {
       setAvailableModels(RESTRICTED_MODELS);
     }
