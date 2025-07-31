@@ -2490,6 +2490,22 @@ def login():
         )
         return jsonify(response_data), 200
 
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    user_id = session.get('user_id')
+    if user_id:
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=user_id,
+            action_type='USER_LOGOUT',
+            status='SUCCESS',
+            target_entity_type='USER',
+            target_entity_id=user_id,
+            details='User logged out successfully.'
+        )
+
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'}), 200
 
 # SecurityKey registration endpoints
 # Helper functions for base64url encoding/decoding
@@ -6099,7 +6115,7 @@ def toggle_system_lockdown(admin_user):
         status.locked_down_by_user_id = admin_user.id
         
         log_system_event(
-            user_id=None,
+            user_id=admin_user.id,
             performed_by_user_id=admin_user.id,
             action_type='SYSTEM_LOCKDOWN_ENABLED',
             status='SUCCESS',
@@ -6117,7 +6133,7 @@ def toggle_system_lockdown(admin_user):
         status.locked_down_by_user_id = None
 
         log_system_event(
-            user_id=None,
+            user_id=admin_user.id,
             performed_by_user_id=admin_user.id,
             action_type='SYSTEM_LOCKDOWN_DISABLED',
             status='SUCCESS',
@@ -6170,6 +6186,15 @@ def update_system_configuration(admin_user):
     config.maintenance_message = maintenance_message
     config.updated_at = datetime.now(timezone.utc)
     config.updated_by_user_id = admin_user.id
+
+    log_system_event(
+        user_id=admin_user.id,
+        performed_by_user_id=admin_user.id,
+        action_type='SYSTEM_CONFIGURATION_UPDATED',
+        status='SUCCESS',
+        target_entity_type='SYSTEM',
+        details=f"System configuration updated by admin '{admin_user.username}'. Maintenance mode: {maintenance_mode}"
+    )
     
     if maintenance_mode:
         log_system_event(
@@ -6316,4 +6341,6 @@ if __name__ == '__main__':
         create_admin_user()
         db.session.commit()
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+
+
 
