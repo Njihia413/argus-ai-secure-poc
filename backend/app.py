@@ -5368,8 +5368,8 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
 
 def log_system_event(user_id, performed_by_user_id, action_type, status, target_entity_type=None, target_entity_id=None, details=None):
     """
-    Helper function to add a system audit event to the current database session.
-    The calling function is responsible for committing the session.
+    Helper function to add a system audit event and commit it immediately.
+    Audit logs should be persistent regardless of whether the main operation succeeds or fails.
     """
     try:
         log_entry = AuditLog(
@@ -5382,11 +5382,13 @@ def log_system_event(user_id, performed_by_user_id, action_type, status, target_
             status=status
         )
         db.session.add(log_entry)
-        print(f"Audit log for action '{action_type}' added to session.")
+        db.session.commit()
+        print(f"Audit log for action '{action_type}' committed to database.")
     except Exception as e:
-        print(f"Error adding audit log to session: {str(e)}")
-        # Re-raise the exception to ensure the parent transaction is rolled back
-        raise
+        print(f"Error adding audit log to database: {str(e)}")
+        # Rollback only the audit log transaction, don't affect the main transaction
+        db.session.rollback()
+        # Don't re-raise - audit logging failures shouldn't break the main operation
 
 @app.route('/api/security/alerts', methods=['GET'])
 def get_security_alerts():
