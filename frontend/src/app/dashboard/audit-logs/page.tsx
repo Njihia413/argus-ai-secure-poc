@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ChevronDown, FileUp } from "lucide-react";
@@ -182,18 +183,9 @@ export default function AuditLogsPage() {
 
         const result = await response.json();
         setData(result.logs || []);
-      } catch (err) {
-        let errorMessage = "An unknown error occurred.";
-        if (err instanceof Error) {
-          errorMessage = err.message;
-        }
-        if (typeof err === 'object' && err !== null && 'status' in err && typeof err.status === 'number') {
-          errorMessage += ` (Status: ${err.status})`;
-        } else if (typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string' && err.message.includes('Failed to fetch')) {
-           errorMessage = `Network error or CORS issue: Failed to fetch. Check browser console and network tab for details.`;
-        }
-        setError(errorMessage);
-        console.error("Error fetching audit logs:", err, errorMessage);
+      } catch (err: any) {
+        console.error("Error fetching audit logs:", err.response?.data || err.message)
+        toast.error(err.response?.data?.error || "Failed to load audit logs.")
       } finally {
         setLoading(false);
       }
