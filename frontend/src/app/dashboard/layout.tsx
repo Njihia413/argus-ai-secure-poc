@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import axios from "axios";
+import { toast } from "sonner";
 import { API_URL } from "@/app/utils/constants";
 import { Bell, LogOut, Search, Settings } from "lucide-react" // Added Search and Settings
 import { useRouter } from "next/navigation"
@@ -92,6 +93,7 @@ export default function DashboardLayout({
     } finally {
       sessionStorage.clear()
       localStorage.clear()
+      toast.success("Logged out successfully")
       router.push("/")
     }
   }
