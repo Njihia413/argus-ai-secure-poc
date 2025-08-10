@@ -55,8 +55,6 @@ interface User {
   hasSecurityKey: boolean
   securityKeyStatus: string | null
   lastLogin: string | null
-  successfulLoginAttempts: number
-  failedAttempts: number
   account_locked: boolean
 }
 
