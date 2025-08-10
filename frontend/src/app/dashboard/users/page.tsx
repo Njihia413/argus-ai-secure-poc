@@ -255,13 +255,11 @@ export default function UsersPage() {
           <CardTitle>User Management</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && !users.length ? (
+          {isLoading ? (
             <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
               <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
               <span>Loading users...</span>
             </div>
-          ) : error ? (
-            <div className="text-center py-8 text-red-500">{error}</div>
           ) : (
             <DataTable
               columns={columns}
