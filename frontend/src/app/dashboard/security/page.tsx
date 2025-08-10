@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import {
@@ -200,10 +201,9 @@ export default function SecurityPage() {
         setAlerts(alertsData.alerts || [])
         setPageCount(Math.ceil((alertsData.total || 0) / pagination.pageSize))
         setStats(statsData || emptyStats)
-      } catch (error) {
-        const e = error as Error;
-        console.error('Error fetching security data:', error)
-        setError(e.message || 'Failed to fetch security data')
+      } catch (error: any) {
+        console.error("Error fetching security data:", error.response?.data || error.message)
+        toast.error(error.response?.data?.error || "Failed to load security alerts.")
       } finally {
         setLoading(false)
       }
