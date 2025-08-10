@@ -2492,8 +2492,15 @@ def login():
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    user_id = session.get('user_id')
-    if user_id:
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is required for logout'}), 401
+
+    token = auth_header.split(" ")[1]
+    auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
+
+    if auth_session:
+        user_id = auth_session.user_id
         log_system_event(
             user_id=user_id,
             performed_by_user_id=user_id,
@@ -2501,9 +2508,12 @@ def logout():
             status='SUCCESS',
             target_entity_type='USER',
             target_entity_id=user_id,
-            details='User logged out successfully.'
+            details=f"User ID {user_id} logged out successfully."
         )
+        db.session.delete(auth_session)
+        db.session.commit()
 
+    # Also clear the Flask session just in case, though it's not the primary mechanism
     session.clear()
     return jsonify({'message': 'Logged out successfully'}), 200
 
