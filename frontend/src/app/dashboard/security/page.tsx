@@ -508,8 +508,6 @@ export default function SecurityPage() {
                   <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
                   <span>Loading security alerts...</span>
                 </div>
-            ) : error ? (
-                <div className="text-center py-8 text-red-500">{error}</div>
             ) : (
                 <div className="space-y-4">
                   <DataTable
@@ -593,11 +591,6 @@ export default function SecurityPage() {
                       )}
                   />
 
-                  {alerts.length === 0 && !loading && (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No security alerts found
-                      </div>
-                  )}
                 </div>
             )}
           </CardContent>
