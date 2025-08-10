@@ -27,8 +27,6 @@ export type User = {
   hasSecurityKey: boolean
   securityKeyStatus: string | null // Add this new field for status (active, inactive, null)
   lastLogin: string | null
-  successfulLoginAttempts: number
-  failedAttempts: number
   account_locked: boolean // New field for account lock status
 }
 
@@ -148,36 +146,6 @@ export const columns: ColumnDef<User, unknown>[] = [
               })}
             </div>
           </div>
-      )
-    },
-  },
-  {
-    accessorKey: "successfulLoginAttempts",
-    header: "Successful Logins",
-    cell: ({ row }) => {
-      const attempts = row.getValue("successfulLoginAttempts")
-      return (
-          <Badge
-              variant="outline"
-              className={`${(attempts as number) > 0 ? "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : ""}`}
-          >
-            {attempts as number}
-          </Badge>
-      )
-    },
-  },
-  {
-    accessorKey: "failedAttempts",
-    header: "Failed Attempts",
-    cell: ({ row }) => {
-      const attempts = row.getValue("failedAttempts")
-      return (
-          <Badge
-              variant="outline"
-              className={`${(attempts as number) > 0 ? "text-red-700 dark:text-red-400 border-red-300 dark:border-red-700" : ""}`}
-          >
-            {attempts as number}
-          </Badge>
       )
     },
   },
