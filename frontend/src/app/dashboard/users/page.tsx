@@ -141,10 +141,8 @@ export default function UsersPage() {
         throw new Error("Invalid data format received from server")
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || error.message || "Failed to load users data"
-      setError(errorMessage)
-      toast.error(errorMessage)
-      console.error("Error fetching users:", error)
+      console.error("Error fetching users:", error.response?.data || error.message)
+      toast.error(error.response?.data?.error || "Failed to load users.")
     } finally {
       setIsLoading(false)
     }
