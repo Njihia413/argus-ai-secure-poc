@@ -412,13 +412,9 @@ export default function AuditLogsPage() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8"> {/* Adjusted to match users page */}
-                <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div> {/* Spinner div */}
-                <span>Loading audit logs...</span> {/* Text */}
-              </div>
-            ) : error ? (
-              <div className="flex items-center justify-center py-10">
-                <p className="text-red-500">{error}</p>
+              <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+                <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
+                <span>Loading audit logs...</span>
               </div>
             ) : (
               <DataTable
