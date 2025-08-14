@@ -70,6 +70,17 @@ interface UserFormData {
   role: string
 }
 
+// Edit user form interface
+interface EditUserFormData {
+  firstName: string
+  middlename: string
+  lastName: string
+  nationalId: string
+  username: string
+  email: string
+  role: string
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -111,6 +122,15 @@ export default function UsersPage() {
     password: "",
     role: "user",
   })
+  const [editUserForm, setEditUserForm] = useState<EditUserFormData>({
+    firstName: "",
+    middlename: "",
+    lastName: "",
+    nationalId: "",
+    username: "",
+    email: "",
+    role: "user",
+  })
   const [showPassword, setShowPassword] = useState(false)
 
   const fetchUsers = async () => {
@@ -150,6 +170,34 @@ export default function UsersPage() {
     fetchUsers()
   }, [router])
 
+  useEffect(() => {
+    if (selectedUser) {
+      setEditUserForm({
+        firstName: selectedUser.firstName,
+        middlename: selectedUser.middlename || "",
+        lastName: selectedUser.lastName,
+        nationalId: selectedUser.nationalId,
+        username: selectedUser.username,
+        email: selectedUser.email,
+        role: selectedUser.role,
+      })
+    }
+  }, [selectedUser])
+
+  useEffect(() => {
+    if (selectedUser) {
+      setEditUserForm({
+        firstName: selectedUser.firstName,
+        middlename: selectedUser.middlename || "",
+        lastName: selectedUser.lastName,
+        nationalId: selectedUser.nationalId,
+        username: selectedUser.username,
+        email: selectedUser.email,
+        role: selectedUser.role,
+      })
+    }
+  }, [selectedUser])
+
   const filteredUsers = useMemo(() => {
     return users.filter(user => {
       if (roleFilter !== "all" && user.role !== roleFilter) return false
@@ -186,6 +234,15 @@ export default function UsersPage() {
   const handleNewUserInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setNewUserForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleEditUserInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setEditUserForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleEditRoleChange = (value: string) => {
+    setEditUserForm(prev => ({ ...prev, role: value }))
   }
 
   const handleRoleChange = (value: string) => {
@@ -440,7 +497,7 @@ export default function UsersPage() {
               try {
                 const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
                 if (!userInfo.authToken) throw new Error("Authentication required")
-                await axios.put(`${API_URL}/users/${selectedUser.id}`, selectedUser, {
+                await axios.put(`${API_URL}/users/${selectedUser.id}`, editUserForm, {
                   headers: { Authorization: `Bearer ${userInfo.authToken}` },
                 })
                 toast.success("User details updated successfully")
@@ -453,7 +510,49 @@ export default function UsersPage() {
               }
             }}>
               <div className="grid gap-4 py-4">
-                {/* Form fields for editing user */}
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input id="firstName" name="firstName" value={editUserForm.firstName} onChange={handleEditUserInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="middlename">Middle Name</Label>
+                  <Input id="middlename" name="middlename" value={editUserForm.middlename} onChange={handleEditUserInputChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input id="lastName" name="lastName" value={editUserForm.lastName} onChange={handleEditUserInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nationalId">National ID</Label>
+                  <Input id="nationalId" name="nationalId" type="number" value={editUserForm.nationalId} onChange={handleEditUserInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input id="username" name="username" value={editUserForm.username} onChange={handleEditUserInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" name="email" type="email" value={editUserForm.email} onChange={handleEditUserInputChange} required />
+                </div>
+                <div className="space-y-2 w-full">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={editUserForm.role} onValueChange={handleEditRoleChange}>
+                    <SelectTrigger className="w-full border border-input">
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Available Roles</SelectLabel>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="hr">HR</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="it_department">IT Department</SelectItem>
+                        <SelectItem value="customer_service">Customer Service</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" type="button" onClick={() => setIsEditUserDialogOpen(false)}>Cancel</Button>
