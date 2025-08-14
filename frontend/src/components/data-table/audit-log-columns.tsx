@@ -14,7 +14,6 @@ export type AuditLog = {
   performed_by_username?: string | null;
   action_type: string;
   target_entity_type?: string | null;
-  target_entity_id?: string | null;
   details?: string | null;
   status: 'SUCCESS' | 'FAILURE';
 };
@@ -121,15 +120,6 @@ export const columns: ColumnDef<AuditLog>[] = [
     ),
   },
   {
-    accessorKey: "target_entity_id",
-    header: "Target ID",
-    cell: ({ row }) => (
-      <div className="py-2">
-        {row.getValue("target_entity_id") || "-"}
-      </div>
-    ),
-  },
-  {
     accessorKey: "timestamp",
     header: "Time",
     cell: ({ row }) => {
@@ -178,7 +168,6 @@ export const columns: ColumnDef<AuditLog>[] = [
       const details = (row.getValue("details") as string || "").toLowerCase();
       const status = (row.getValue("status") as string || "").toLowerCase();
       const targetEntityType = (row.getValue("target_entity_type") as string || "").toLowerCase();
-      const targetEntityId = (row.getValue("target_entity_id") as string || "").toLowerCase();
 
 
       return performedBy.includes(searchTerm) ||
@@ -187,7 +176,7 @@ export const columns: ColumnDef<AuditLog>[] = [
              details.includes(searchTerm) ||
              status.includes(searchTerm) ||
              targetEntityType.includes(searchTerm) ||
-             targetEntityId.includes(searchTerm);
+             targetEntityType.includes(searchTerm);
     },
   },
 ];
