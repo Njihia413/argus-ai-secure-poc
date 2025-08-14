@@ -409,6 +409,10 @@ export default function UsersPage() {
                       <SelectLabel>Available Roles</SelectLabel>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="hr">HR</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="it_department">IT Department</SelectItem>
+                      <SelectItem value="customer_service">Customer Service</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
