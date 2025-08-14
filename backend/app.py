@@ -866,7 +866,7 @@ def register():
         return jsonify({'error': 'Username already exists'}), 409
 
     # Set role (default to 'user' unless specifically set to another valid role)
-    valid_roles = ['user', 'admin', 'security_officer', 'auditor', 'manager', 'developer', 'analyst', 'guest']
+    valid_roles = ['user', 'admin', 'hr', 'manager', 'it_department', 'customer_service']
     role = data.get('role', 'user')
     if role not in valid_roles:
         role = 'user'  # Ensure only valid roles
