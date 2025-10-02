@@ -27,6 +27,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { CalendarIcon, UserIcon, AlertCircleIcon, InfoIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/app/utils/constants";
 
@@ -114,6 +124,8 @@ export default function AuditLogsPage() {
   const [actionFilterValue, setActionFilterValue] = useState<string>("all");
   const [exporting, setExporting] = useState<"excel" | "pdf" | false>(false);
   const [table, setTable] = useState<TableInstance | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLog | null>(null);
 
   const filteredLogs = useMemo(() => {
     return data.filter(log => {
@@ -212,6 +224,12 @@ export default function AuditLogsPage() {
     } catch (e) {
       return isoDate;
     }
+  };
+
+  // Function to handle row clicks
+  const handleRowClick = (auditLog: AuditLog) => {
+    setSelectedAuditLog(auditLog);
+    setShowDetailsModal(true);
   };
 
   // Function to convert a font file to base64
@@ -414,6 +432,7 @@ export default function AuditLogsPage() {
                 data={paginatedLogs}
               pageCount={pageCount} // Pass pageCount to DataTable
               onTableInit={handleTableInit}
+              onRowClick={handleRowClick}
               state={{
                 sorting,
                 columnFilters,
@@ -493,6 +512,113 @@ export default function AuditLogsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Audit Log Details Modal */}
+      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
+        <DialogContent className="sm:max-w-[600px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <InfoIcon className="h-4 w-4" />
+              Audit Log Details
+            </DialogTitle>
+            <DialogDescription>
+              Detailed information for log #{selectedAuditLog?.id}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAuditLog && (
+            <div className="space-y-4">
+              {/* Basic Info Section */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Action Type</p>
+                  <Badge variant="outline" className="mt-1">
+                    {selectedAuditLog.action_type}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Status</p>
+                  <Badge 
+                    variant="outline" 
+                    className={`mt-1 ${
+                      selectedAuditLog.status === 'SUCCESS'
+                        ? 'text-green-700 dark:text-green-400 border-green-300 dark:border-green-700'
+                        : selectedAuditLog.status === 'FAILURE'
+                        ? 'text-red-700 dark:text-red-400 border-red-300 dark:border-red-700'
+                        : 'text-gray-700 dark:text-gray-400 border-gray-300 dark:border-gray-700'
+                    }`}
+                  >
+                    {selectedAuditLog.status}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Timestamp */}
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Timestamp</p>
+                <div className="mt-1 text-sm">
+                  <p className="font-medium">
+                    {new Date(selectedAuditLog.timestamp).toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {new Date(selectedAuditLog.timestamp).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* User Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Performed By</p>
+                  <div className="mt-1 p-2 bg-muted/50 rounded">
+                    <p className="text-sm font-medium">
+                      {selectedAuditLog.performed_by_username || "System"}
+                    </p>
+                    {selectedAuditLog.performed_by_user_id && (
+                      <p className="text-xs text-muted-foreground">
+                        ID: {selectedAuditLog.performed_by_user_id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Affected User</p>
+                  <div className="mt-1 p-2 bg-muted/50 rounded">
+                    <p className="text-sm font-medium">
+                      {selectedAuditLog.user_username || "N/A"}
+                    </p>
+                    {selectedAuditLog.user_id && (
+                      <p className="text-xs text-muted-foreground">
+                        ID: {selectedAuditLog.user_id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Details */}
+              {selectedAuditLog.details && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Details</p>
+                  <div className="mt-1 p-3 bg-muted/50 rounded text-sm">
+                    {selectedAuditLog.details}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
