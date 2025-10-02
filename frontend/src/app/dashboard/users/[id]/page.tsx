@@ -741,6 +741,8 @@ export default function UserDetailsPage() {
                     placeholder="Enter serial number"
                     value={keyDetails.serialNumber}
                     onChange={(e) => setKeyDetails({ ...keyDetails, serialNumber: e.target.value })}
+                    readOnly={!!(selectedKey && !isKeyReassigned)}
+                    className={selectedKey && !isKeyReassigned ? "bg-muted/50 cursor-not-allowed" : ""}
                 />
               </div>
 
