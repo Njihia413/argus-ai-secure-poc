@@ -111,15 +111,6 @@ export const columns: ColumnDef<AuditLog>[] = [
     ),
   },
   {
-    accessorKey: "target_entity_type",
-    header: "Target Type",
-    cell: ({ row }) => (
-      <div className="py-2">
-        {row.getValue("target_entity_type") || "-"}
-      </div>
-    ),
-  },
-  {
     accessorKey: "timestamp",
     header: "Time",
     cell: ({ row }) => {
@@ -167,16 +158,13 @@ export const columns: ColumnDef<AuditLog>[] = [
       const actionType = (row.getValue("action_type") as string || "").toLowerCase();
       const details = (row.getValue("details") as string || "").toLowerCase();
       const status = (row.getValue("status") as string || "").toLowerCase();
-      const targetEntityType = (row.getValue("target_entity_type") as string || "").toLowerCase();
 
 
       return performedBy.includes(searchTerm) ||
              affectedUser.includes(searchTerm) ||
              actionType.includes(searchTerm) ||
              details.includes(searchTerm) ||
-             status.includes(searchTerm) ||
-             targetEntityType.includes(searchTerm) ||
-             targetEntityType.includes(searchTerm);
+             status.includes(searchTerm);
     },
   },
 ];
