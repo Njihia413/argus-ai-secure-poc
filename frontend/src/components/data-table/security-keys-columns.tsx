@@ -332,6 +332,8 @@ interface DeleteResponse {
                         placeholder="Enter serial number"
                         value={editingKeyDetails.serialNumber}
                         onChange={(e) => setEditingKeyDetails({ ...editingKeyDetails, serialNumber: e.target.value })}
+                        readOnly
+                        className="bg-muted/50 cursor-not-allowed"
                         required
                     />
                   </div>
