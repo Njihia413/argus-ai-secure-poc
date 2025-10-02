@@ -78,6 +78,7 @@ interface DataTableProps<TData> {
   onRowSelectionChange?: OnChangeFn<RowSelectionState>
   onPaginationChange?: OnChangeFn<{ pageIndex: number; pageSize: number }>
   onGlobalFilterChange?: OnChangeFn<string>
+  onRowClick?: (row: TData) => void
   enableRowSelection?: boolean
   getSortedRowModel?: boolean
   getFilteredRowModel?: boolean
@@ -124,6 +125,7 @@ export function DataTable<TData>({
   getSortedRowModel: enableSorting = false,
   getFilteredRowModel: enableFiltering = false,
   onGlobalFilterChange,
+  onRowClick,
 }: DataTableProps<TData>) {
   const isManualPagination = onPaginationChange !== undefined && pageCount !== undefined;
 
@@ -188,7 +190,8 @@ export function DataTable<TData>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="hover:bg-muted/50"
+                  className="hover:bg-muted/50 cursor-pointer"
+                  onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="py-3">
