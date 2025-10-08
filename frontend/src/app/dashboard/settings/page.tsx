@@ -147,7 +147,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-40">
+      <div className="flex justify-between items-center bg-background px-4 py-4 sticky top-0 z-20">
         <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
         <div className="flex space-x-4">
           <Button 
