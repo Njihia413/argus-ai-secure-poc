@@ -120,7 +120,7 @@ export default function UsersPage() {
     username: "",
     email: "",
     password: "",
-    role: "user",
+    role: "hr",
   })
   const [editUserForm, setEditUserForm] = useState<EditUserFormData>({
     firstName: "",
@@ -129,7 +129,7 @@ export default function UsersPage() {
     nationalId: "",
     username: "",
     email: "",
-    role: "user",
+    role: "hr",
   })
   const [showPassword, setShowPassword] = useState(false)
 
@@ -361,7 +361,6 @@ export default function UsersPage() {
                       <SelectGroup>
                         <SelectItem value="all">All Roles</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="user">User</SelectItem>
                         <SelectItem value="hr">HR</SelectItem>
                         <SelectItem value="manager">Manager</SelectItem>
                         <SelectItem value="it_department">IT Department</SelectItem>
@@ -477,7 +476,6 @@ export default function UsersPage() {
                     <SelectGroup>
                       <SelectLabel>Available Roles</SelectLabel>
                       <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="user">User</SelectItem>
                       <SelectItem value="hr">HR</SelectItem>
                       <SelectItem value="manager">Manager</SelectItem>
                       <SelectItem value="it_department">IT Department</SelectItem>
@@ -556,7 +554,6 @@ export default function UsersPage() {
                       <SelectGroup>
                         <SelectLabel>Available Roles</SelectLabel>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="user">User</SelectItem>
                         <SelectItem value="hr">HR</SelectItem>
                         <SelectItem value="manager">Manager</SelectItem>
                         <SelectItem value="it_department">IT Department</SelectItem>
