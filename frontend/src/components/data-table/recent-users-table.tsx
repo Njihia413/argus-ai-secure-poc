@@ -59,6 +59,7 @@ interface User {
   email: string;
   role: string;
   lastLogin: string | null;
+  createdAt: string;
 }
 
 export type RecentUser = {
@@ -70,6 +71,7 @@ export type RecentUser = {
   lastName: string;
   email: string;
   role: string;
+  createdAt: string;
 };
 
 export const columns: ColumnDef<RecentUser>[] = [
@@ -134,7 +136,7 @@ export const columns: ColumnDef<RecentUser>[] = [
     accessorKey: "role",
     header: "Role",
     cell: ({ row }) => (
-      <Badge variant="outline" className="capitalize border-zinc-200 dark:border-zinc-800">{row.getValue("role")}</Badge>
+      <Badge variant="outline" className="border-zinc-200 dark:border-zinc-800">{row.getValue("role")}</Badge>
     ),
   },
   {
@@ -192,8 +194,9 @@ export function RecentUsersTable(): React.ReactElement {
         if (response.data && response.data.users) {
           const sortedUsers = response.data.users
             .sort((a: User, b: User) => {
-              const dateA = a.lastLogin ? new Date(a.lastLogin).getTime() : 0
-              const dateB = b.lastLogin ? new Date(b.lastLogin).getTime() : 0
+              // Sort by creation date (newest first) 
+              const dateA = new Date(a.createdAt).getTime()
+              const dateB = new Date(b.createdAt).getTime()
               return dateB - dateA
             })
             .slice(0, 5)
@@ -206,6 +209,7 @@ export function RecentUsersTable(): React.ReactElement {
               lastName: user.lastName,
               email: user.email,
               role: user.role,
+              createdAt: user.createdAt,
             }))
 
           setUsers(sortedUsers)
