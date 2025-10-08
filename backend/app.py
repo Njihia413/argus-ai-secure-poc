@@ -68,6 +68,7 @@ class Users(db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # User timezone for risk-based authentication
     timezone = db.Column(db.String(50), default='UTC')
@@ -1068,8 +1069,6 @@ def get_users():
         # Base query to exclude soft-deleted users
         query = Users.query.filter_by(is_deleted=False)
 
-
-
         # Apply role filter
         if role_filter and role_filter != 'all':
             query = query.filter(Users.role == role_filter)
@@ -1087,6 +1086,9 @@ def get_users():
                 query = query.filter(Users.has_security_key == False)
             else: # 'active' or 'inactive'
                 query = query.filter(Users.security_key_status == security_key_status_filter)
+
+        # Order by creation date (most recent first)
+        query = query.order_by(Users.created_at.desc())
 
         # Paginate the results
         paginated_users = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -1121,6 +1123,7 @@ def get_users():
                 'securityKeyCount': total_key_count,
                 'securityKeyStatus': security_key_status,
                 'lastLogin': user.last_login_time.isoformat() if user.last_login_time else None,
+                'createdAt': user.created_at.isoformat() if user.created_at else None,
                 'successfulLoginAttempts': successful_attempts,
                 'failedAttempts': failed_attempts,
                 'deletedAt': user.deleted_at.isoformat() if user.deleted_at else None,
