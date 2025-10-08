@@ -264,7 +264,15 @@ export default function UsersPage() {
       setIsAddUserDialogOpen(false)
       fetchUsers() // Refetch users
     } catch (error: any) {
-      toast.error(error.response?.data?.error || "Failed to create user")
+      console.log('Error creating user:', error)
+      
+      // Handle password policy errors specifically
+      if (error.response?.data?.policy_errors && Array.isArray(error.response.data.policy_errors)) {
+        const policyErrors = error.response.data.policy_errors
+        toast.error(`Password Policy Violation:\n• ${policyErrors.join('\n• ')}`)
+      } else {
+        toast.error(error.response?.data?.error || "Failed to create user")
+      }
     } finally {
       setIsLoading(false)
     }
