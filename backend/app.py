@@ -124,7 +124,11 @@ class Users(db.Model):
         self.failed_login_attempts += 1
         self.total_login_attempts = self.successful_login_attempts + self.failed_login_attempts
         
-        if self.failed_login_attempts >= 5: # Lock on the 5th failed attempt
+        # Get configurable failed login attempts limit
+        settings = AppSettings.query.first()
+        max_attempts = settings.failed_login_attempts if settings else 5
+        
+        if self.failed_login_attempts >= max_attempts:
             self.account_locked = True
             self.locked_time = datetime.now(timezone.utc)
             self.unlocked_by = None
@@ -207,7 +211,7 @@ class AuthenticationSession(db.Model):
     password_verified = db.Column(db.Boolean, default=False)
     security_key_verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    expires_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
+    expires_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc) + timedelta(minutes=get_session_timeout_minutes()))
     session_token = db.Column(db.String(100), unique=True, default=lambda: str(uuid.uuid4()))
     client_binding = db.Column(db.String(255))
     binding_nonce = db.Column(db.String(100))
@@ -313,6 +317,29 @@ class SystemConfiguration(db.Model):
     updated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    updated_by = db.relationship('Users', foreign_keys=[updated_by_user_id])
+
+# Model for application settings
+class AppSettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    
+    # Security Settings (actually used in the system)
+    session_timeout = db.Column(db.Integer, default=15, nullable=False)  # minutes
+    failed_login_attempts = db.Column(db.Integer, default=5, nullable=False)
+    webauthn_timeout = db.Column(db.Integer, default=60000, nullable=False)  # ms
+    
+    # Password Policy Settings
+    min_password_length = db.Column(db.Integer, default=8, nullable=False)
+    require_uppercase = db.Column(db.Boolean, default=True, nullable=False)
+    require_lowercase = db.Column(db.Boolean, default=True, nullable=False)
+    require_numbers = db.Column(db.Boolean, default=True, nullable=False)
+    require_special_chars = db.Column(db.Boolean, default=True, nullable=False)
+    password_expiry_days = db.Column(db.Integer, default=90, nullable=False)  # 0 = never expires
+    
+    # Audit fields
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    
     updated_by = db.relationship('Users', foreign_keys=[updated_by_user_id])
 
 
@@ -773,6 +800,90 @@ def health_check():
     return jsonify({'status': 'ok', 'message': 'Athens AI Auth Server Running'})
 
 
+def get_session_timeout_minutes():
+    """Get configurable session timeout in minutes"""
+    settings = AppSettings.query.first()
+    return settings.session_timeout if settings else 15
+
+def get_webauthn_timeout():
+    """Get configurable WebAuthn timeout in milliseconds"""
+    settings = AppSettings.query.first()
+    return settings.webauthn_timeout if settings else 60000
+
+def ensure_default_settings():
+    """Ensure default AppSettings record exists in database"""
+    try:
+        settings = AppSettings.query.first()
+        if not settings:
+            print("Creating default AppSettings record...")
+            settings = AppSettings(
+                session_timeout=15,
+                failed_login_attempts=5,
+                webauthn_timeout=60000,
+                min_password_length=8,
+                require_uppercase=True,
+                require_lowercase=True,
+                require_numbers=True,
+                require_special_chars=True,
+                password_expiry_days=90
+            )
+            db.session.add(settings)
+            db.session.commit()
+            print("Default AppSettings created successfully")
+        else:
+            print("AppSettings record already exists")
+    except Exception as e:
+        print(f"Error creating default settings: {str(e)}")
+        db.session.rollback()
+
+def validate_password_policy(password):
+    """Validate password against current policy settings"""
+    import re
+    
+    settings = AppSettings.query.first()
+    if not settings:
+        # Fallback to defaults if no settings exist
+        settings = AppSettings()
+    
+    errors = []
+    
+    # Check minimum length
+    if len(password) < settings.min_password_length:
+        errors.append(f"Password must be at least {settings.min_password_length} characters long")
+    
+    # Check uppercase requirement
+    if settings.require_uppercase and not re.search(r'[A-Z]', password):
+        errors.append("Password must contain at least one uppercase letter")
+    
+    # Check lowercase requirement
+    if settings.require_lowercase and not re.search(r'[a-z]', password):
+        errors.append("Password must contain at least one lowercase letter")
+    
+    # Check numbers requirement
+    if settings.require_numbers and not re.search(r'\d', password):
+        errors.append("Password must contain at least one number")
+    
+    # Check special characters requirement
+    if settings.require_special_chars and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        errors.append("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
+    
+    return errors
+
+def get_password_policy_info():
+    """Get current password policy for frontend display"""
+    settings = AppSettings.query.first()
+    if not settings:
+        settings = AppSettings()
+    
+    return {
+        'min_length': settings.min_password_length,
+        'require_uppercase': settings.require_uppercase,
+        'require_lowercase': settings.require_lowercase,
+        'require_numbers': settings.require_numbers,
+        'require_special_chars': settings.require_special_chars,
+        'expiry_days': settings.password_expiry_days
+    }
+
 # Updated route for user registration with first and last name and role (only accessible to admins)
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -870,6 +981,21 @@ def register():
     role = data.get('role', 'user')
     if role not in valid_roles:
         role = 'user'  # Ensure only valid roles
+
+    # Validate password against current policy
+    password_errors = validate_password_policy(data['password'])
+    if password_errors:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type='USER_REGISTER_FAILURE',
+            status='FAILURE',
+            details=f"Registration attempt for username '{data['username']}' failed: Password policy violations: {', '.join(password_errors)}"
+        )
+        return jsonify({
+            'error': 'Password does not meet policy requirements',
+            'policy_errors': password_errors
+        }), 400
 
     user = Users(
         first_name=data['firstName'],
@@ -2722,7 +2848,7 @@ def webauthn_register_begin():
                 {'type': 'public-key', 'alg': -7},  # ES256
                 {'type': 'public-key', 'alg': -257}  # RS256
             ],
-            'timeout': 60000,
+            'timeout': get_webauthn_timeout(),
             'excludeCredentials': exclude_credentials,  # Will be empty if force_registration is true
             'authenticatorSelection': {
                 'authenticatorAttachment': 'cross-platform',
@@ -3544,7 +3670,7 @@ def webauthn_login_begin():
             })
 
         # Set timeout based on risk
-        timeout = 60000  # Default 1 minute
+        timeout = get_webauthn_timeout()  # Get configurable timeout
         verification = 'preferred'
 
         # If high risk, reduce timeout and require stronger verification
@@ -5934,6 +6060,7 @@ def get_locked_accounts():
 with app.app_context():
     db.create_all()
     create_admin_user()
+    ensure_default_settings()
     db.session.commit()
 
 @app.route('/api/internal/hid_security_key_event', methods=['POST'])
@@ -6229,6 +6356,233 @@ def update_system_configuration(admin_user):
     
     db.session.commit()
     
+    return jsonify({'message': 'System configuration updated successfully'})
+
+# App Settings API Endpoints
+@app.route('/api/settings', methods=['GET'])
+def get_app_settings():
+    """Get current application settings"""
+    try:
+        # Find the admin session
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Admin authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+        if not auth_session:
+            return jsonify({'error': 'Invalid admin token'}), 401
+
+        # Get the admin user
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        settings = AppSettings.query.first()
+        if not settings:
+            # This should not happen since ensure_default_settings() creates defaults
+            # But return defaults as fallback
+            return jsonify({
+                'session_timeout': 15,
+                'failed_login_attempts': 5,
+                'webauthn_timeout': 60000,
+                'min_password_length': 8,
+                'require_uppercase': True,
+                'require_lowercase': True,
+                'require_numbers': True,
+                'require_special_chars': True,
+                'password_expiry_days': 90,
+                'updated_by': None,
+                'updated_at': None
+            })
+        
+        updated_by_user = Users.query.get(settings.updated_by_user_id) if settings.updated_by_user_id else None
+        
+        return jsonify({
+            'session_timeout': settings.session_timeout,
+            'failed_login_attempts': settings.failed_login_attempts,
+            'webauthn_timeout': settings.webauthn_timeout,
+            'min_password_length': settings.min_password_length,
+            'require_uppercase': settings.require_uppercase,
+            'require_lowercase': settings.require_lowercase,
+            'require_numbers': settings.require_numbers,
+            'require_special_chars': settings.require_special_chars,
+            'password_expiry_days': settings.password_expiry_days,
+            'updated_by': updated_by_user.username if updated_by_user else None,
+            'updated_at': settings.updated_at.isoformat() if settings.updated_at else None
+        })
+    except Exception as e:
+        print(f"Error in get_app_settings: {str(e)}")
+        return jsonify({'error': 'An error occurred while retrieving settings'}), 500
+
+@app.route('/api/settings', methods=['POST'])
+def update_app_settings():
+    """Update application settings"""
+    try:
+        # Find the admin session
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Admin authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+        if not auth_session:
+            return jsonify({'error': 'Invalid admin token'}), 401
+
+        # Get the admin user
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        data = request.get_json()
+        
+        # Validate numeric fields
+        if 'session_timeout' in data and (not isinstance(data['session_timeout'], int) or data['session_timeout'] < 1):
+            return jsonify({'error': 'Session timeout must be a positive integer'}), 400
+        
+        if 'failed_login_attempts' in data and (not isinstance(data['failed_login_attempts'], int) or data['failed_login_attempts'] < 1):
+            return jsonify({'error': 'Failed login attempts must be a positive integer'}), 400
+        
+        if 'webauthn_timeout' in data and (not isinstance(data['webauthn_timeout'], int) or data['webauthn_timeout'] < 10000):
+            return jsonify({'error': 'WebAuthn timeout must be at least 10000ms'}), 400
+        
+        # Validate password policy fields
+        if 'min_password_length' in data and (not isinstance(data['min_password_length'], int) or data['min_password_length'] < 4 or data['min_password_length'] > 128):
+            return jsonify({'error': 'Minimum password length must be between 4 and 128 characters'}), 400
+        
+        if 'password_expiry_days' in data and (not isinstance(data['password_expiry_days'], int) or data['password_expiry_days'] < 0):
+            return jsonify({'error': 'Password expiry days must be 0 (never) or a positive integer'}), 400
+        
+        # Validate boolean fields
+        for field in ['require_uppercase', 'require_lowercase', 'require_numbers', 'require_special_chars']:
+            if field in data and not isinstance(data[field], bool):
+                return jsonify({'error': f'{field} must be a boolean value'}), 400
+        
+        # Get or create settings record
+        settings = AppSettings.query.first()
+        if not settings:
+            settings = AppSettings()
+            db.session.add(settings)
+        
+        # Update settings with provided values
+        if 'session_timeout' in data:
+            settings.session_timeout = data['session_timeout']
+        if 'failed_login_attempts' in data:
+            settings.failed_login_attempts = data['failed_login_attempts']
+        if 'webauthn_timeout' in data:
+            settings.webauthn_timeout = data['webauthn_timeout']
+        if 'min_password_length' in data:
+            settings.min_password_length = data['min_password_length']
+        if 'require_uppercase' in data:
+            settings.require_uppercase = data['require_uppercase']
+        if 'require_lowercase' in data:
+            settings.require_lowercase = data['require_lowercase']
+        if 'require_numbers' in data:
+            settings.require_numbers = data['require_numbers']
+        if 'require_special_chars' in data:
+            settings.require_special_chars = data['require_special_chars']
+        if 'password_expiry_days' in data:
+            settings.password_expiry_days = data['password_expiry_days']
+        
+        # Update audit fields
+        settings.updated_by_user_id = admin_user.id
+        settings.updated_at = datetime.now(timezone.utc)
+        
+        # Log the settings update
+        log_system_event(
+            user_id=admin_user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='APP_SETTINGS_UPDATED',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"Application settings updated by admin '{admin_user.username}'"
+        )
+        
+        db.session.commit()
+        
+        return jsonify({'message': 'Settings updated successfully'})
+    except Exception as e:
+        print(f"Error in update_app_settings: {str(e)}")
+        return jsonify({'error': 'An error occurred while updating settings'}), 500
+
+@app.route('/api/settings/reset', methods=['POST'])
+def reset_app_settings():
+    """Reset application settings to defaults"""
+    try:
+        # Find the admin session
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({'error': 'Admin authorization required'}), 401
+
+        auth_token = auth_token.replace('Bearer ', '')
+        auth_session = AuthenticationSession.query.filter_by(session_token=auth_token).first()
+
+        if not auth_session:
+            return jsonify({'error': 'Invalid admin token'}), 401
+
+        # Get the admin user
+        admin_user = Users.query.get(auth_session.user_id)
+        if not admin_user or admin_user.role != 'admin':
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        settings = AppSettings.query.first()
+        if not settings:
+            settings = AppSettings()
+            db.session.add(settings)
+        
+        # Reset to default values
+        settings.session_timeout = 15
+        settings.failed_login_attempts = 5
+        settings.webauthn_timeout = 60000
+        settings.min_password_length = 8
+        settings.require_uppercase = True
+        settings.require_lowercase = True
+        settings.require_numbers = True
+        settings.require_special_chars = True
+        settings.password_expiry_days = 90
+        settings.updated_by_user_id = admin_user.id
+        settings.updated_at = datetime.now(timezone.utc)
+        
+        # Log the settings reset
+        log_system_event(
+            user_id=admin_user.id,
+            performed_by_user_id=admin_user.id,
+            action_type='APP_SETTINGS_RESET',
+            status='SUCCESS',
+            target_entity_type='SYSTEM',
+            details=f"Application settings reset to defaults by admin '{admin_user.username}'"
+        )
+        
+        db.session.commit()
+        
+        return jsonify({'message': 'Settings reset to defaults successfully'})
+    except Exception as e:
+        print(f"Error in reset_app_settings: {str(e)}")
+        return jsonify({'error': 'An error occurred while resetting settings'}), 500
+
+@app.route('/api/password/validate', methods=['POST'])
+def validate_password():
+    """Validate a password against current policy"""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+        
+        if not password:
+            return jsonify({'valid': False, 'errors': ['Password is required']}), 400
+        
+        errors = validate_password_policy(password)
+        
+        return jsonify({
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'policy': get_password_policy_info()
+        })
+    except Exception as e:
+        print(f"Error in validate_password: {str(e)}")
+        return jsonify({'error': 'An error occurred while validating password'}), 500
+
 
 @socketio.on('join')
 def handle_join(data):
@@ -6351,6 +6705,7 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         create_admin_user()
+        ensure_default_settings()
         db.session.commit()
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
 
