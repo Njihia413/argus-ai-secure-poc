@@ -181,6 +181,11 @@ export default function UserDetailsPage() {
   const handleSelectYubiKey = async (key: YubiKey) => {
     try {
       const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+      if (!userInfo.authToken) {
+        toast.error("Authentication session expired. Please log in again.");
+        return;
+      }
+
       const response = await axios.post<{ exists: boolean, user?: User }>(`${API_URL}/security-keys/check-serial`,
         { serialNumber: key.serial },
         {
@@ -655,6 +660,16 @@ export default function UserDetailsPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <Label className="text-lg font-semibold">Security Keys</Label>
+                  {securityKeys.length > 0 && (
+                    <Button
+                        onClick={() => setIsDetectionModalOpen(true)}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Key className="h-4 w-4 mr-1"/>
+                      Register Another Key
+                    </Button>
+                  )}
                 </div>
 
                 {securityKeys.length > 0 ? (
@@ -675,8 +690,8 @@ export default function UserDetailsPage() {
                       }}
                     />
                 ) : (
-                    <div className="text-center p-4 border rounded-md bg-muted border-zinc-200 dark:border-zinc-800">
-                      <p className="text-muted-foreground">No security keys registered yet</p>
+                    <div className="text-center p-8 border rounded-md bg-muted/30 border-dashed border-zinc-300 dark:border-zinc-700">
+                      <p className="text-muted-foreground mb-4">No security keys registered yet</p>
                       <Button
                           onClick={() => setIsDetectionModalOpen(true)}
                           className="mt-2"
