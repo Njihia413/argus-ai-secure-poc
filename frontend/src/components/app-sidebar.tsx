@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link" // Added Link import
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon, ShieldAlert, ServerCog } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon, ShieldAlert, ServerCog, FileKey } from "lucide-react"
 import React, { useState } from "react" // Added useState
 import { useStore } from "@/app/utils/store"
 import {
@@ -58,6 +59,11 @@ const items: NavItem[] = [
     icon: KeyRound,
   },
   {
+    title: "Secure Files",
+    url: "/dashboard/secure-files",
+    icon: FileKey,
+  },
+  {
     title: "Settings",
     url: "/dashboard/settings",
     icon: Settings,
@@ -105,7 +111,11 @@ export function AppSidebar() {
       <SidebarContent className="flex flex-col">
         <div className="flex-grow">
           <SidebarGroup>
-            <SidebarGroupLabel className="px-2 py-1 text-xl font-bold mb-6">Argus AI Secure</SidebarGroupLabel> {/* Increased mb-2 to mb-6 for spacing */}
+            <SidebarGroupLabel className="px-2 py-1 text-xl font-bold mb-6">
+              <Link href="/dashboard" className="hover:opacity-80 transition-opacity">
+                Argus AI Secure
+              </Link>
+            </SidebarGroupLabel> {/* Increased mb-2 to mb-6 for spacing */}
             {/* <SidebarGroupLabel className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground tracking-wider">Dashboards</SidebarGroupLabel> */}
             <SidebarGroupContent>
               <SidebarMenu>
