@@ -1,0 +1,12 @@
+# System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE/Editor
+.idea/
+.vscode/
+
+# Node modules (just in case they appear in root)
+node_modules/
+npm-debug.log
