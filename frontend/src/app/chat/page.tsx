@@ -4,6 +4,7 @@ import { modelID } from "@/ai/providers";
 import { useChat } from "@ai-sdk/react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { API_URL } from "@/app/utils/constants";
 import { toast } from 'sonner';
 import { io, Socket } from "socket.io-client";
 import { Textarea } from "@/components/textarea";
@@ -284,7 +285,8 @@ export default function ChatPage() {
     if (!userData || !userData.authToken) return;
 
     // Establish connection to the backend Socket.IO server
-    const newSocket = io("http://localhost:5000");
+    const socketUrl = API_URL.replace('/api', '');
+    const newSocket = io(socketUrl);
     socketIoRef.current = newSocket;
 
     newSocket.on("connect", () => {
