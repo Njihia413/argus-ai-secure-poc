@@ -243,13 +243,20 @@ export const registerSecurityKey = async (
         console.log('Force registration:', forceRegistration ? 'Yes' : 'No');
         console.log('Key Details:', keyDetails);
 
+        // Prepare headers with auth token
+        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+        const headers: Record<string, string> = {};
+        if (userInfo && userInfo.authToken) {
+            headers['Authorization'] = `Bearer ${userInfo.authToken}`;
+        }
+
         // Step 1: Begin WebAuthn registration
         const registerBeginResponse = await axios.post(`${API_URL}/webauthn/register/begin`, {
             username,
             forceRegistration,
             keyId: keyDetails?.keyId, // Pass key ID if we're updating an existing key
             ...getBindingData()
-        }) as { data: { registrationToken: string, publicKey: any } };
+        }, { headers }) as { data: { registrationToken: string, publicKey: any } };
 
         console.log('Registration begin response received');
 
@@ -278,11 +285,7 @@ export const registerSecurityKey = async (
         console.log('Including forceRegistration flag:', forceRegistration);
         console.log('Including keyId:', keyDetails?.keyId);
 
-        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-        const headers: Record<string, string> = {};
-        if (userInfo && userInfo.authToken) {
-            headers['Authorization'] = `Bearer ${userInfo.authToken}`;
-        }
+        // Headers are already prepared at the beginning of the function
         
         const completeResponse = await axios.post(`${API_URL}/webauthn/register/complete`, {
             registrationToken,
