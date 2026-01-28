@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { User, Settings, LogOut } from "lucide-react";
+import { User, Settings, LogOut, FileKey } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearBindingData } from "@/app/utils/webauthn";
 import axios from "axios";
@@ -174,10 +174,9 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
           </DialogHeader>
 
           <Tabs defaultValue={activeTab || "general"} className="w-full">
-            <TabsList className="grid grid-cols-3 mb-4 w-full">
+            <TabsList className="grid grid-cols-2 mb-4 w-full">
               <TabsTrigger value="general" className="flex-1">General</TabsTrigger>
               <TabsTrigger value="profile" className="flex-1">Profile</TabsTrigger>
-              <TabsTrigger value="security" className="flex-1">Security</TabsTrigger>
             </TabsList>
 
             {/* General Tab */}
@@ -222,18 +221,6 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
                   Change Password
                 </Button>
               </div>
-            </TabsContent>
-
-            {/* Security Tab */}
-            <TabsContent value="security" className="space-y-4">
-              {hasSecurityKey ? (
-                  <SecurityInformation userData={userData} />
-              ) : (
-                  <SecurityKeyRegistration
-                      userData={userData}
-                      onRegisterSuccess={onRegisterSuccess}
-                  />
-              )}
             </TabsContent>
           </Tabs>
 
@@ -319,16 +306,11 @@ export const Header = () => {
     setShowSettingsModal(true);
   };
 
-  // Show security tab in settings
-  const handleShowSecurity = () => {
-    openSettingsWithTab("security");
-  };
-
   return (
       <div className="fixed right-0 left-0 w-full top-0 bg-white dark:bg-zinc-900 z-50 border-b border-zinc-200 dark:border-zinc-800 font-montserrat">
         <div className="flex justify-between items-center p-4">
           <div className="flex items-center space-x-2">
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/chat" className="flex items-center space-x-2">
               <span className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white">
                Argus AI
               </span>
@@ -360,12 +342,10 @@ export const Header = () => {
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
                     </DropdownMenuItem>
-                    {userData.role === "admin" && (
-                      <DropdownMenuItem onClick={handleShowSecurity}>
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        <span>Security</span>
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem onClick={() => router.push("/chat/secure-files")}>
+                      <FileKey className="mr-2 h-4 w-4" />
+                      <span>Secure Files</span>
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout}>
                       <LogOut className="mr-2 h-4 w-4" />
