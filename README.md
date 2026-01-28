@@ -11,9 +11,9 @@ Argus AI Secure is a comprehensive, full-stack web application designed for robu
 - **System-Wide Audit Trail:** Detailed logging of all critical security and system events, providing a clear and searchable history for compliance and investigation.
 - **AI-Powered Chat Assistant:** An integrated chat interface that leverages AI models to assist with security-related queries and operations. Model availability can be dynamically enhanced by connecting a security key.
 - **Local Hardware Detection:** A local Python helper application detects USB and HID FIDO security key connections, enabling real-time interaction between the user's hardware and the application. This includes the automatic detection and extraction of YubiKey details (serial number, model, firmware version) to simplify the registration process.
-- **Elevated Access Controls:** A secure administrative context that grants access to high-privilege actions only after authentication with a security key. This includes:
-    - **Emergency Actions:** A dedicated page for administrators to perform system-wide lockdowns in case of a security incident.
-    - **System Configuration:** A page for managing system-level settings, such as enabling or disabling maintenance mode.
+  - **Emergency Actions:** A dedicated page for administrators to perform system-wide lockdowns in case of a security incident.
+  - **System Configuration:** A page for managing system-level settings, such as enabling or disabling maintenance mode.
+- **Encrypted File Storage:** A zero-trust storage system where files are encrypted at rest using AES-256-GCM. Decryption keys are derived dynamically from the user's master hardware key (YubiKey) and a system secret, ensuring that files are mathematically inaccessible without the physical token.
 
 ## Technical Stack
 
@@ -34,6 +34,7 @@ Argus AI Secure is a comprehensive, full-stack web application designed for robu
 - **Language:** Python
 - **Database:** PostgreSQL with SQLAlchemy ORM and Flask-Migrate
 - **Authentication:** FIDO2-lib for WebAuthn server-side validation
+- **File Encryption:** `cryptography` library for AES-256-GCM and PBKDF2 key derivation.
 - **Real-time Communication:** WebSockets for communication with the local hardware detector.
 
 ## Project Structure
@@ -69,17 +70,20 @@ The project is organized into two main directories: `frontend/` and `backend/`.
 ### 1. Backend Setup
 
 1.  **Navigate to the backend directory:**
+
     ```bash
     cd backend
     ```
 
 2.  **Create and activate a Python virtual environment:**
+
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     ```
 
 3.  **Install the required Python packages:**
+
     ```bash
     pip install -r requirements.txt
     ```
@@ -92,9 +96,11 @@ The project is organized into two main directories: `frontend/` and `backend/`.
       ```
 
 5.  **Apply database migrations:**
+
     ```bash
     flask db upgrade
     ```
+
     This will create all the necessary tables and the default admin user (`admin`/`admin123`).
 
 6.  **Run the Flask server:**
@@ -106,11 +112,13 @@ The project is organized into two main directories: `frontend/` and `backend/`.
 ### 2. Frontend Setup
 
 1.  **Navigate to the frontend directory:**
+
     ```bash
     cd frontend
     ```
 
 2.  **Install the required Node.js packages:**
+
     ```bash
     npm install
     ```
@@ -133,11 +141,13 @@ The project is organized into two main directories: `frontend/` and `backend/`.
 To enable dynamic AI model availability based on hardware security key presence, run the local WebSocket server.
 
 1.  **Navigate to the backend directory in a new terminal:**
+
     ```bash
     cd backend
     ```
 
 2.  **Activate the virtual environment:**
+
     ```bash
     source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     ```
