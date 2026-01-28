@@ -1,3 +1,16 @@
 # Python cache
 __pycache__/
 *.pyc
+
+# Virtual Environment
+venv/
+env/
+
+# Environment Variables
+.env
+
+# System Files
+.DS_Store
+
+# Encrypted Storage
+encrypted_files/
