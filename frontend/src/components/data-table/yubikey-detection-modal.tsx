@@ -10,16 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { io, Socket } from 'socket.io-client';
-
-interface YubiKey {
-  serial: number;
-  version: string;
-  form_factor: string;
-  device_type: string;
-  is_fips: boolean;
-  is_sky: boolean;
-}
+import { useYubiKeyDetection, YubiKey } from '@/app/hooks/use-yubikey-detection';
 
 interface YubiKeyDetectionModalProps {
   isOpen: boolean;
@@ -28,62 +19,8 @@ interface YubiKeyDetectionModalProps {
 }
 
 export function YubiKeyDetectionModal({ isOpen, onClose, onSelect }: YubiKeyDetectionModalProps) {
-  const [yubiKeys, setYubiKeys] = useState<YubiKey[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
+  const { detectedKeys: yubiKeys, isConnected } = useYubiKeyDetection(isOpen);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    // Connect to the Flask-SocketIO server
-    const socket: Socket = io("http://localhost:5000", {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      transports: ['websocket'],
-    });
-
-    function onConnect() {
-      console.log('Connected to WebSocket server');
-      setIsConnected(true);
-    }
-
-    function onDisconnect() {
-      console.log('Disconnected from WebSocket server');
-      setIsConnected(false);
-    }
-
-    function onYubiKeysUpdate(data: { yubikeys: YubiKey[] }) {
-      console.log('Received yubikeys_update:', data);
-      setYubiKeys(data.yubikeys);
-    }
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('yubikeys_update', onYubiKeysUpdate);
-
-    // Fetch the initial list of keys when the modal opens
-    const fetchInitialKeys = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/security-keys/detect-yubikeys');
-        const data = await response.json();
-        if (data.success) {
-          setYubiKeys(data.yubikeys);
-        }
-      } catch (error) {
-        console.error("Failed to fetch initial YubiKeys", error);
-      }
-    };
-    fetchInitialKeys();
-
-    return () => {
-      socket.disconnect();
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('yubikeys_update', onYubiKeysUpdate);
-    };
-  }, [isOpen]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
