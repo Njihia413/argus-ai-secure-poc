@@ -2,7 +2,7 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Download, Trash2, FileText, FileImage, FileArchive, File, Key } from "lucide-react";
+import { Download, Trash2, FileText, FileImage, FileArchive, File, Key, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export interface EncryptedFile {
@@ -17,6 +17,7 @@ export interface EncryptedFile {
 }
 
 interface ColumnOptions {
+  onPreview: (file: EncryptedFile) => void;
   onDownload: (file: EncryptedFile) => void;
   onDelete: (file: EncryptedFile) => void;
 }
@@ -120,6 +121,15 @@ export function secureFilesColumns(options: ColumnOptions): ColumnDef<EncryptedF
         const file = row.original;
         return (
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => options.onPreview(file)}
+              title="Quick Preview"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
