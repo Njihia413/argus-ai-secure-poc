@@ -296,9 +296,16 @@ export default function SecureFilesPage() {
             
             <DataTable
               columns={secureFilesColumns({
-              onDownload: (file: EncryptedFile) => {
-                setFileToDownload(file);
-              },
+                onPreview: (file: EncryptedFile) => {
+                  const authToken = getAuthToken();
+                  window.open(
+                    `${API_URL}/files/${file.id}/preview?token=${authToken}`,
+                    "_blank"
+                  );
+                },
+                onDownload: (file: EncryptedFile) => {
+                  setFileToDownload(file);
+                },
                 onDelete: (file: EncryptedFile) => setFileToDelete(file),
               })}
               data={filteredFiles}
