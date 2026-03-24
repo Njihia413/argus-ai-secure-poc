@@ -8062,6 +8062,116 @@ def download_encrypted_file(file_id):
         return jsonify({"error": "Failed to download file"}), 500
 
 
+@app.route("/api/files/<int:file_id>/preview", methods=["GET"])
+def preview_encrypted_file(file_id):
+    """Preview a file using user's stored security key ID (no physical key required)"""
+    try:
+        # Verify authentication (handled by check_auth_middleware, but we need the user_id)
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Find the file
+        if user.role == "admin":
+            encrypted_file = EncryptedFile.query.filter_by(
+                id=file_id, is_deleted=False
+            ).first()
+        else:
+            encrypted_file = EncryptedFile.query.filter_by(
+                id=file_id, user_id=user.id, is_deleted=False
+            ).first()
+
+        if not encrypted_file:
+            return jsonify({"error": "File not found"}), 404
+
+        # For preview, we use the security_key_id already stored in the database
+        security_key_id = encrypted_file.security_key_id
+
+        # Read encrypted file from storage backend
+        if encrypted_file.storage_backend == "minio" and encrypted_file.storage_key:
+            try:
+                encrypted_data = minio_storage.download_encrypted_file(
+                    encrypted_file.storage_key, encrypted_file.salt
+                )
+            except Exception as storage_err:
+                print(f"MinIO download failed: {storage_err}")
+                return jsonify({"error": "Encrypted file not found in storage"}), 404
+        else:
+            # Legacy fallback: read from local disk
+            if not os.path.exists(encrypted_file.encrypted_path):
+                return jsonify({"error": "Encrypted file not found on disk"}), 404
+            with open(encrypted_file.encrypted_path, "rb") as f:
+                encrypted_data = f.read()
+
+        # Decrypt the file
+        try:
+            decrypted_data = decrypt_file(
+                encrypted_data,
+                encrypted_file.iv,
+                encrypted_file.salt,
+                encrypted_file.user_id,
+                security_key_id,
+            )
+        except Exception as decrypt_error:
+            print(f"Decryption failed during preview: {decrypt_error}")
+            return (
+                jsonify({"error": "Failed to decrypt file for preview"}),
+                403,
+            )
+
+        # Verify file hash
+        if not verify_file_hash(
+            decrypted_data,
+            encrypted_file.file_hash,
+            encrypted_file.user_id,
+            security_key_id,
+        ):
+            return jsonify({"error": "File integrity check failed"}), 500
+
+        # Log the preview
+        log_system_event(
+            user_id=encrypted_file.user_id,
+            performed_by_user_id=user.id,
+            action_type="FILE_PREVIEW",
+            status="SUCCESS",
+            target_entity_type="FILE",
+            target_entity_id=str(encrypted_file.id),
+            details=f"User '{user.username}' previewed encrypted file '{encrypted_file.original_filename}'",
+        )
+
+        # Return decrypted file with inline disposition
+        from flask import Response
+
+        response = Response(
+            decrypted_data,
+            mimetype=encrypted_file.mime_type or "application/octet-stream",
+        )
+        response.headers["Content-Disposition"] = (
+            f'inline; filename="{encrypted_file.original_filename}"'
+        )
+        response.headers["Content-Length"] = len(decrypted_data)
+        return response
+
+    except Exception as e:
+        print(f"Error previewing encrypted file: {str(e)}")
+        import traceback
+
+        print(traceback.format_exc())
+        return jsonify({"error": "Failed to preview file"}), 500
+
+
 @app.route("/api/files", methods=["GET"])
 def list_encrypted_files():
     """List all encrypted files for the authenticated user"""
