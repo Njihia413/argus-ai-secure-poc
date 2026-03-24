@@ -200,6 +200,31 @@ export default function SecureFilesPage() {
     }
   };
 
+  const handlePreview = async (file: EncryptedFile) => {
+    const authToken = getAuthToken();
+    try {
+      const response = await fetch(`${API_URL}/files/${file.id}/preview`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to preview file");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      
+      toast.success("Preview loaded");
+    } catch (error) {
+      console.error("Error previewing file:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to preview file");
+    }
+  };
+
   const handleDelete = async () => {
     if (!fileToDelete) return;
 
@@ -365,6 +390,7 @@ export default function SecureFilesPage() {
           
           <DataTable
             columns={secureFilesColumns({
+              onPreview: (file: EncryptedFile) => handlePreview(file),
               onDownload: (file: EncryptedFile) => {
                 setFileToDownload(file);
               },
