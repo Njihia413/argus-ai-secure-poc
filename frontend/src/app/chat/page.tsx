@@ -11,6 +11,7 @@ import { Textarea } from "@/components/textarea";
 import { ProjectOverview } from "@/components/project-overview";
 import { Messages } from "@/components/messages";
 import { Header } from "@/components/header";
+import { ThreeDots } from "react-loader-spinner";
 import {
   checkSecurityKeyStatus,
   requestSecurityKeyAccess,
@@ -222,6 +223,16 @@ export default function ChatPage() {
               // Also update the local hidKey state for any other UI indicators
               setHidKey(initialHidKeyInfo);
               break;
+            case "MACHINE_FINGERPRINT":
+              // Store the workstation fingerprint so admin pages can use it for machine binding.
+              // This ensures the bound identity is the workstation running usb_detector.py,
+              // not the Flask server — which matters in multi-machine enterprise deployments.
+              sessionStorage.setItem("workstation_fingerprint", JSON.stringify({
+                machine_id: message.machine_id,
+                components: message.components,
+              }));
+              console.log("FRONTEND: Workstation fingerprint stored from usb_detector:", message.machine_id?.slice(0, 16));
+              break;
             default:
               console.warn("Received unknown message event from USB helper:", message);
           }
@@ -284,9 +295,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (!userData || !userData.authToken) return;
 
-    // Establish connection to the backend Socket.IO server
-    const socketUrl = API_URL.replace('/api', '');
-    const newSocket = io(socketUrl);
+    // Connect Socket.IO directly to Flask backend (not through Next.js proxy,
+    // which only rewrites HTTP requests and doesn't handle WebSocket upgrades)
+    const newSocket = io(process.env.NEXT_PUBLIC_FLASK_URL || "http://localhost:5000");
     socketIoRef.current = newSocket;
 
     newSocket.on("connect", () => {
@@ -309,6 +320,13 @@ export default function ChatPage() {
       } else {
         toast.success(data.message || "Security key verified. Full models enabled.");
         setAvailableModels(ALL_MODELS);
+        // Persist the authenticated state so it survives page reloads
+        const stored = JSON.parse(sessionStorage.getItem("user") || "{}");
+        if (stored.authToken) {
+          stored.securityKeyAuthenticated = true;
+          sessionStorage.setItem("user", JSON.stringify(stored));
+          setUserData(stored);
+        }
       }
     });
 
@@ -393,21 +411,18 @@ export default function ChatPage() {
   if (!userData) {
     return (
         <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-xl h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+          <ThreeDots height="40" width="40" color="currentColor" ariaLabel="loading" />
         </div>
     );
   }
 
+  const hasMessages = messages.length > 0;
+
   return (
-      <div className="h-dvh flex flex-col justify-center font-montserrat w-full stretch">
+      <div className="h-dvh flex flex-col font-montserrat w-full stretch">
         <Header />
-        {messages.length === 0 ? (
-            <div className="max-w-xl mx-auto w-full">
-              <ProjectOverview />
-            </div>
-        ) : (
-            <Messages messages={messages} isLoading={isLoading} status={status} />
-        )}
+
+        {/* PIN Modal */}
         <Dialog open={isPinModalOpen} onOpenChange={(isOpen) => {
             if (!isOpen) {
                 setEnteredPin("");
@@ -457,21 +472,44 @@ export default function ChatPage() {
           </DialogContent>
         </Dialog>
 
-        <form
-            onSubmit={handleSubmit}
-            className="pb-8 bg-white dark:bg-black w-full max-w-xl mx-auto px-4 sm:px-0"
-        >
-          <Textarea
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              handleInputChange={handleInputChange}
-              input={input}
-              isLoading={isLoading}
-              status={status}
-              stop={stop}
-              models={availableModels}
-          />
-        </form>
+        {hasMessages ? (
+          <>
+            <Messages messages={messages} isLoading={isLoading} status={status} />
+            <form
+                onSubmit={handleSubmit}
+                className="pb-8 bg-white dark:bg-black w-full max-w-xl mx-auto px-4 sm:px-0"
+            >
+              <Textarea
+                  selectedModel={selectedModel}
+                  setSelectedModel={setSelectedModel}
+                  handleInputChange={handleInputChange}
+                  input={input}
+                  isLoading={isLoading}
+                  status={status}
+                  stop={stop}
+                  models={availableModels}
+              />
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="max-w-xl w-full space-y-8">
+              <ProjectOverview />
+              <form onSubmit={handleSubmit}>
+                <Textarea
+                    selectedModel={selectedModel}
+                    setSelectedModel={setSelectedModel}
+                    handleInputChange={handleInputChange}
+                    input={input}
+                    isLoading={isLoading}
+                    status={status}
+                    stop={stop}
+                    models={availableModels}
+                />
+              </form>
+            </div>
+          </div>
+        )}
       </div>
   );
 }
