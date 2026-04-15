@@ -29,6 +29,9 @@ from file_encryption import (
     generate_storage_filename,
 )
 
+# Machine fingerprint utility for device binding
+from machine_fingerprint import generate_machine_fingerprint, validate_fingerprint
+
 from flask_sqlalchemy.session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
 import base64
@@ -461,6 +464,10 @@ class SecurityKey(db.Model):
     product_id = db.Column(db.String(100), nullable=True)
     vendor_id = db.Column(db.String(100), nullable=True)
 
+    # Machine binding policy
+    require_machine_binding = db.Column(db.Boolean, default=False, nullable=False)
+    max_machines = db.Column(db.Integer, default=1, nullable=False)
+
     # Relationships
     user = db.relationship("Users", backref=db.backref("security_keys", lazy=True))
 
@@ -551,6 +558,44 @@ class EncryptedFile(db.Model):
     security_key = db.relationship(
         "SecurityKey", backref=db.backref("encrypted_files", lazy=True)
     )
+
+
+# Model for machine bindings — ties a security key to specific workstations
+class MachineBinding(db.Model):
+    __tablename__ = "machine_bindings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    security_key_id = db.Column(
+        db.Integer, db.ForeignKey("security_key.id"), nullable=False
+    )
+    machine_id = db.Column(
+        db.String(64), nullable=False
+    )  # SHA-256 hash of fingerprint components
+    machine_name = db.Column(db.String(255), nullable=True)  # Human-friendly label
+    hostname = db.Column(db.String(255), nullable=True)
+    os_info = db.Column(db.String(255), nullable=True)
+    fingerprint_components = db.Column(
+        db.JSON, nullable=True
+    )  # Raw components for audit
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    deactivated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Unique constraint: one key can only be bound to a unique machine once
+    __table_args__ = (
+        db.UniqueConstraint(
+            "security_key_id", "machine_id", name="uq_key_machine"
+        ),
+    )
+
+    # Relationships
+    security_key = db.relationship(
+        "SecurityKey", backref=db.backref("machine_bindings", lazy=True)
+    )
+    created_by_user = db.relationship("Users", foreign_keys=[created_by])
 
 
 def run_ykman_command(args):
@@ -2889,6 +2934,235 @@ def reassign_security_key(key_id):
             details=f"Error reassigning security key ID {key_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}",
         )
         return jsonify({"error": f"Failed to reassign security key: {str(e)}"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Machine Binding Endpoints
+# ---------------------------------------------------------------------------
+
+
+def _get_admin_user(request):
+    """
+    Extract and validate the admin user from the Authorization header.
+    Returns (admin_user, error_response) — one will always be None.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None, (jsonify({"error": "Admin authorization required"}), 401)
+    token = auth_header.replace("Bearer ", "")
+    auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
+    if not auth_session:
+        return None, (jsonify({"error": "Invalid or expired session token"}), 401)
+    user = db.session.get(Users, auth_session.user_id)
+    if not user or user.role != "admin":
+        return None, (jsonify({"error": "Admin privileges required"}), 403)
+    return user, None
+
+
+@app.route("/api/machine-fingerprint", methods=["GET"])
+def get_machine_fingerprint():
+    """Return the hardware fingerprint of the machine running this server."""
+    admin_user, err = _get_admin_user(request)
+    if err:
+        return err
+    machine_id, components = generate_machine_fingerprint()
+    return jsonify({"machine_id": machine_id, "components": components}), 200
+
+
+@app.route("/api/security-keys/<int:key_id>/machines", methods=["GET"])
+def list_machine_bindings(key_id):
+    """List all active machine bindings for a security key."""
+    admin_user, err = _get_admin_user(request)
+    if err:
+        return err
+
+    key = db.session.get(SecurityKey, key_id)
+    if not key:
+        return jsonify({"error": "Security key not found"}), 404
+
+    bindings = MachineBinding.query.filter_by(
+        security_key_id=key_id, is_active=True
+    ).all()
+
+    return jsonify({
+        "machines": [
+            {
+                "id": b.id,
+                "machine_id": b.machine_id,
+                "machine_name": b.machine_name,
+                "hostname": b.hostname,
+                "os_info": b.os_info,
+                "mac_address": (b.fingerprint_components or {}).get("mac_address"),
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+                "created_by": b.created_by_user.username if b.created_by_user else None,
+            }
+            for b in bindings
+        ],
+        "require_machine_binding": key.require_machine_binding,
+        "max_machines": key.max_machines,
+        "bound_count": len(bindings),
+    }), 200
+
+
+@app.route("/api/security-keys/<int:key_id>/bind-machine", methods=["POST"])
+def bind_machine(key_id):
+    """Bind a machine fingerprint to a security key."""
+    admin_user, err = _get_admin_user(request)
+    if err:
+        return err
+
+    key = db.session.get(SecurityKey, key_id)
+    if not key:
+        return jsonify({"error": "Security key not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    machine_id = data.get("machine_id")
+    if not machine_id:
+        return jsonify({"error": "machine_id is required"}), 400
+
+    components = data.get("components", {})
+    machine_name = data.get("machine_name") or components.get("hostname", "Unknown Machine")
+
+    # Enforce the machine cap before adding a new binding
+    active_count = MachineBinding.query.filter_by(
+        security_key_id=key_id, is_active=True
+    ).count()
+
+    # Check for duplicate binding
+    existing = MachineBinding.query.filter_by(
+        security_key_id=key_id, machine_id=machine_id
+    ).first()
+    if existing:
+        if existing.is_active:
+            return jsonify({"error": "This machine is already bound to this security key"}), 409
+        # Reactivate a previously deactivated binding — counts against the cap
+        if active_count >= key.max_machines:
+            return jsonify({
+                "error": f"Machine limit reached. This key allows a maximum of {key.max_machines} machine(s). "
+                         f"Increase the limit or unbind an existing machine first."
+            }), 409
+        existing.is_active = True
+        existing.deactivated_at = None
+        existing.machine_name = machine_name
+        db.session.commit()
+        return jsonify({"message": "Machine binding reactivated", "id": existing.id}), 200
+
+    # Enforce the cap for new bindings
+    if active_count >= key.max_machines:
+        return jsonify({
+            "error": f"Machine limit reached. This key allows a maximum of {key.max_machines} machine(s). "
+                     f"Increase the limit or unbind an existing machine first."
+        }), 409
+
+    binding = MachineBinding(
+        security_key_id=key_id,
+        machine_id=machine_id,
+        machine_name=machine_name,
+        hostname=components.get("hostname"),
+        os_info=components.get("os"),
+        fingerprint_components=components,
+        is_active=True,
+        created_by=admin_user.id,
+    )
+    db.session.add(binding)
+
+    log_system_event(
+        user_id=key.user_id,
+        performed_by_user_id=admin_user.id,
+        action_type="MACHINE_BINDING_CREATED",
+        status="SUCCESS",
+        target_entity_type="SECURITY_KEY",
+        target_entity_id=key_id,
+        details=f"Machine '{machine_name}' (ID: {machine_id[:16]}...) bound to security key ID {key_id} by admin '{admin_user.username}'.",
+    )
+
+    db.session.commit()
+    return jsonify({"message": "Machine bound successfully", "id": binding.id}), 201
+
+
+@app.route("/api/security-keys/<int:key_id>/machines/<int:binding_id>", methods=["DELETE"])
+def unbind_machine(key_id, binding_id):
+    """Soft-delete a machine binding."""
+    admin_user, err = _get_admin_user(request)
+    if err:
+        return err
+
+    binding = MachineBinding.query.filter_by(
+        id=binding_id, security_key_id=key_id, is_active=True
+    ).first()
+    if not binding:
+        return jsonify({"error": "Machine binding not found"}), 404
+
+    binding.is_active = False
+    binding.deactivated_at = datetime.now(timezone.utc)
+
+    key = db.session.get(SecurityKey, key_id)
+    log_system_event(
+        user_id=key.user_id if key else None,
+        performed_by_user_id=admin_user.id,
+        action_type="MACHINE_BINDING_REMOVED",
+        status="SUCCESS",
+        target_entity_type="SECURITY_KEY",
+        target_entity_id=key_id,
+        details=f"Machine binding ID {binding_id} ('{binding.machine_name}') removed from security key ID {key_id} by admin '{admin_user.username}'.",
+    )
+
+    db.session.commit()
+    return jsonify({"message": "Machine unbound successfully"}), 200
+
+
+@app.route("/api/security-keys/<int:key_id>/binding-policy", methods=["PUT"])
+def update_binding_policy(key_id):
+    """Toggle require_machine_binding on a security key."""
+    admin_user, err = _get_admin_user(request)
+    if err:
+        return err
+
+    key = db.session.get(SecurityKey, key_id)
+    if not key:
+        return jsonify({"error": "Security key not found"}), 404
+
+    data = request.get_json()
+    if data is None or ("require_machine_binding" not in data and "max_machines" not in data):
+        return jsonify({"error": "require_machine_binding or max_machines field is required"}), 400
+
+    if "require_machine_binding" in data:
+        key.require_machine_binding = bool(data["require_machine_binding"])
+
+    if "max_machines" in data:
+        new_max = int(data["max_machines"])
+        if new_max < 1:
+            return jsonify({"error": "max_machines must be at least 1"}), 400
+        active_count = MachineBinding.query.filter_by(
+            security_key_id=key_id, is_active=True
+        ).count()
+        if new_max < active_count:
+            return jsonify({
+                "error": f"Cannot set limit to {new_max}: {active_count} machine(s) are already bound. "
+                         f"Unbind some machines first."
+            }), 409
+        key.max_machines = new_max
+
+    log_system_event(
+        user_id=key.user_id,
+        performed_by_user_id=admin_user.id,
+        action_type="MACHINE_BINDING_POLICY_UPDATED",
+        status="SUCCESS",
+        target_entity_type="SECURITY_KEY",
+        target_entity_id=key_id,
+        details=f"Binding policy updated for security key ID {key_id} by admin '{admin_user.username}': "
+                f"require_machine_binding={key.require_machine_binding}, max_machines={key.max_machines}.",
+    )
+
+    db.session.commit()
+    return jsonify({
+        "message": "Binding policy updated",
+        "require_machine_binding": key.require_machine_binding,
+        "max_machines": key.max_machines,
+    }), 200
 
 
 # Login endpoint
@@ -7274,6 +7548,35 @@ def verify_key_ownership():
     if security_key.user_id == user.id:
         # SUCCESS: The key belongs to the authenticated user.
         print(f"SUCCESS: Key SN {serial_number} verified for user {user.username}")
+
+        # Machine binding check — only enforced when the policy is enabled on this key
+        if security_key.require_machine_binding:
+            incoming_machine_id = data.get("machine_fingerprint")
+            if not incoming_machine_id:
+                print(f"MACHINE BINDING: No fingerprint provided for key SN {serial_number}")
+                socketio.emit(
+                    "machine_binding_error",
+                    {"message": "Machine fingerprint required but not provided."},
+                    room=auth_session.session_token,
+                )
+                return jsonify({"status": "error", "message": "Machine fingerprint missing"}), 403
+
+            binding = MachineBinding.query.filter_by(
+                security_key_id=security_key.id,
+                machine_id=incoming_machine_id,
+                is_active=True,
+            ).first()
+
+            if not binding:
+                print(f"MACHINE BINDING: Machine {incoming_machine_id[:16]}... not authorised for key SN {serial_number}")
+                socketio.emit(
+                    "machine_binding_error",
+                    {"message": "This machine is not authorised for this security key."},
+                    room=auth_session.session_token,
+                )
+                return jsonify({"status": "error", "message": "Machine not bound to this key"}), 403
+
+            print(f"MACHINE BINDING: Machine '{binding.machine_name}' authorised for key SN {serial_number}")
 
         # Store the serial number in the auth session for the PIN verification step
         auth_session.pending_pin_verification_serial = key_serial_number
