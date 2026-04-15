@@ -233,10 +233,10 @@ interface SecurityKeyDetails {
 
 export const registerSecurityKey = async (
     username: string,
-    onSuccess: (message: string) => void,
+    onSuccess: (message: string, keyId?: number) => void,
     onError: (message: string) => void,
-    keyDetails?: SecurityKeyDetails & { keyId?: number },  
-    forceRegistration?: boolean  
+    keyDetails?: SecurityKeyDetails & { keyId?: number },
+    forceRegistration?: boolean
 ): Promise<void> => {
     try {
         console.log('Beginning security key registration for:', username);
@@ -305,7 +305,7 @@ export const registerSecurityKey = async (
 
             const successMessage = completeResponse.data.message || 'Security key registered successfully!';
 
-            onSuccess(successMessage);
+            onSuccess(successMessage, completeResponse.data.keyId);
         } else {
             onError(completeResponse.data.error || 'Registration failed');
         }
