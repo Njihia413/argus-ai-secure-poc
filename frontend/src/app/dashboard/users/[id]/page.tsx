@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
@@ -35,6 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { YubiKeyDetectionModal } from "@/components/data-table/yubikey-detection-modal"
 import { registerSecurityKey } from "@/app/utils/webauthn"
 import { API_URL } from "@/app/utils/constants"
+import { fetchWorkstationFingerprint } from "@/app/utils/machine-fingerprint"
 
 interface User {
   id: number
@@ -121,6 +123,12 @@ export default function UserDetailsPage() {
   })
   const [isDetectionModalOpen, setIsDetectionModalOpen] = useState(false)
 
+  // Machine binding state (used during new key registration only)
+  const [bindToCurrentMachine, setBindToCurrentMachine] = useState(false)
+  const [machineFingerprint, setMachineFingerprint] = useState<{ machine_id: string; components: Record<string, string> } | null>(null)
+  const [machineLabel, setMachineLabel] = useState('')
+  const [isFetchingFingerprint, setIsFetchingFingerprint] = useState(false)
+
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
     if (!userInfo || !userInfo.authToken) {
@@ -175,6 +183,19 @@ export default function UserDetailsPage() {
     } catch (error: any) {
       console.error("Error fetching security keys:", error)
       toast.error(error.response?.data?.error || "Failed to load security keys")
+    }
+  }
+
+  const fetchMachineFingerprint = async () => {
+    setIsFetchingFingerprint(true)
+    try {
+      const fingerprint = await fetchWorkstationFingerprint()
+      setMachineFingerprint(fingerprint)
+    } catch (error: any) {
+      toast.error(error.message || "Failed to capture machine fingerprint")
+      setBindToCurrentMachine(false)
+    } finally {
+      setIsFetchingFingerprint(false)
     }
   }
 
@@ -392,16 +413,43 @@ export default function UserDetailsPage() {
       
       await registerSecurityKey(
         user.username,
-        async (message) => {
+        async (message, newKeyId) => {
           toast.success(message);
           setShowRegistrationModal(false);
-          
+
           const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+
+          // Apply machine binding if the admin opted in during registration
+          if (bindToCurrentMachine && machineFingerprint && newKeyId) {
+            try {
+              await axios.put(
+                `${API_URL}/security-keys/${newKeyId}/binding-policy`,
+                { require_machine_binding: true },
+                { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+              )
+              await axios.post(
+                `${API_URL}/security-keys/${newKeyId}/bind-machine`,
+                {
+                  machine_id: machineFingerprint.machine_id,
+                  components: machineFingerprint.components,
+                  machine_name: machineLabel || machineFingerprint.components.hostname || 'Primary Machine',
+                },
+                { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+              )
+              toast.success("Machine binding applied successfully")
+            } catch {
+              toast.error("Key registered, but machine binding failed. You can add it from the key detail page.")
+            }
+          }
+
           await fetchUserDetails(userInfo.authToken);
           await fetchSecurityKeys(userInfo.authToken);
-          
+
           setIsKeyReassigned(false);
-          
+          setBindToCurrentMachine(false);
+          setMachineFingerprint(null);
+          setMachineLabel('');
+
           sessionStorage.removeItem('pendingKeyDetails');
           setSelectedKey(null);
         },
@@ -797,6 +845,60 @@ export default function UserDetailsPage() {
                     required={!selectedKey || isKeyReassigned}
                 />
               </div>
+
+              {/* Machine Binding — only shown for new registrations, not edits */}
+              {!selectedKey && (
+                <div className="border border-[var(--card-border-themed)] rounded-md p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="bind-machine" className="text-sm font-medium">Bind to current machine</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Restrict this key to this workstation only</p>
+                    </div>
+                    <Switch
+                      id="bind-machine"
+                      checked={bindToCurrentMachine}
+                      onCheckedChange={(checked) => {
+                        setBindToCurrentMachine(checked)
+                        if (checked && !machineFingerprint) {
+                          fetchMachineFingerprint()
+                        }
+                        if (!checked) {
+                          setMachineFingerprint(null)
+                          setMachineLabel('')
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {bindToCurrentMachine && (
+                    <div className="space-y-2">
+                      {isFetchingFingerprint ? (
+                        <p className="text-xs text-muted-foreground flex items-center gap-2">
+                          <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-current inline-block"></span>
+                          Capturing machine fingerprint...
+                        </p>
+                      ) : machineFingerprint ? (
+                        <div className="bg-muted/50 border border-[var(--card-border-themed)] rounded-md p-2 text-xs space-y-1">
+                          <p><span className="font-medium">Hostname:</span> {machineFingerprint.components.hostname}</p>
+                          <p><span className="font-medium">OS:</span> {machineFingerprint.components.os}</p>
+                          <p><span className="font-medium">MAC Address:</span> {machineFingerprint.components.mac_address}</p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-1">
+                        <Label htmlFor="machine-label" className="text-xs">Machine Label (optional)</Label>
+                        <Input
+                          id="machine-label"
+                          placeholder="e.g. Dev Workstation"
+                          value={machineLabel}
+                          onChange={(e) => setMachineLabel(e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <DialogFooter>
@@ -813,7 +915,10 @@ export default function UserDetailsPage() {
                       pin: ''
                     });
                     setSelectedKey(null);
-                    setIsKeyReassigned(false); // Reset this flag
+                    setIsKeyReassigned(false);
+                    setBindToCurrentMachine(false);
+                    setMachineFingerprint(null);
+                    setMachineLabel('');
                   }}
               >
                 Cancel
