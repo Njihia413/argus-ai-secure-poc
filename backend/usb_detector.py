@@ -5,6 +5,11 @@ import json
 import platform
 import hid # Added for HID device detection
 import requests # Added for making HTTP requests to Flask backend
+from machine_fingerprint import generate_machine_fingerprint
+
+# Compute machine fingerprint once at startup — included in every verify_key_ownership call
+_MACHINE_ID, _MACHINE_COMPONENTS = generate_machine_fingerprint()
+print(f"Machine fingerprint computed: {_MACHINE_ID[:16]}...")
 
 HOST = "localhost"
 PORT = 12345
@@ -164,7 +169,8 @@ async def hid_security_key_monitor():
                             try:
                                 payload = {
                                     'serial_number': serial_number,
-                                    'auth_token': token
+                                    'auth_token': token,
+                                    'machine_fingerprint': _MACHINE_ID,
                                 }
                                 response = requests.post(FLASK_API_URL, json=payload, timeout=5)
                                 print(f"Notified Flask for verification: User token {token[:10]}..., SN {serial_number}. Response: {response.status_code} - {response.text}")
@@ -227,6 +233,15 @@ async def handler(websocket):  # Single argument for websockets v15+
                     connected_clients[websocket] = data['token']
                     print(f"Authenticated client {client_id_str} with token: {data['token'][:10]}...")
                     
+                    # After auth, send this machine's fingerprint so the admin UI
+                    # can use the workstation's identity (not the server's) for binding
+                    await websocket.send(json.dumps({
+                        "event": "MACHINE_FINGERPRINT",
+                        "machine_id": _MACHINE_ID,
+                        "components": _MACHINE_COMPONENTS,
+                    }))
+                    print(f"Python Handler: Sent MACHINE_FINGERPRINT to client {client_id_str}.")
+
                     # After auth, send initial state
                     print(f"Python Handler: Sending initial state to client {client_id_str}.")
                     if known_usb_drives:
