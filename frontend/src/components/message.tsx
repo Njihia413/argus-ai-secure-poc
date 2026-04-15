@@ -153,6 +153,7 @@ const PurePreviewMessage = ({
             {message.parts?.map((part, i) => {
               switch (part.type) {
                 case "text":
+                  const isStreaming = message.role === "assistant" && isLatestMessage && status === "streaming" && i === (message.parts?.length ?? 0) - 1;
                   return (
                     <motion.div
                       initial={{ y: 5, opacity: 0 }}
@@ -164,11 +165,14 @@ const PurePreviewMessage = ({
                         className={cn("flex flex-col gap-4", {
                           "bg-primary text-primary-foreground px-3 py-2 rounded-tl-xl rounded-tr-xl rounded-bl-xl":
                             message.role === "user",
-                          "bg-secondary text-secondary-foreground px-3 py-2 rounded-tl-xl rounded-tr-xl rounded-br-xl": // Added for assistant, adjust as needed
+                          "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-3 py-2 rounded-tl-xl rounded-tr-xl rounded-br-xl":
                             message.role === "assistant",
                         })}
                       >
                         <Markdown>{part.text}</Markdown>
+                        {isStreaming && (
+                          <span className="inline-block w-2 h-4 bg-foreground/70 animate-pulse rounded-sm -mt-3" />
+                        )}
                       </div>
                     </motion.div>
                   );
