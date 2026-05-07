@@ -30,7 +30,12 @@ from file_encryption import (
 )
 
 # Machine fingerprint utility for device binding
-from machine_fingerprint import generate_machine_fingerprint, validate_fingerprint
+from machine_fingerprint import (
+    generate_machine_fingerprint,
+    validate_fingerprint,
+    enumerate_installed_apps,
+    enumerate_raw_inventory,
+)
 
 from flask_sqlalchemy.session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -153,6 +158,17 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
+# Canonical set of assignable roles. The earlier `"user"` role has been retired;
+# the admin UI only exposes these five, so the backend must match.
+VALID_ROLES = (
+    "admin",
+    "hr",
+    "manager",
+    "it_department",
+    "customer_service",
+)
+
+
 # User model renamed to Users and with additional fields including role
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -163,7 +179,7 @@ class Users(db.Model):
     username = db.Column(db.String(100), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=True)
-    role = db.Column(db.String(20), nullable=False, default="user")
+    role = db.Column(db.String(20), nullable=False)
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(
@@ -598,6 +614,137 @@ class MachineBinding(db.Model):
     created_by_user = db.relationship("Users", foreign_keys=[created_by])
 
 
+# Access-tier constants. The tier expresses *how strongly* the current session
+# has proven identity + device. Tiers have a strict ordering (none < key_unbound
+# < key_bound); any resource with `min_tier` <= the session's tier is reachable.
+TIER_NONE = "none"
+TIER_KEY_UNBOUND = "key_unbound"
+TIER_KEY_BOUND = "key_bound"
+TIER_ORDER = (TIER_NONE, TIER_KEY_UNBOUND, TIER_KEY_BOUND)
+
+
+def tier_at_least(actual: str, required: str) -> bool:
+    try:
+        return TIER_ORDER.index(actual) >= TIER_ORDER.index(required)
+    except ValueError:
+        return False
+
+
+class AIModel(db.Model):
+    __tablename__ = "ai_models"
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(128), unique=True, nullable=False)
+    display_name = db.Column(db.String(128), nullable=False)
+    min_tier = db.Column(db.String(32), nullable=False, default=TIER_KEY_BOUND)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class Application(db.Model):
+    __tablename__ = "applications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(128), unique=True, nullable=False)
+    display_name = db.Column(db.String(128), nullable=False)
+    # detect_hints keys: "windows_registry", "macos_bundle_id", "linux_desktop",
+    # "launch_uri" (protocol handler template used by the frontend to launch).
+    detect_hints = db.Column(db.JSON, nullable=True)
+    min_tier = db.Column(db.String(32), nullable=False, default=TIER_KEY_BOUND)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ApplicationFeature(db.Model):
+    __tablename__ = "application_features"
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(
+        db.Integer, db.ForeignKey("applications.id"), nullable=False
+    )
+    slug = db.Column(db.String(160), unique=True, nullable=False)
+    display_name = db.Column(db.String(160), nullable=False)
+    min_tier = db.Column(db.String(32), nullable=False, default=TIER_KEY_BOUND)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    application = db.relationship(
+        "Application", backref=db.backref("features", lazy=True)
+    )
+
+
+class RolePermission(db.Model):
+    __tablename__ = "role_permissions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(32), nullable=False)
+    # "model" | "app" | "app_feature" | "admin_section"
+    resource_type = db.Column(db.String(32), nullable=False)
+    # For model/app/app_feature this is the slug; for admin_section, a section key.
+    resource_id = db.Column(db.String(160), nullable=False)
+    allowed = db.Column(db.Boolean, nullable=False, default=True)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "role", "resource_type", "resource_id", name="uq_role_resource"
+        ),
+    )
+
+
+class MachineInstalledApp(db.Model):
+    __tablename__ = "machine_installed_apps"
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_binding_id = db.Column(
+        db.Integer, db.ForeignKey("machine_bindings.id"), nullable=False
+    )
+    application_id = db.Column(
+        db.Integer, db.ForeignKey("applications.id"), nullable=False
+    )
+    version = db.Column(db.String(64), nullable=True)
+    detected_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "machine_binding_id", "application_id", name="uq_binding_app"
+        ),
+    )
+
+    machine_binding = db.relationship(
+        "MachineBinding", backref=db.backref("installed_apps", lazy=True)
+    )
+    application = db.relationship("Application")
+
+
+class MachineRawInventory(db.Model):
+    __tablename__ = "machine_raw_inventory"
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_binding_id = db.Column(
+        db.Integer, db.ForeignKey("machine_bindings.id"), nullable=False, index=True
+    )
+    bundle_id = db.Column(db.String(255), nullable=True)
+    name = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.Text, nullable=True)
+    detected_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    machine_binding = db.relationship(
+        "MachineBinding", backref=db.backref("raw_inventory", lazy=True)
+    )
+
+
 def run_ykman_command(args):
     """Run ykman command and return output"""
     try:
@@ -850,6 +997,44 @@ def assess_risk(user_id, request):
         return 100  # High risk if user not found
 
     # Start with a base risk score - start at 30 for first-time logins
+
+
+def admin_required(f):
+    """Lighter-weight gate than elevated_admin_required: requires a valid
+    session owned by an admin but does not demand security-key verification.
+
+    Used for admin configuration surfaces (role permissions, catalog CRUD) so
+    they remain usable by admins who have not registered a security key — the
+    sensitive per-key and lockdown operations still go through the elevated
+    decorator.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        expires_at = auth_session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            return jsonify({"error": "Session expired"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user or user.role != "admin":
+            return jsonify({"error": "Admin privileges required"}), 403
+
+        kwargs["admin_user"] = user
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 def elevated_admin_required(f):
@@ -1313,18 +1498,27 @@ def register():
         )
         return jsonify({"error": "Username already exists"}), 409
 
-    # Set role (default to 'user' unless specifically set to another valid role)
-    valid_roles = [
-        "user",
-        "admin",
-        "hr",
-        "manager",
-        "it_department",
-        "customer_service",
-    ]
-    role = data.get("role", "user")
-    if role not in valid_roles:
-        role = "user"  # Ensure only valid roles
+    role = data.get("role")
+    if role not in VALID_ROLES:
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type="USER_REGISTER_FAILURE",
+            status="FAILURE",
+            details=(
+                f"Registration attempt for username '{data.get('username')}' failed: "
+                f"Invalid or missing role '{role}'. Valid roles: {', '.join(VALID_ROLES)}."
+            ),
+        )
+        return (
+            jsonify(
+                {
+                    "error": "A valid role is required",
+                    "valid_roles": list(VALID_ROLES),
+                }
+            ),
+            400,
+        )
 
     # Validate password against current policy
     password_errors = validate_password_policy(data["password"])
@@ -3004,6 +3198,72 @@ def list_machine_bindings(key_id):
     }), 200
 
 
+def _run_app_detection_for_binding(binding):
+    """Scan the host for apps in the catalog and upsert MachineInstalledApp rows
+    for the given binding. Clears any stale rows first so the snapshot reflects
+    what's installed right now. Safe to call on both new bindings and
+    reactivations. Caller is responsible for committing."""
+    _run_raw_inventory_for_binding(binding)
+    try:
+        active_apps = Application.query.filter_by(is_active=True).all()
+        hints_by_slug = {a.slug: (a.detect_hints or {}) for a in active_apps if a.detect_hints}
+        if not hints_by_slug:
+            return []
+
+        apps_by_slug = {a.slug: a for a in active_apps}
+        detected = enumerate_installed_apps(hints_by_slug)
+
+        MachineInstalledApp.query.filter_by(machine_binding_id=binding.id).delete()
+        db.session.flush()
+
+        now = datetime.now(timezone.utc)
+        detected_slugs = []
+        for entry in detected:
+            slug = entry.get("slug")
+            app_obj = apps_by_slug.get(slug)
+            if not app_obj:
+                continue
+            db.session.add(
+                MachineInstalledApp(
+                    machine_binding_id=binding.id,
+                    application_id=app_obj.id,
+                    version=entry.get("version"),
+                    detected_at=now,
+                )
+            )
+            detected_slugs.append(slug)
+        print(f"App detection for binding {binding.id}: {detected_slugs}")
+        return detected_slugs
+    except Exception as detect_err:
+        print(f"Warning: installed-app detection failed: {detect_err}")
+        return []
+
+
+def _run_raw_inventory_for_binding(binding):
+    """Scan every installed app on the host and replace raw-inventory rows."""
+    try:
+        inventory = enumerate_raw_inventory()
+        MachineRawInventory.query.filter_by(machine_binding_id=binding.id).delete()
+        db.session.flush()
+        now = datetime.now(timezone.utc)
+        for item in inventory:
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            db.session.add(
+                MachineRawInventory(
+                    machine_binding_id=binding.id,
+                    bundle_id=item.get("bundle_id"),
+                    name=name[:255],
+                    path=item.get("path"),
+                    detected_at=now,
+                )
+            )
+        print(f"Raw inventory for binding {binding.id}: {len(inventory)} apps")
+    except Exception as err:
+        print(f"Warning: raw inventory scan failed: {err}")
+
+
 @app.route("/api/security-keys/<int:key_id>/bind-machine", methods=["POST"])
 def bind_machine(key_id):
     """Bind a machine fingerprint to a security key."""
@@ -3047,6 +3307,7 @@ def bind_machine(key_id):
         existing.is_active = True
         existing.deactivated_at = None
         existing.machine_name = machine_name
+        _run_app_detection_for_binding(existing)
         db.session.commit()
         return jsonify({"message": "Machine binding reactivated", "id": existing.id}), 200
 
@@ -3068,6 +3329,8 @@ def bind_machine(key_id):
         created_by=admin_user.id,
     )
     db.session.add(binding)
+    db.session.flush()
+    _run_app_detection_for_binding(binding)
 
     log_system_event(
         user_id=key.user_id,
@@ -6268,19 +6531,9 @@ def update_user_role(user_id):
         )
         return jsonify({"error": "New role is required"}), 400
 
-    # Validate role
-    valid_roles = [
-        "user",
-        "admin",
-        "security_officer",
-        "auditor",
-        "manager",
-        "developer",
-        "analyst",
-        "guest",
-    ]
+    # Validate role against the canonical set
     new_role = data["role"]
-    if new_role not in valid_roles:
+    if new_role not in VALID_ROLES:
         log_system_event(
             user_id=user_id,
             performed_by_user_id=admin_user.id,
@@ -6292,7 +6545,7 @@ def update_user_role(user_id):
         )
         return (
             jsonify(
-                {"error": f'Invalid role. Valid roles are: {", ".join(valid_roles)}'}
+                {"error": f'Invalid role. Valid roles are: {", ".join(VALID_ROLES)}'}
             ),
             400,
         )
@@ -6492,6 +6745,177 @@ def update_user_id(old_id, new_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/adoption-funnel", methods=["GET"])
+def get_adoption_funnel():
+    """Four-stage zero-trust adoption funnel:
+      1. Total active users
+      2. Users with at least one active SecurityKey
+      3. Users from (2) whose key has at least one active MachineBinding
+      4. Users from (3) who actually had a key-verified session in the last 7 days
+
+    Each stage is a strict subset of the previous. Where the bars shrink the
+    most tells you where rollout is stalling.
+    """
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid auth token"}), 401
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+        total = Users.query.filter_by(is_deleted=False).count()
+
+        users_with_active_key_ids = {
+            uid for (uid,) in (
+                db.session.query(Users.id)
+                .join(SecurityKey, SecurityKey.user_id == Users.id)
+                .filter(Users.is_deleted.is_(False), SecurityKey.is_active.is_(True))
+                .distinct()
+                .all()
+            )
+        }
+
+        users_with_binding_ids = {
+            uid for (uid,) in (
+                db.session.query(Users.id)
+                .join(SecurityKey, SecurityKey.user_id == Users.id)
+                .join(MachineBinding, MachineBinding.security_key_id == SecurityKey.id)
+                .filter(
+                    Users.is_deleted.is_(False),
+                    SecurityKey.is_active.is_(True),
+                    MachineBinding.is_active.is_(True),
+                )
+                .distinct()
+                .all()
+            )
+        }
+
+        verified_recent_user_ids = {
+            uid for (uid,) in (
+                db.session.query(AuthenticationSession.user_id)
+                .filter(
+                    AuthenticationSession.security_key_verified.is_(True),
+                    AuthenticationSession.created_at >= cutoff,
+                )
+                .distinct()
+                .all()
+            )
+        }
+        used_bound_this_week = len(users_with_binding_ids & verified_recent_user_ids)
+
+        return jsonify({
+            "adoptionFunnel": {
+                "total": total,
+                "with_active_key": len(users_with_active_key_ids),
+                "with_machine_binding": len(users_with_binding_ids),
+                "used_bound_this_week": used_bound_this_week,
+            }
+        })
+    except Exception as e:
+        print(f"Error getting adoption funnel: {str(e)}")
+        return jsonify({"error": "Failed to fetch adoption funnel"}), 500
+
+
+@app.route("/api/tier-distribution", methods=["GET"])
+def get_tier_distribution():
+    """Counts each non-deleted user by their max-achievable access tier.
+
+    Tier is normally a function of (session, machine_id) at request time, but
+    for a posture dashboard we use the user's *potential* tier:
+      - key_bound:   user has an active SecurityKey AND at least one active MachineBinding for that key
+      - key_unbound: user has an active SecurityKey but no active MachineBinding
+      - none:        user has no active SecurityKey
+
+    Answers "how many users could reach each tier today?" — i.e. is the
+    key-binding policy actually being adopted?
+    """
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid auth token"}), 401
+
+        counts = {"none": 0, "key_unbound": 0, "key_bound": 0}
+
+        users = Users.query.filter_by(is_deleted=False).all()
+        for u in users:
+            active_key_ids = [
+                k.id for k in SecurityKey.query.filter_by(user_id=u.id, is_active=True).all()
+            ]
+            if not active_key_ids:
+                counts["none"] += 1
+                continue
+            has_binding = (
+                MachineBinding.query.filter(
+                    MachineBinding.security_key_id.in_(active_key_ids),
+                    MachineBinding.is_active.is_(True),
+                ).first()
+                is not None
+            )
+            counts["key_bound" if has_binding else "key_unbound"] += 1
+
+        return jsonify({"tierDistribution": counts})
+    except Exception as e:
+        print(f"Error getting tier distribution: {str(e)}")
+        return jsonify({"error": "Failed to fetch tier distribution"}), 500
+
+
+@app.route("/api/failed-login-stats", methods=["GET"])
+def get_failed_login_stats():
+    """Top accounts by their current failed-login counter (users.failed_login_attempts).
+    Reads the running count maintained on the user row — matches what's visible
+    in pgAdmin and resets when the account is unlocked or the password is reset."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid auth token"}), 401
+
+        rows = (
+            Users.query
+            .filter(
+                Users.is_deleted.is_(False),
+                Users.failed_login_attempts > 0,
+            )
+            .order_by(Users.failed_login_attempts.desc())
+            .limit(10)
+            .all()
+        )
+
+        return jsonify({
+            "failedLoginStats": [
+                {
+                    "user_id": u.id,
+                    "name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                    "username": u.username,
+                    "role": u.role,
+                    "failed_count": u.failed_login_attempts or 0,
+                    "last_attempt": u.last_login_time.isoformat() if u.last_login_time else None,
+                }
+                for u in rows
+            ]
+        })
+    except Exception as e:
+        print(f"Error getting failed-login stats: {str(e)}")
+        return jsonify({"error": "Failed to fetch failed-login stats"}), 500
+
+
 @app.route("/api/location-stats", methods=["GET"])
 def get_location_stats():
     try:
@@ -6517,7 +6941,10 @@ def get_location_stats():
                 func.count(AuthenticationAttempt.id).label("attempt_count"),
             )
             .filter(
-                AuthenticationAttempt.location.isnot(None)  # Filter out null locations
+                AuthenticationAttempt.location.isnot(None),
+                # Hide debug/dev-only buckets so the dashboard reflects real
+                # user geography rather than localhost noise.
+                AuthenticationAttempt.location != "Local Development",
             )
             .group_by(AuthenticationAttempt.location)
             .all()
@@ -7391,9 +7818,10 @@ def get_locked_accounts():
         return jsonify({"error": "Failed to retrieve locked accounts"}), 500
 
 
-# Initialize database and create admin user
+# Initialize default rows (admin user + app settings). Schema is managed by
+# Alembic migrations — do NOT call db.create_all() here, or it will race with
+# migrations and create tables before Alembic can run.
 with app.app_context():
-    db.create_all()
     create_admin_user()
     ensure_default_settings()
     db.session.commit()
@@ -7496,6 +7924,42 @@ def hid_security_key_event():
         return jsonify({"error": "Invalid status provided"}), 400
 
 
+def get_access_tier(auth_session, machine_id: str = None) -> str:
+    """
+    Compute the access tier for the current session.
+
+    Returns one of TIER_NONE / TIER_KEY_UNBOUND / TIER_KEY_BOUND.
+
+    - TIER_NONE: session has not completed a security-key assertion.
+    - TIER_KEY_UNBOUND: key verified, but either no machine_id was supplied
+      or no active MachineBinding matches that machine for any key the user
+      has registered that requires binding.
+    - TIER_KEY_BOUND: key verified AND an active MachineBinding matches the
+      current machine for one of this user's keys.
+    """
+    if not auth_session or not getattr(auth_session, "security_key_verified", False):
+        return TIER_NONE
+
+    if not machine_id:
+        return TIER_KEY_UNBOUND
+
+    user_id = auth_session.user_id
+    if not user_id:
+        return TIER_KEY_UNBOUND
+
+    match = (
+        db.session.query(MachineBinding)
+        .join(SecurityKey, MachineBinding.security_key_id == SecurityKey.id)
+        .filter(
+            SecurityKey.user_id == user_id,
+            MachineBinding.machine_id == machine_id,
+            MachineBinding.is_active.is_(True),
+        )
+        .first()
+    )
+    return TIER_KEY_BOUND if match else TIER_KEY_UNBOUND
+
+
 @app.route("/api/verify_key_ownership", methods=["POST"])
 def verify_key_ownership():
     """
@@ -7546,46 +8010,24 @@ def verify_key_ownership():
 
     # 4. Compare user_id
     if security_key.user_id == user.id:
-        # SUCCESS: The key belongs to the authenticated user.
+        # SUCCESS: The key belongs to the authenticated user. We mark the key as
+        # verified here regardless of machine-binding state — get_access_tier()
+        # is the single source of truth for tier-vs-resource decisions, and it
+        # already distinguishes key_unbound (no MachineBinding match) from
+        # key_bound (active match). Rejecting on unbound machines used to
+        # short-circuit even the key_unbound tier, which the resource model
+        # explicitly supports.
         print(f"SUCCESS: Key SN {serial_number} verified for user {user.username}")
-
-        # Machine binding check — only enforced when the policy is enabled on this key
-        if security_key.require_machine_binding:
-            incoming_machine_id = data.get("machine_fingerprint")
-            if not incoming_machine_id:
-                print(f"MACHINE BINDING: No fingerprint provided for key SN {serial_number}")
-                socketio.emit(
-                    "machine_binding_error",
-                    {"message": "Machine fingerprint required but not provided."},
-                    room=auth_session.session_token,
-                )
-                return jsonify({"status": "error", "message": "Machine fingerprint missing"}), 403
-
-            binding = MachineBinding.query.filter_by(
-                security_key_id=security_key.id,
-                machine_id=incoming_machine_id,
-                is_active=True,
-            ).first()
-
-            if not binding:
-                print(f"MACHINE BINDING: Machine {incoming_machine_id[:16]}... not authorised for key SN {serial_number}")
-                socketio.emit(
-                    "machine_binding_error",
-                    {"message": "This machine is not authorised for this security key."},
-                    room=auth_session.session_token,
-                )
-                return jsonify({"status": "error", "message": "Machine not bound to this key"}), 403
-
-            print(f"MACHINE BINDING: Machine '{binding.machine_name}' authorised for key SN {serial_number}")
 
         # Store the serial number in the auth session for the PIN verification step
         auth_session.pending_pin_verification_serial = key_serial_number
-        db.session.commit()
 
         # Check if the key has a PIN
         if security_key.pin:
             print(f"Key SN {serial_number} requires a PIN.")
-            # 5a. Emit event indicating PIN is required
+            # PIN flow: do NOT flip security_key_verified yet — that happens in
+            # handle_verify_pin once the PIN matches.
+            db.session.commit()
             socketio.emit(
                 "models_unlocked",
                 {
@@ -7595,8 +8037,11 @@ def verify_key_ownership():
                 room=auth_session.session_token,
             )
         else:
-            # 5b. Emit event to unlock models directly
+            # No-PIN flow: verification is complete the moment the key is
+            # confirmed to belong to the user.
             print(f"Key SN {serial_number} does not require a PIN. Unlocking models.")
+            auth_session.security_key_verified = True
+            db.session.commit()
             socketio.emit(
                 "models_unlocked",
                 {
@@ -7618,6 +8063,726 @@ def verify_key_ownership():
             room=auth_session.session_token,
         )
         return jsonify({"status": "error", "message": "Key ownership mismatch"}), 403
+
+
+@app.route("/api/security_key/disconnect", methods=["POST"])
+def security_key_disconnect():
+    """
+    Called by the chat page when usb_detector reports SECURITY_KEY_HID_DISCONNECTED.
+    Resets the session's verified-key state so get_access_tier() returns TIER_NONE
+    on the next /api/access/models call. Symmetric with verify_key_ownership which
+    flips the flag on plug-in.
+    """
+    auth_session, _ = _get_auth_session_from_request()
+    if not auth_session:
+        return jsonify({"error": "Authorization required"}), 401
+
+    auth_session.security_key_verified = False
+    # Drop any pending PIN flow — if the user re-plugs the key, verify_key_ownership
+    # will set this again from scratch.
+    auth_session.pending_pin_verification_serial = None
+    db.session.commit()
+    return jsonify({"status": "success"}), 200
+
+
+def _get_auth_session_from_request():
+    """Extract and validate the auth session from the Authorization header.
+    Returns (auth_session, user) or (None, None) if the token is missing or invalid."""
+    auth_token = request.headers.get("Authorization")
+    if not auth_token or not auth_token.startswith("Bearer "):
+        return None, None
+    token = auth_token.replace("Bearer ", "", 1)
+    auth_session = AuthenticationSession.query.filter_by(session_token=token).first()
+    if not auth_session:
+        return None, None
+    user = db.session.get(Users, auth_session.user_id) if auth_session.user_id else None
+    return auth_session, user
+
+
+def _allowed_slugs(role, resource_type):
+    """Set of resource slugs this role is explicitly allowed to use."""
+    rows = RolePermission.query.filter_by(
+        role=role, resource_type=resource_type, allowed=True
+    ).all()
+    return {r.resource_id for r in rows}
+
+
+@app.route("/api/access/models", methods=["GET"])
+def access_models():
+    auth_session, user = _get_auth_session_from_request()
+    if not auth_session or not user:
+        return jsonify({"error": "Authorization required"}), 401
+
+    machine_id = request.headers.get("X-Machine-Id")
+    tier = get_access_tier(auth_session, machine_id)
+    allowed = _allowed_slugs(user.role, "model")
+
+    result = []
+    for m in AIModel.query.filter_by(is_active=True).order_by(AIModel.slug).all():
+        if m.slug not in allowed:
+            continue
+        if not tier_at_least(tier, m.min_tier):
+            continue
+        result.append(
+            {
+                "slug": m.slug,
+                "display_name": m.display_name,
+                "min_tier": m.min_tier,
+            }
+        )
+
+    return jsonify({"tier": tier, "models": result})
+
+
+@app.route("/api/access/applications", methods=["GET"])
+def access_applications():
+    auth_session, user = _get_auth_session_from_request()
+    if not auth_session or not user:
+        return jsonify({"error": "Authorization required"}), 401
+
+    machine_id = request.headers.get("X-Machine-Id")
+    tier = get_access_tier(auth_session, machine_id)
+    allowed = _allowed_slugs(user.role, "app")
+
+    # Only filter by installed apps when the session is actually on a bound
+    # machine. At lower tiers we show nothing (frontend explains why).
+    installed_app_ids = None
+    if tier == TIER_KEY_BOUND and machine_id:
+        binding = (
+            db.session.query(MachineBinding)
+            .join(SecurityKey, MachineBinding.security_key_id == SecurityKey.id)
+            .filter(
+                SecurityKey.user_id == user.id,
+                MachineBinding.machine_id == machine_id,
+                MachineBinding.is_active.is_(True),
+            )
+            .first()
+        )
+        if binding:
+            installed_app_ids = {
+                row.application_id
+                for row in MachineInstalledApp.query.filter_by(
+                    machine_binding_id=binding.id
+                ).all()
+            }
+
+    result = []
+    for a in Application.query.filter_by(is_active=True).order_by(Application.slug).all():
+        if a.slug not in allowed:
+            continue
+        if not tier_at_least(tier, a.min_tier):
+            continue
+        if installed_app_ids is None:
+            # Lower tiers don't surface apps yet.
+            continue
+        if a.id not in installed_app_ids:
+            continue
+        hints = a.detect_hints or {}
+        result.append(
+            {
+                "slug": a.slug,
+                "display_name": a.display_name,
+                "min_tier": a.min_tier,
+                "launch_uri": hints.get("launch_uri"),
+            }
+        )
+
+    return jsonify({"tier": tier, "applications": result})
+
+
+@app.route("/api/access/applications/<slug>/features", methods=["GET"])
+def access_application_features(slug):
+    auth_session, user = _get_auth_session_from_request()
+    if not auth_session or not user:
+        return jsonify({"error": "Authorization required"}), 401
+
+    machine_id = request.headers.get("X-Machine-Id")
+    tier = get_access_tier(auth_session, machine_id)
+
+    application = Application.query.filter_by(slug=slug, is_active=True).first()
+    if not application:
+        return jsonify({"error": "Application not found"}), 404
+
+    allowed_app_slugs = _allowed_slugs(user.role, "app")
+    if application.slug not in allowed_app_slugs or not tier_at_least(tier, application.min_tier):
+        return (
+            jsonify({"error": "Application not available at current access tier"}),
+            403,
+        )
+
+    allowed_feature_slugs = _allowed_slugs(user.role, "app_feature")
+    features = ApplicationFeature.query.filter_by(
+        application_id=application.id, is_active=True
+    ).all()
+    result = []
+    for f in features:
+        if f.slug not in allowed_feature_slugs:
+            continue
+        if not tier_at_least(tier, f.min_tier):
+            continue
+        result.append(
+            {
+                "slug": f.slug,
+                "display_name": f.display_name,
+                "min_tier": f.min_tier,
+            }
+        )
+
+    return jsonify({"tier": tier, "features": result})
+
+
+@app.route("/api/access/check-model", methods=["POST"])
+def access_check_model():
+    """Lightweight 'may this session use model X?' gate.
+
+    The Next.js chat route calls this before forwarding a request to Groq so
+    that model access is ultimately enforced by the Python backend rather
+    than by client-side code that could be tampered with.
+    """
+    auth_session, user = _get_auth_session_from_request()
+    if not auth_session or not user:
+        return jsonify({"error": "Authorization required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    slug = data.get("model")
+    machine_id = data.get("machine_id") or request.headers.get("X-Machine-Id")
+    if not slug:
+        return jsonify({"error": "model is required"}), 400
+
+    model_obj = AIModel.query.filter_by(slug=slug, is_active=True).first()
+    if not model_obj:
+        return jsonify({"allowed": False, "reason": "unknown_model"}), 403
+
+    tier = get_access_tier(auth_session, machine_id)
+    if not tier_at_least(tier, model_obj.min_tier):
+        return (
+            jsonify({"allowed": False, "reason": "insufficient_tier", "tier": tier}),
+            403,
+        )
+
+    if slug not in _allowed_slugs(user.role, "model"):
+        return jsonify({"allowed": False, "reason": "role_not_permitted"}), 403
+
+    return jsonify({"allowed": True, "tier": tier})
+
+
+# ---------- Machine-side: installed app inventory ----------
+
+
+@app.route("/api/machines/<machine_id>/installed-apps", methods=["POST"])
+def report_installed_apps(machine_id):
+    """Ingest the list of applications detected on a bound workstation.
+
+    Called by the machine fingerprint helper after it has scanned the host
+    using the seeded detect_hints. Auth: the user's session token. The
+    machine_id in the URL must resolve to an active MachineBinding on a
+    security key owned by the authenticated user — otherwise we won't write
+    inventory for a host we haven't already trusted.
+    """
+    auth_session, user = _get_auth_session_from_request()
+    if not auth_session or not user:
+        return jsonify({"error": "Authorization required"}), 401
+
+    binding = (
+        db.session.query(MachineBinding)
+        .join(SecurityKey, MachineBinding.security_key_id == SecurityKey.id)
+        .filter(
+            SecurityKey.user_id == user.id,
+            MachineBinding.machine_id == machine_id,
+            MachineBinding.is_active.is_(True),
+        )
+        .first()
+    )
+    if not binding:
+        return jsonify({"error": "No active binding for this machine"}), 404
+
+    data = request.get_json(silent=True) or {}
+    reported = data.get("apps") or []
+    if not isinstance(reported, list):
+        return jsonify({"error": "'apps' must be a list"}), 400
+
+    reported_slugs = {
+        (entry.get("slug") or "").strip()
+        for entry in reported
+        if isinstance(entry, dict) and entry.get("slug")
+    }
+
+    # Map slugs → Application rows so we can upsert by id.
+    apps_by_slug = {
+        a.slug: a
+        for a in Application.query.filter(Application.slug.in_(reported_slugs)).all()
+    } if reported_slugs else {}
+
+    existing = {
+        row.application_id: row
+        for row in MachineInstalledApp.query.filter_by(
+            machine_binding_id=binding.id
+        ).all()
+    }
+
+    now = datetime.now(timezone.utc)
+    seen_app_ids = set()
+
+    for entry in reported:
+        if not isinstance(entry, dict):
+            continue
+        slug = (entry.get("slug") or "").strip()
+        app_obj = apps_by_slug.get(slug)
+        if not app_obj:
+            continue
+        version = entry.get("version")
+        seen_app_ids.add(app_obj.id)
+        row = existing.get(app_obj.id)
+        if row:
+            row.detected_at = now
+            row.version = version
+        else:
+            db.session.add(
+                MachineInstalledApp(
+                    machine_binding_id=binding.id,
+                    application_id=app_obj.id,
+                    version=version,
+                    detected_at=now,
+                )
+            )
+
+    for app_id, row in existing.items():
+        if app_id not in seen_app_ids:
+            db.session.delete(row)
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "machine_id": machine_id,
+            "binding_id": binding.id,
+            "detected": sorted(
+                apps_by_slug[s].slug for s in reported_slugs if s in apps_by_slug
+            ),
+        }
+    )
+
+
+# ---------- Admin: per-user machine audit ----------
+
+
+@app.route("/api/admin/users/<int:user_id>/machines", methods=["GET"])
+@admin_required
+def admin_list_user_machines(user_id, admin_user):
+    """Return all bound machines for a user plus the apps detected on each.
+
+    Admin-only audit view. Lets an admin verify that detection ran during bind
+    and see which applications are actually installed on each bound workstation.
+    """
+    target = db.session.get(Users, user_id)
+    if not target:
+        return jsonify({"error": "User not found"}), 404
+
+    key_ids = [k.id for k in SecurityKey.query.filter_by(user_id=user_id).all()]
+    bindings = (
+        MachineBinding.query.filter(
+            MachineBinding.security_key_id.in_(key_ids),
+            MachineBinding.is_active.is_(True),
+        )
+        .order_by(MachineBinding.created_at.desc())
+        .all()
+        if key_ids else []
+    )
+
+    # Catalog: map bundle_id -> Application. Both the "Catalogued apps"
+    # section and the per-row "In catalog" badge are derived from this one
+    # source so they can't drift.
+    catalog_by_bundle = {
+        (a.detect_hints or {}).get("macos_bundle_id"): a
+        for a in Application.query.all()
+        if (a.detect_hints or {}).get("macos_bundle_id")
+    }
+
+    result = []
+    for b in bindings:
+        raw = (
+            MachineRawInventory.query
+            .filter_by(machine_binding_id=b.id)
+            .order_by(MachineRawInventory.name)
+            .all()
+        )
+        # Intersect raw inventory with catalog to get catalogued apps for this machine.
+        catalogued = []
+        seen_slugs = set()
+        for r in raw:
+            app = catalog_by_bundle.get(r.bundle_id) if r.bundle_id else None
+            if app and app.slug not in seen_slugs:
+                catalogued.append(app)
+                seen_slugs.add(app.slug)
+
+        result.append({
+            "id": b.id,
+            "machine_id": b.machine_id,
+            "machine_name": b.machine_name,
+            "hostname": b.hostname,
+            "os_info": b.os_info,
+            "is_active": b.is_active,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "security_key_id": b.security_key_id,
+            "installed_apps": [
+                {
+                    "slug": app.slug,
+                    "display_name": app.display_name,
+                    "version": None,
+                    "detected_at": None,
+                }
+                for app in catalogued
+            ],
+            "raw_inventory": [
+                {
+                    "id": r.id,
+                    "bundle_id": r.bundle_id,
+                    "name": r.name,
+                    "path": r.path,
+                    "in_catalog": bool(r.bundle_id and r.bundle_id in catalog_by_bundle),
+                }
+                for r in raw
+            ],
+        })
+
+    return jsonify({
+        "user_id": user_id,
+        "username": target.username,
+        "machines": result,
+    })
+
+
+# ---------- Admin: role permissions ----------
+
+_PERMISSION_BUCKETS = {
+    "models": "model",
+    "apps": "app",
+    "app_features": "app_feature",
+    "admin_sections": "admin_section",
+}
+
+
+@app.route("/api/admin/roles", methods=["GET"])
+@admin_required
+def admin_list_roles(admin_user):
+    """Return the canonical role list plus a quick count of each role's granted
+    permissions by resource type."""
+    rows = (
+        db.session.query(
+            RolePermission.role,
+            RolePermission.resource_type,
+            db.func.count(RolePermission.id),
+        )
+        .filter(RolePermission.allowed.is_(True))
+        .group_by(RolePermission.role, RolePermission.resource_type)
+        .all()
+    )
+    counts = {r: {rt: 0 for rt in _PERMISSION_BUCKETS.values()} for r in VALID_ROLES}
+    for role, rtype, count in rows:
+        if role in counts and rtype in counts[role]:
+            counts[role][rtype] = count
+    return jsonify({"roles": [{"role": r, "counts": counts[r]} for r in VALID_ROLES]})
+
+
+@app.route("/api/admin/roles/<role>/permissions", methods=["GET"])
+@admin_required
+def admin_get_role_permissions(admin_user, role):
+    if role not in VALID_ROLES:
+        return jsonify({"error": "Unknown role"}), 404
+
+    granted = {rtype: [] for rtype in _PERMISSION_BUCKETS.values()}
+    for row in RolePermission.query.filter_by(role=role, allowed=True).all():
+        if row.resource_type in granted:
+            granted[row.resource_type].append(row.resource_id)
+
+    return jsonify(
+        {
+            "role": role,
+            "models": granted["model"],
+            "apps": granted["app"],
+            "app_features": granted["app_feature"],
+            "admin_sections": granted["admin_section"],
+        }
+    )
+
+
+@app.route("/api/admin/roles/<role>/permissions", methods=["PUT"])
+@admin_required
+def admin_set_role_permissions(admin_user, role):
+    """Replace the full permission set for a role. Body:
+        {"models": [...], "apps": [...], "app_features": [...], "admin_sections": [...]}
+    Any key omitted is left unchanged."""
+    if role not in VALID_ROLES:
+        return jsonify({"error": "Unknown role"}), 404
+
+    data = request.get_json(silent=True) or {}
+    changes = {}
+    for body_key, resource_type in _PERMISSION_BUCKETS.items():
+        if body_key in data:
+            value = data[body_key]
+            if not isinstance(value, list):
+                return jsonify({"error": f"'{body_key}' must be a list"}), 400
+            changes[resource_type] = set(value)
+
+    if not changes:
+        return jsonify({"error": "No permission buckets provided"}), 400
+
+    for resource_type, desired in changes.items():
+        existing_rows = RolePermission.query.filter_by(
+            role=role, resource_type=resource_type
+        ).all()
+        existing = {r.resource_id: r for r in existing_rows}
+
+        to_add = desired - set(existing.keys())
+        to_remove = set(existing.keys()) - desired
+        now = datetime.now(timezone.utc)
+
+        for slug in to_remove:
+            db.session.delete(existing[slug])
+        for slug in to_add:
+            db.session.add(
+                RolePermission(
+                    role=role,
+                    resource_type=resource_type,
+                    resource_id=slug,
+                    allowed=True,
+                    updated_at=now,
+                )
+            )
+
+    db.session.commit()
+
+    log_system_event(
+        user_id=None,
+        performed_by_user_id=admin_user.id,
+        action_type="ROLE_PERMISSIONS_UPDATED",
+        status="SUCCESS",
+        target_entity_type="ROLE",
+        target_entity_id=role,
+        details=f"Admin '{admin_user.username}' updated permissions for role '{role}'. Buckets touched: {', '.join(changes.keys())}.",
+    )
+
+    return admin_get_role_permissions(role=role)
+
+
+# ---------- Admin: AI model catalog ----------
+
+
+def _serialize_ai_model(m):
+    return {
+        "id": m.id,
+        "slug": m.slug,
+        "display_name": m.display_name,
+        "min_tier": m.min_tier,
+        "is_active": m.is_active,
+    }
+
+
+@app.route("/api/admin/ai-models", methods=["GET"])
+@admin_required
+def admin_list_ai_models(admin_user):
+    models = AIModel.query.order_by(AIModel.slug).all()
+    return jsonify({"models": [_serialize_ai_model(m) for m in models]})
+
+
+@app.route("/api/admin/ai-models", methods=["POST"])
+@admin_required
+def admin_create_ai_model(admin_user):
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    display_name = (data.get("display_name") or "").strip()
+    min_tier = data.get("min_tier") or TIER_KEY_BOUND
+    if not slug or not display_name:
+        return jsonify({"error": "slug and display_name are required"}), 400
+    if min_tier not in TIER_ORDER:
+        return jsonify({"error": "invalid min_tier"}), 400
+    if AIModel.query.filter_by(slug=slug).first():
+        return jsonify({"error": "slug already exists"}), 409
+
+    model_obj = AIModel(
+        slug=slug,
+        display_name=display_name,
+        min_tier=min_tier,
+        is_active=bool(data.get("is_active", True)),
+    )
+    db.session.add(model_obj)
+    db.session.commit()
+    return jsonify(_serialize_ai_model(model_obj)), 201
+
+
+@app.route("/api/admin/ai-models/<int:model_id>", methods=["PATCH"])
+@admin_required
+def admin_update_ai_model(admin_user, model_id):
+    model_obj = db.session.get(AIModel, model_id)
+    if not model_obj:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if "display_name" in data:
+        model_obj.display_name = data["display_name"]
+    if "min_tier" in data:
+        if data["min_tier"] not in TIER_ORDER:
+            return jsonify({"error": "invalid min_tier"}), 400
+        model_obj.min_tier = data["min_tier"]
+    if "is_active" in data:
+        model_obj.is_active = bool(data["is_active"])
+    db.session.commit()
+    return jsonify(_serialize_ai_model(model_obj))
+
+
+# ---------- Admin: applications + features catalog ----------
+
+
+def _serialize_application(a):
+    return {
+        "id": a.id,
+        "slug": a.slug,
+        "display_name": a.display_name,
+        "min_tier": a.min_tier,
+        "is_active": a.is_active,
+        "detect_hints": a.detect_hints or {},
+    }
+
+
+def _serialize_feature(f):
+    return {
+        "id": f.id,
+        "application_id": f.application_id,
+        "slug": f.slug,
+        "display_name": f.display_name,
+        "min_tier": f.min_tier,
+        "is_active": f.is_active,
+    }
+
+
+@app.route("/api/admin/applications", methods=["GET"])
+@admin_required
+def admin_list_applications(admin_user):
+    # Only surface apps actually installed on at least one active binding.
+    # Derived from raw inventory (what's on the machine) ∩ catalog (what admin
+    # has promoted) so there's a single source of truth — no stale sync state.
+    installed_bundle_ids = {
+        row.bundle_id
+        for row in (
+            db.session.query(MachineRawInventory.bundle_id)
+            .join(MachineBinding, MachineRawInventory.machine_binding_id == MachineBinding.id)
+            .filter(MachineBinding.is_active.is_(True), MachineRawInventory.bundle_id.isnot(None))
+            .distinct()
+            .all()
+        )
+    }
+    all_apps = Application.query.order_by(Application.slug).all()
+    apps = [
+        a for a in all_apps
+        if (a.detect_hints or {}).get("macos_bundle_id") in installed_bundle_ids
+    ]
+    result = []
+    for a in apps:
+        features = ApplicationFeature.query.filter_by(application_id=a.id).all()
+        payload = _serialize_application(a)
+        payload["features"] = [_serialize_feature(f) for f in features]
+        result.append(payload)
+    return jsonify({"applications": result})
+
+
+@app.route("/api/admin/applications", methods=["POST"])
+@admin_required
+def admin_create_application(admin_user):
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    display_name = (data.get("display_name") or "").strip()
+    min_tier = data.get("min_tier") or TIER_KEY_BOUND
+    if not slug or not display_name:
+        return jsonify({"error": "slug and display_name are required"}), 400
+    if min_tier not in TIER_ORDER:
+        return jsonify({"error": "invalid min_tier"}), 400
+    if Application.query.filter_by(slug=slug).first():
+        return jsonify({"error": "slug already exists"}), 409
+
+    app_obj = Application(
+        slug=slug,
+        display_name=display_name,
+        min_tier=min_tier,
+        is_active=bool(data.get("is_active", True)),
+        detect_hints=data.get("detect_hints") or {},
+    )
+    db.session.add(app_obj)
+    db.session.commit()
+    return jsonify(_serialize_application(app_obj)), 201
+
+
+@app.route("/api/admin/applications/<int:app_id>", methods=["PATCH"])
+@admin_required
+def admin_update_application(admin_user, app_id):
+    app_obj = db.session.get(Application, app_id)
+    if not app_obj:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if "display_name" in data:
+        app_obj.display_name = data["display_name"]
+    if "min_tier" in data:
+        if data["min_tier"] not in TIER_ORDER:
+            return jsonify({"error": "invalid min_tier"}), 400
+        app_obj.min_tier = data["min_tier"]
+    if "is_active" in data:
+        app_obj.is_active = bool(data["is_active"])
+    if "detect_hints" in data:
+        if not isinstance(data["detect_hints"], dict):
+            return jsonify({"error": "detect_hints must be an object"}), 400
+        app_obj.detect_hints = data["detect_hints"]
+    db.session.commit()
+    return jsonify(_serialize_application(app_obj))
+
+
+@app.route("/api/admin/applications/<int:app_id>/features", methods=["POST"])
+@admin_required
+def admin_create_feature(admin_user, app_id):
+    app_obj = db.session.get(Application, app_id)
+    if not app_obj:
+        return jsonify({"error": "Application not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    display_name = (data.get("display_name") or "").strip()
+    min_tier = data.get("min_tier") or TIER_KEY_BOUND
+    if not slug or not display_name:
+        return jsonify({"error": "slug and display_name are required"}), 400
+    if min_tier not in TIER_ORDER:
+        return jsonify({"error": "invalid min_tier"}), 400
+    if ApplicationFeature.query.filter_by(slug=slug).first():
+        return jsonify({"error": "slug already exists"}), 409
+
+    feature = ApplicationFeature(
+        application_id=app_obj.id,
+        slug=slug,
+        display_name=display_name,
+        min_tier=min_tier,
+        is_active=bool(data.get("is_active", True)),
+    )
+    db.session.add(feature)
+    db.session.commit()
+    return jsonify(_serialize_feature(feature)), 201
+
+
+@app.route("/api/admin/application-features/<int:feature_id>", methods=["PATCH"])
+@admin_required
+def admin_update_feature(admin_user, feature_id):
+    feature = db.session.get(ApplicationFeature, feature_id)
+    if not feature:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if "display_name" in data:
+        feature.display_name = data["display_name"]
+    if "min_tier" in data:
+        if data["min_tier"] not in TIER_ORDER:
+            return jsonify({"error": "invalid min_tier"}), 400
+        feature.min_tier = data["min_tier"]
+    if "is_active" in data:
+        feature.is_active = bool(data["is_active"])
+    db.session.commit()
+    return jsonify(_serialize_feature(feature))
 
 
 @app.route("/api/emergency-actions", methods=["GET"])
@@ -8729,7 +9894,9 @@ def handle_verify_pin(data):
             "pin_verified",
             {"message": f"Security key verified! Welcome, {user.first_name}!"},
         )
-        # Clear the pending serial from the auth session
+        # PIN matched — promote the session to security_key_verified so
+        # get_access_tier() can return key_unbound / key_bound.
+        auth_session.security_key_verified = True
         auth_session.pending_pin_verification_serial = None
         db.session.commit()
     else:
