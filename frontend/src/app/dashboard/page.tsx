@@ -22,8 +22,6 @@ import {
   CartesianGrid,
   Area,
   AreaChart,
-  Line,
-  LineChart,
   // Pie, PieChart, // Already imported above with Label and Sector
   XAxis,
   YAxis,
@@ -37,6 +35,14 @@ import {
 import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import {
   Select,
@@ -114,10 +120,13 @@ interface SecurityMetric {
   color?: string;
 }
 
-interface LocationStat {
+interface FailedLoginStat {
+  user_id: number;
   name: string;
-  value: number;
-  severity: 'high' | 'medium' | 'low';
+  username: string;
+  role: string;
+  failed_count: number;
+  last_attempt: string | null;
 }
 
 interface DeviceStat {
@@ -139,7 +148,9 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([]);
-  const [locationStats, setLocationStats] = useState<LocationStat[]>([]);
+  const [failedLogins, setFailedLogins] = useState<FailedLoginStat[]>([]);
+  const [tierDistribution, setTierDistribution] = useState<{ none: number; key_unbound: number; key_bound: number }>({ none: 0, key_unbound: 0, key_bound: 0 });
+  const [adoptionFunnel, setAdoptionFunnel] = useState<{ total: number; with_active_key: number; with_machine_binding: number; used_bound_this_week: number }>({ total: 0, with_active_key: 0, with_machine_binding: 0, used_bound_this_week: 0 });
   const [deviceStats, setDeviceStats] = useState<DeviceStat[]>([]);
   const [riskTrend, setRiskTrend] = useState<RiskTrendItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -304,13 +315,26 @@ export default function DashboardPage() {
         const deviceData = await deviceResponse.json()
         setDeviceStats(deviceData.deviceStats)
 
-        // Fetch location statistics
-        const locationResponse = await fetch(`${API_URL}/location-stats`, { headers })
-        if (!locationResponse.ok) {
-          throw new Error('Failed to fetch location stats')
+        // Fetch top accounts by failed login attempts (last 30 days)
+        const failedResponse = await fetch(`${API_URL}/failed-login-stats`, { headers })
+        if (failedResponse.ok) {
+          const failedData = await failedResponse.json()
+          setFailedLogins(failedData.failedLoginStats || [])
         }
-        const locationData = await locationResponse.json()
-        setLocationStats(locationData.locationStats)
+
+        // Fetch access-tier distribution across users
+        const tierResponse = await fetch(`${API_URL}/tier-distribution`, { headers })
+        if (tierResponse.ok) {
+          const tierData = await tierResponse.json()
+          if (tierData.tierDistribution) setTierDistribution(tierData.tierDistribution)
+        }
+
+        // Fetch zero-trust adoption funnel
+        const funnelResponse = await fetch(`${API_URL}/adoption-funnel`, { headers })
+        if (funnelResponse.ok) {
+          const funnelData = await funnelResponse.json()
+          if (funnelData.adoptionFunnel) setAdoptionFunnel(funnelData.adoptionFunnel)
+        }
 
         const riskTrendResponse = await fetch(`${API_URL}/risk-score-trend`, { headers })
         if (!riskTrendResponse.ok) {
@@ -1078,185 +1102,151 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-3 mt-6">
-          {/* Top Locations Bar Chart - Spanning 2 columns */}
+          {/* Failed Login Leaderboard - Spanning 2 columns */}
           <Card className="md:col-span-2">
             <CardHeader className="border-b border-[var(--card-border-themed)]">
-              <CardTitle>Top Locations</CardTitle>
-              <CardDescription>Login attempts by location</CardDescription>
+              <CardTitle>Failed Login Attempts</CardTitle>
+              <CardDescription>Accounts with active failed-login counters</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading location data...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : locationStats.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No location data available
-                      </div>
-                  ) : (
-                      <ChartContainer
-                        config={{
-                          high: {
-                            label: "High",
-                            color: "#8B5CF6"
-                          },
-                          medium: {
-                            label: "Medium",
-                            color: "#2563eb"
-                          },
-                          low: {
-                            label: "Low",
-                            color: "#a6c4fc"
-                          }
-                        }}
-                        className="h-[300px] w-full"
-                      >
-                        <LineChart
-                          data={locationStats.map(stat => ({
-                            name: stat.name,
-                            high: stat.severity === 'high' ? stat.value : 0,
-                            medium: stat.severity === 'medium' ? stat.value : 0,
-                            low: stat.severity === 'low' ? stat.value : 0
-                          }))}
-                          margin={{
-                            left: 12,
-                            right: 12,
-                          }}
-                        >
-                          <CartesianGrid vertical={false} stroke="var(--sidebar-border)" />
-                          <XAxis
-                            dataKey="name"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={8}
-                          />
-                          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                          <Line
-                            type="monotone"
-                            dataKey="high"
-                            stroke="var(--color-high)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="medium"
-                            stroke="var(--color-medium)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="low"
-                            stroke="var(--color-low)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                        </LineChart>
-                      </ChartContainer>
-                  )}
-                </ChartErrorBoundary>
+              {isLoading ? (
+                <div className="h-[260px] flex items-center justify-center text-muted-foreground">
+                  Loading failed-login data...
+                </div>
+              ) : error ? (
+                <div className="h-[260px] flex items-center justify-center text-red-500">
+                  {error}
+                </div>
+              ) : failedLogins.length === 0 ? (
+                <div className="h-[260px] flex items-center justify-center text-muted-foreground">
+                  No accounts currently have failed-login attempts.
+                </div>
+              ) : (
+                <div className="rounded-md border border-[var(--card-border-themed)]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead className="text-right">Failed</TableHead>
+                        <TableHead>Last login</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {failedLogins.map((row) => {
+                        const tone =
+                          row.failed_count > 15
+                            ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
+                            : row.failed_count > 5
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20";
+                        return (
+                          <TableRow key={row.user_id}>
+                            <TableCell>
+                              <div className="font-medium">{row.name}</div>
+                              <div className="text-xs text-muted-foreground">{row.username}</div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="border-zinc-200 dark:border-zinc-800 capitalize">
+                                {row.role.replace(/_/g, " ")}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={`inline-block min-w-[2.5rem] text-center rounded-md border px-2 py-0.5 text-xs font-semibold ${tone}`}>
+                                {row.failed_count}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {row.last_attempt
+                                ? new Date(row.last_attempt).toLocaleString()
+                                : "—"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              {/* Severity legend */}
+              <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-foreground">
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5 bg-emerald-500/40 border border-emerald-500/40"></span>
+                  {'Low (<= 5)'}
+                </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5 bg-amber-500/40 border border-amber-500/40"></span>
+                  {'Medium (6 – 15)'}
+                </div>
+                <div className="flex items-center">
+                  <span className="w-3 h-3 rounded-sm mr-1.5 bg-red-500/40 border border-red-500/40"></span>
+                  {'High (> 15)'}
+                </div>
               </div>
-              {/* Custom Legend for Location Severity Colors */}
-               <div className="mt-4 flex justify-center space-x-4 text-xs text-foreground">
-                 <div className="flex items-center">
-                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#a6c4fc' }}></span>
-                   {'Low (<= 5 attempts)'}
-                 </div>
-                 <div className="flex items-center">
-                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#2563eb' }}></span>
-                   {'Medium (<= 15 attempts)'}
-                 </div>
-                 <div className="flex items-center">
-                   <span className="w-3 h-3 rounded-sm mr-1.5" style={{ backgroundColor: '#8B5CF6' }}></span>
-                   {'High (> 15 attempts)'}
-                 </div>
-               </div>
             </CardContent>
           </Card>
 
-          {/* Device Distribution Pie Chart - Spanning 1 column */}
+          {/* Adoption Funnel - Spanning 1 column */}
           <Card className="md:col-span-1">
             <CardHeader>
-              <CardTitle>Device Distribution</CardTitle>
-              <CardDescription>Login attempts by device type</CardDescription>
+              <CardTitle>Adoption Funnel</CardTitle>
+              <CardDescription>Drop-off through the zero-trust setup</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
-                <ChartErrorBoundary>
-                  {isLoading ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Loading device stats...
-                      </div>
-                  ) : error ? (
-                      <div className="h-full flex items-center justify-center text-red-500">
-                        {error}
-                      </div>
-                  ) : deviceStats.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        No device data available
-                      </div>
-                  ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                          <Pie
-                              data={deviceStats}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              stroke="none" // Remove border from pie segments
-                          >
-                            {deviceStats.map((entry, index) => {
-                              const deviceName = entry.name ? entry.name.toLowerCase() : 'unknown';
-                              const color = DEVICE_COLOR_MAP[deviceName] || DEVICE_COLOR_MAP['others'];
-                              return (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={color}
-                                />
-                              );
-                            })}
-                          </Pie>
-                          <Tooltip
-                              formatter={(value) => [`${value} attempts`, "Logins"]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                  )}
-                </ChartErrorBoundary>
+                {isLoading ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    Loading adoption data...
+                  </div>
+                ) : error ? (
+                  <div className="h-full flex items-center justify-center text-red-500">
+                    {error}
+                  </div>
+                ) : adoptionFunnel.total === 0 ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    No users to evaluate
+                  </div>
+                ) : (
+                  <div className="space-y-3 py-2">
+                    {[
+                      { label: "Total users", count: adoptionFunnel.total, color: "#a6c4fc" },
+                      { label: "With active key", count: adoptionFunnel.with_active_key, color: "#7aa6f9" },
+                      { label: "With machine binding", count: adoptionFunnel.with_machine_binding, color: "#2563eb" },
+                      { label: "Used key-bound (7d)", count: adoptionFunnel.used_bound_this_week, color: "#8B5CF6" },
+                    ].map((stage, idx, arr) => {
+                      const pct = adoptionFunnel.total > 0
+                        ? (stage.count / adoptionFunnel.total) * 100
+                        : 0;
+                      const prev = idx > 0 ? arr[idx - 1].count : null;
+                      const drop = prev !== null && prev > 0
+                        ? Math.round(((prev - stage.count) / prev) * 100)
+                        : null;
+                      return (
+                        <div key={stage.label} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-foreground">{stage.label}</span>
+                            <span className="text-muted-foreground">
+                              {stage.count}
+                              {drop !== null && drop > 0 && (
+                                <span className="ml-1.5 text-red-500 dark:text-red-400">−{drop}%</span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-zinc-200/60 dark:bg-zinc-800 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.max(pct, 2)}%`,
+                                backgroundColor: stage.color,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              {/* Custom Legend for Device Distribution */}
-              {!isLoading && !error && deviceStats.length > 0 && (
-                <div className="mt-4 flex flex-wrap justify-center space-x-4 text-xs text-foreground">
-                  {Object.entries(
-                    // Create a unique set of device names and their colors for the legend
-                    deviceStats.reduce((acc, entry) => {
-                      const deviceName = entry.name ? entry.name : 'Unknown';
-                      const color = DEVICE_COLOR_MAP[deviceName.toLowerCase()] || DEVICE_COLOR_MAP['others'];
-                      if (!acc[deviceName]) {
-                        acc[deviceName] = color;
-                      }
-                      return acc;
-                    }, {} as Record<string, string>)
-                  ).map(([name, color]) => (
-                    <div key={name} className="flex items-center mb-2">
-                      <span
-                        className="w-3 h-3 rounded-sm mr-1.5"
-                        style={{ backgroundColor: color }}
-                      ></span>
-                      {name}
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
