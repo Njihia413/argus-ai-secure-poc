@@ -16,20 +16,36 @@ interface ModelPickerProps {
   selectedModel: modelID;
   setSelectedModel: (model: modelID) => void;
   models: ModelDict;
+  tier?: "none" | "key_unbound" | "key_bound";
 }
+
+const TIER_DOT: Record<string, { color: string; label: string }> = {
+  none: { color: "bg-zinc-400", label: "Password only" },
+  key_unbound: { color: "bg-amber-500", label: "Key verified" },
+  key_bound: { color: "bg-emerald-500", label: "Key + bound machine" },
+};
 
 export const ModelPicker = ({
                               selectedModel,
                               setSelectedModel,
-                              models, // Destructure models prop
+                              models,
+                              tier,
                             }: ModelPickerProps) => {
-  // Display model name if available in models dictionary, otherwise show model ID
   const getModelDisplay = (modelId: string) => {
     return models[modelId as modelID] || modelId;
   };
 
+  const dot = tier ? TIER_DOT[tier] : null;
+
   return (
-      <div className="absolute bottom-2 left-2 flex flex-col gap-2">
+      <div className="absolute bottom-2 left-2 flex items-center gap-2">
+        {dot && (
+          <span
+            className={`h-2 w-2 rounded-full ${dot.color}`}
+            title={dot.label}
+            aria-label={`Access tier: ${dot.label}`}
+          />
+        )}
         <Select value={selectedModel} onValueChange={setSelectedModel}>
           <SelectTrigger className="">
             <SelectValue placeholder="Select a model">

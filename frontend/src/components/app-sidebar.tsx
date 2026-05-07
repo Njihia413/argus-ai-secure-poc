@@ -2,9 +2,9 @@
 
 import Link from "next/link" // Added Link import
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon, ShieldAlert, ServerCog, FileKey } from "lucide-react"
+import { LayoutDashboard, Users, Shield, Settings, ClipboardList, KeyRound, ChevronRight, ChevronDown, LucideIcon, ShieldAlert, ServerCog, FileKey, UserCog, AppWindow, Cpu } from "lucide-react"
 import React, { useState } from "react" // Added useState
-import { useStore } from "@/app/utils/store"
+import { useAuth } from "@/app/utils/useAuth"
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +42,21 @@ const items: NavItem[] = [
     title: "Users",
     url: "/dashboard/users",
     icon: Users,
+  },
+  {
+    title: "Roles",
+    url: "/dashboard/roles",
+    icon: UserCog,
+  },
+  {
+    title: "Models",
+    url: "/dashboard/models",
+    icon: Cpu,
+  },
+  {
+    title: "Applications",
+    url: "/dashboard/applications",
+    icon: AppWindow,
   },
   {
     title: "Security",
@@ -85,7 +100,7 @@ const elevatedItems: NavItem[] = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { hasElevatedAccess } = useStore()
+  const { hasElevatedAccess } = useAuth()
   const { state } = useSidebar()
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({})
 

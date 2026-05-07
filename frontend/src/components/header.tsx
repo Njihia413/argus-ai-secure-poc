@@ -225,11 +225,7 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
           </Tabs>
 
           <DialogFooter>
-            <Button
-                variant="outline"
-                onClick={() => setIsOpen(false)}
-                className="border-black bg-white hover:bg-gray-50"
-            >
+            <Button variant="outline" onClick={() => setIsOpen(false)}>
               Close
             </Button>
           </DialogFooter>
@@ -332,7 +328,14 @@ export const Header = () => {
                     </div>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="font-montserrat">
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                    <DropdownMenuLabel className="flex flex-col gap-0.5">
+                      <span>{userData?.firstName} {userData?.lastName}</span>
+                      {userData?.role && (
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-normal">
+                          {userData.role.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => openSettingsWithTab("profile")}>
                       <User className="mr-2 h-4 w-4" />

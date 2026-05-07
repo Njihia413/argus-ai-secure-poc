@@ -9,7 +9,6 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
-import { useStore } from '@/app/utils/store';
 import { API_URL } from '@/app/utils/constants';
 import { DataTable } from '@/components/data-table/data-table';
 import { columns as logColumns, AuditLog } from '@/components/data-table/audit-log-columns';
