@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { getCachedMachineId } from "@/app/utils/machine-fingerprint";
 
 // Type definitions
 interface UserData {
@@ -42,17 +43,10 @@ interface UserData {
 
 type ModelDict = Partial<Record<modelID, string>>;
 
-const ALL_MODELS = {
-  "llama-3.1-8b-instant": "llama-3.1-8b-instant",
-  "deepseek-r1-distill-llama-70b": "deepseek-r1-distill-llama-70b",
-  "llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
-};
+// Fallback shown only while the initial /api/access/models request is in-flight.
+const EMPTY_MODELS: ModelDict = {};
 
-const RESTRICTED_MODELS: ModelDict = {
-  "llama-3.1-8b-instant": "llama-3.1-8b-instant",
-};
-
-const DEFAULT_MODEL_ID: modelID = "llama-3.1-8b-instant";
+const DEFAULT_MODEL_ID: modelID = "openai/gpt-oss-20b";
 const KEY_CHECK_INTERVAL = 3000;
 
 interface HidKeyInfo {
@@ -72,7 +66,7 @@ const initialHidKeyInfo: HidKeyInfo = {
 export default function ChatPage() {
   const router = useRouter();
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [availableModels, setAvailableModels] = useState<ModelDict>(RESTRICTED_MODELS);
+  const [availableModels, setAvailableModels] = useState<ModelDict>(EMPTY_MODELS);
   const [selectedModel, setSelectedModel] = useState<modelID>(DEFAULT_MODEL_ID);
 
   const [isNormalUsbConnected, setIsNormalUsbConnected] = useState<boolean>(false);
@@ -96,6 +90,15 @@ export default function ChatPage() {
   const [enteredPin, setEnteredPin] = useState<string>("");
   const [pinVerificationError, setPinVerificationError] = useState<string | null>(null);
 
+  const [fingerprintVersion, setFingerprintVersion] = useState<number>(0);
+  const [accessReady, setAccessReady] = useState<boolean>(false);
+  const [capabilitiesOpen, setCapabilitiesOpen] = useState<boolean>(false);
+  const [capabilities, setCapabilities] = useState<{
+    tier: string
+    models: { slug: string; display_name: string }[]
+    apps: { slug: string; display_name: string; features: { slug: string; display_name: string; allowed: boolean }[] }[]
+  }>({ tier: "none", models: [], apps: [] });
+
   const {
     messages,
     input,
@@ -106,7 +109,17 @@ export default function ChatPage() {
     stop,
   } = useChat({
     maxSteps: 5,
-    body: { selectedModel },
+    experimental_prepareRequestBody: ({ messages }) => {
+      const machineId = getCachedMachineId();
+      // Read fresh at submit time — userData closure can be stale.
+      const stored = JSON.parse(sessionStorage.getItem("user") || "{}");
+      return {
+        messages,
+        selectedModel,
+        authToken: stored.authToken || userData?.authToken,
+        machineId,
+      };
+    },
   });
 
   const isLoading = status === "streaming" || status === "submitted";
@@ -216,9 +229,25 @@ export default function ChatPage() {
               break;
             case "SECURITY_KEY_HID_DISCONNECTED":
               console.log("FRONTEND: Processing SECURITY_KEY_HID_DISCONNECTED event:", message);
-              // If the user didn't log in with a key, a disconnect event should restrict models.
-              // Always restrict models on disconnect, regardless of initial auth method.
-              setAvailableModels(RESTRICTED_MODELS);
+              // Tell the backend to clear security_key_verified on the session,
+              // THEN refetch models. Without the backend call, get_access_tier()
+              // would still see security_key_verified=True and keep the user at
+              // their elevated tier even after the key is unplugged.
+              {
+                const stored = JSON.parse(sessionStorage.getItem("user") || "{}");
+                if (stored.authToken) {
+                  fetch(`${API_URL}/security_key/disconnect`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${stored.authToken}` },
+                  })
+                    .catch((err) => console.error("Failed to clear backend key state:", err))
+                    .finally(() => {
+                      stored.securityKeyAuthenticated = false;
+                      sessionStorage.setItem("user", JSON.stringify(stored));
+                      setUserData(stored);
+                    });
+                }
+              }
               toast.error("Security Key disconnected. Model access restricted.");
               // Also update the local hidKey state for any other UI indicators
               setHidKey(initialHidKeyInfo);
@@ -232,6 +261,8 @@ export default function ChatPage() {
                 components: message.components,
               }));
               console.log("FRONTEND: Workstation fingerprint stored from usb_detector:", message.machine_id?.slice(0, 16));
+              setFingerprintVersion((v) => v + 1);
+              setAccessReady(true);
               break;
             default:
               console.warn("Received unknown message event from USB helper:", message);
@@ -319,8 +350,8 @@ export default function ChatPage() {
         setIsPinModalOpen(true);
       } else {
         toast.success(data.message || "Security key verified. Full models enabled.");
-        setAvailableModels(ALL_MODELS);
-        // Persist the authenticated state so it survives page reloads
+        // Flip the session flag; the useEffect watching userData will re-fetch
+        // /api/access/models and render the newly-available set.
         const stored = JSON.parse(sessionStorage.getItem("user") || "{}");
         if (stored.authToken) {
           stored.securityKeyAuthenticated = true;
@@ -336,7 +367,8 @@ export default function ChatPage() {
         setIsPinModalOpen(false);
         setEnteredPin("");
 
-        // Persist the authenticated state to survive page reloads
+        // Persist the authenticated state to survive page reloads. The
+        // userData change triggers a re-fetch of the allowed model list.
         if (userData) {
             const updatedUserData = {
                 ...userData,
@@ -345,7 +377,6 @@ export default function ChatPage() {
             setUserData(updatedUserData);
             sessionStorage.setItem('user', JSON.stringify(updatedUserData));
         }
-        setAvailableModels(ALL_MODELS);
     });
 
     newSocket.on("pin_incorrect", (data) => {
@@ -373,24 +404,121 @@ export default function ChatPage() {
   }, [userData]);
 
 
-  // This useEffect now only sets the initial model availability when the user data is loaded.
+  // Hold the initial access fetch until the workstation fingerprint has
+  // arrived (or a short grace period elapses). Without this, the page fires
+  // /api/access/models before usb_detector delivers the machine_id — the
+  // backend returns the key_unbound tier, then a second request upgrades
+  // the user to key_bound, and they see a "flash" of the smaller model set.
   useEffect(() => {
-    if (!userData) {
-      setAvailableModels(RESTRICTED_MODELS);
+    if (!userData?.authToken) {
+      setAccessReady(false);
       return;
     }
+    if (accessReady) return;
+    const timer = setTimeout(() => setAccessReady(true), 1500);
+    return () => clearTimeout(timer);
+  }, [userData, accessReady]);
 
-    const loggedInWithSecurityKeyAtAuthTime = userData.securityKeyAuthenticated === true;
-
-    if (loggedInWithSecurityKeyAtAuthTime) {
-      setAvailableModels(ALL_MODELS);
-      // This toast is now redundant because the pin_verified handler shows a more specific one.
-      // We keep the logic to set models but remove the generic toast.
-    } else {
-      setAvailableModels(RESTRICTED_MODELS);
+  // Fetch the authoritative list of models from the backend. The backend
+  // intersects the session's tier with the user's role permissions; this page
+  // just renders what it's told. Re-fetch whenever userData changes (login /
+  // logout / key verification flipping securityKeyAuthenticated).
+  useEffect(() => {
+    if (!userData?.authToken) {
+      setAvailableModels(EMPTY_MODELS);
+      return;
     }
-  }, [userData]);
+    if (!accessReady) return;
 
+    const fetchModels = async () => {
+      try {
+        const fp = sessionStorage.getItem("workstation_fingerprint");
+        const machineId = fp ? (JSON.parse(fp)?.machine_id ?? "") : "";
+        const res = await fetch(`${API_URL}/access/models`, {
+          headers: {
+            Authorization: `Bearer ${userData.authToken}`,
+            ...(machineId ? { "X-Machine-Id": machineId } : {}),
+          },
+        });
+        if (!res.ok) {
+          console.error("Failed to fetch allowed models:", res.status);
+          setAvailableModels(EMPTY_MODELS);
+          return;
+        }
+        const body: { tier: string; models: { slug: string; display_name: string }[] } = await res.json();
+        const dict: ModelDict = {};
+        for (const m of body.models) {
+          (dict as Record<string, string>)[m.slug] = m.display_name;
+        }
+        setAvailableModels(dict);
+      } catch (err) {
+        console.error("Error fetching allowed models:", err);
+        setAvailableModels(EMPTY_MODELS);
+      }
+    };
+
+    fetchModels();
+  }, [userData, fingerprintVersion, accessReady]);
+
+
+  // Capabilities: fetch allowed models + apps (+features per app) so the user
+  // can see at a glance what they can do on this workstation without having
+  // to probe the AI with trial-and-error prompts.
+  useEffect(() => {
+    if (!userData?.authToken) {
+      setCapabilities({ tier: "none", models: [], apps: [] });
+      return;
+    }
+    if (!accessReady) return;
+
+    const fetchCapabilities = async () => {
+      try {
+        const fp = sessionStorage.getItem("workstation_fingerprint");
+        const machineId = fp ? (JSON.parse(fp)?.machine_id ?? "") : "";
+        const headers: HeadersInit = {
+          Authorization: `Bearer ${userData.authToken}`,
+          ...(machineId ? { "X-Machine-Id": machineId } : {}),
+        };
+
+        const [modelsRes, appsRes] = await Promise.all([
+          fetch(`${API_URL}/access/models`, { headers }),
+          fetch(`${API_URL}/access/applications`, { headers }),
+        ]);
+
+        const modelsBody = modelsRes.ok
+          ? await modelsRes.json()
+          : { tier: "none", models: [] };
+        const appsBody = appsRes.ok
+          ? await appsRes.json()
+          : { tier: modelsBody.tier, applications: [] };
+
+        const appsWithFeatures = await Promise.all(
+          (appsBody.applications || []).map(async (a: { slug: string; display_name: string }) => {
+            const fRes = await fetch(`${API_URL}/access/applications/${a.slug}/features`, { headers });
+            const fBody = fRes.ok ? await fRes.json() : { features: [] };
+            return {
+              slug: a.slug,
+              display_name: a.display_name,
+              features: (fBody.features || []).map((f: { slug: string; display_name: string }) => ({
+                ...f,
+                allowed: true,
+              })),
+            };
+          })
+        );
+
+        setCapabilities({
+          tier: modelsBody.tier || appsBody.tier || "none",
+          models: modelsBody.models || [],
+          apps: appsWithFeatures,
+        });
+      } catch (err) {
+        console.error("Error fetching capabilities:", err);
+      }
+    };
+
+    fetchCapabilities();
+  }, [userData, fingerprintVersion, accessReady]);
 
 
   const handlePinSubmit = () => {
@@ -406,7 +534,18 @@ export default function ChatPage() {
     }
   };
 
-  if (error) return <div>{error.message}</div>;
+  useEffect(() => {
+    if (!error) return;
+    console.error("Chat error:", error);
+    let parsed: { error?: string; reason?: string } = {};
+    try { parsed = JSON.parse(error.message); } catch { /* leave empty */ }
+    if (parsed.error === "Missing auth token" || /401/.test(error.message)) {
+      sessionStorage.removeItem("user");
+      router.push("/");
+      return;
+    }
+    toast.error(parsed.reason || parsed.error || error.message);
+  }, [error, router]);
 
   if (!userData) {
     return (
@@ -418,9 +557,113 @@ export default function ChatPage() {
 
   const hasMessages = messages.length > 0;
 
+  const tierLabel = (t: string) =>
+    t === "key_bound"
+      ? "Key + bound machine"
+      : t === "key_unbound"
+      ? "Key verified"
+      : "Password only";
+  const tierColor = (t: string) =>
+    t === "key_bound"
+      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+      : t === "key_unbound"
+      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+
   return (
       <div className="h-dvh flex flex-col font-montserrat w-full stretch">
         <Header />
+
+        <button
+          onClick={() => setCapabilitiesOpen(true)}
+          className="fixed top-5 right-32 z-50 flex items-center gap-2 rounded-full border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 backdrop-blur px-3 py-1.5 text-xs shadow-sm hover:bg-white dark:hover:bg-zinc-900 transition"
+          aria-label="What you can do here"
+        >
+          Capabilities
+          <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${accessReady ? tierColor(capabilities.tier) : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 animate-pulse"}`}>
+            {accessReady ? tierLabel(capabilities.tier) : "Loading…"}
+          </span>
+        </button>
+
+        <Dialog open={capabilitiesOpen} onOpenChange={setCapabilitiesOpen}>
+          <DialogContent className="sm:max-w-lg font-montserrat max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>What you can do here</DialogTitle>
+              <DialogDescription>
+                Based on your access tier and role permissions on this workstation.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 py-2">
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                  Access tier
+                </div>
+                <span className={`inline-block px-2 py-1 rounded text-xs ${tierColor(capabilities.tier)}`}>
+                  {tierLabel(capabilities.tier)}
+                </span>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {capabilities.tier === "none" &&
+                    "Tap your security key to unlock more models. Bind it to this machine to unlock apps."}
+                  {capabilities.tier === "key_unbound" &&
+                    "Bind your key to this machine to unlock the full model set and your installed apps."}
+                  {capabilities.tier === "key_bound" &&
+                    "You're on a bound workstation — full access is available within your role."}
+                </p>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                  Models ({capabilities.models.length})
+                </div>
+                {capabilities.models.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No models available.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {capabilities.models.map((m) => (
+                      <li key={m.slug} className="text-sm flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        {m.display_name}
+                        <span className="text-xs text-muted-foreground">· {m.slug}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                  Apps on this machine you have access to ({capabilities.apps.length})
+                </div>
+                {capabilities.apps.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {capabilities.tier === "key_bound"
+                      ? "No detected apps on this workstation yet."
+                      : "App detection requires a bound machine."}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {capabilities.apps.map((a) => (
+                      <div key={a.slug} className="rounded-md border border-zinc-300 dark:border-zinc-700 p-3">
+                        <div className="font-medium text-sm">{a.display_name}</div>
+                        {a.features.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {a.features.map((f) => (
+                              <li key={f.slug} className="text-xs text-muted-foreground flex items-center gap-2">
+                                <span className="h-1 w-1 rounded-full bg-sky-500" />
+                                {f.display_name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* PIN Modal */}
         <Dialog open={isPinModalOpen} onOpenChange={(isOpen) => {
@@ -488,6 +731,7 @@ export default function ChatPage() {
                   status={status}
                   stop={stop}
                   models={availableModels}
+                  tier={capabilities.tier as "none" | "key_unbound" | "key_bound"}
               />
             </form>
           </>
@@ -505,6 +749,7 @@ export default function ChatPage() {
                     status={status}
                     stop={stop}
                     models={availableModels}
+                    tier={capabilities.tier as "none" | "key_unbound" | "key_bound"}
                 />
               </form>
             </div>
