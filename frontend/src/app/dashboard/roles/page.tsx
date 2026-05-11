@@ -14,10 +14,19 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronRight, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { AppWindow, Plus, Shield, Trash2 } from "lucide-react";
 import { API_URL } from "@/app/utils/constants";
 import { Tier, TierPill } from "@/app/utils/tiers";
+import { ADMIN_NAV_SECTIONS } from "@/app/utils/admin-nav";
 
 interface AIModel {
   id: number;
@@ -27,57 +36,59 @@ interface AIModel {
   is_active: boolean;
 }
 
-interface AppFeature {
+interface RegisteredApp {
   id: number;
   slug: string;
-  display_name: string;
-  min_tier: Tier;
+  name: string;
   is_active: boolean;
-}
-
-interface AppItem {
-  id: number;
-  slug: string;
-  display_name: string;
-  min_tier: Tier;
-  is_active: boolean;
-  features: AppFeature[];
 }
 
 interface RolePermissions {
   role: string;
   models: string[];
   apps: string[];
-  app_features: string[];
   admin_sections: string[];
+  registered_apps: string[];
 }
 
-const ROLES: { slug: string; label: string; blurb: string }[] = [
-  { slug: "admin", label: "Admin", blurb: "Full system control." },
-  { slug: "it_department", label: "IT Department", blurb: "Technical tooling and admin helpers." },
-  { slug: "manager", label: "Manager", blurb: "Team leads - productivity apps + larger models." },
-  { slug: "hr", label: "HR", blurb: "People ops - mail merge, Outlook, no macros." },
-  { slug: "customer_service", label: "Customer Service", blurb: "Light tooling, small models only." },
-];
+interface RoleSummary {
+  role: string;
+  display_name: string;
+  is_system: boolean;
+  counts: Record<string, number>;
+}
 
-const ADMIN_SECTIONS: { slug: string; label: string }[] = [
-  { slug: "user_mgmt", label: "User management" },
-  { slug: "audit_logs", label: "Audit logs" },
-  { slug: "key_mgmt", label: "Security keys" },
-  { slug: "lockdown", label: "Emergency lockdown" },
-];
+
+function slugPreview(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 32);
+}
 
 export default function RolesPage() {
   const router = useRouter();
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>("admin");
+  const [roles, setRoles] = useState<RoleSummary[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string>("");
   const [models, setModels] = useState<AIModel[]>([]);
-  const [apps, setApps] = useState<AppItem[]>([]);
+  const [registeredApps, setRegisteredApps] = useState<RegisteredApp[]>([]);
   const [perms, setPerms] = useState<RolePermissions | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [notAdmin, setNotAdmin] = useState(false);
+const [notAdmin, setNotAdmin] = useState(false);
+
+  // Create role dialog
+  const [createRoleOpen, setCreateRoleOpen] = useState(false);
+  const [newRoleDisplayName, setNewRoleDisplayName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // Delete role dialog
+  const [deleteConfirmRole, setDeleteConfirmRole] = useState<RoleSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -94,17 +105,29 @@ export default function RolesPage() {
     setAuthToken(user.authToken);
   }, [router]);
 
+  const fetchRoles = async (token: string) => {
+    const res = await axios.get<{ roles: RoleSummary[] }>(`${API_URL}/admin/roles`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data.roles;
+  };
+
   useEffect(() => {
     if (!authToken) return;
     const headers = { Authorization: `Bearer ${authToken}` };
     (async () => {
       try {
-        const [m, a] = await Promise.all([
+        const [m, r, a] = await Promise.all([
           axios.get<{ models: AIModel[] }>(`${API_URL}/admin/ai-models`, { headers }),
-          axios.get<{ applications: AppItem[] }>(`${API_URL}/admin/applications`, { headers }),
+          axios.get<{ roles: RoleSummary[] }>(`${API_URL}/admin/roles`, { headers }),
+          axios.get<{ apps: RegisteredApp[] }>(`${API_URL}/admin/registered-apps`, { headers }),
         ]);
         setModels(m.data.models);
-        setApps(a.data.applications);
+        setRoles(r.data.roles);
+        setRegisteredApps(a.data.apps.filter((a) => a.is_active));
+        if (r.data.roles.length > 0) {
+          setSelectedRole(r.data.roles[0].role);
+        }
       } catch (err) {
         const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
         toast.error(data?.error || "Could not load catalog.");
@@ -113,7 +136,7 @@ export default function RolesPage() {
   }, [authToken]);
 
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || !selectedRole) return;
     setLoading(true);
     axios
       .get<RolePermissions>(`${API_URL}/admin/roles/${selectedRole}/permissions`, {
@@ -131,13 +154,6 @@ export default function RolesPage() {
   }, [authToken, selectedRole]);
 
   const activeModels = useMemo(() => models.filter((m) => m.is_active), [models]);
-  const activeApps = useMemo(
-    () =>
-      apps
-        .filter((a) => a.is_active)
-        .map((a) => ({ ...a, features: a.features.filter((f) => f.is_active) })),
-    [apps],
-  );
 
   const toggle = (bucket: keyof Omit<RolePermissions, "role">, slug: string) => {
     if (!perms) return;
@@ -156,16 +172,67 @@ export default function RolesPage() {
         {
           models: perms.models,
           apps: perms.apps,
-          app_features: perms.app_features,
           admin_sections: perms.admin_sections,
+          registered_apps: perms.registered_apps,
         },
         { headers: { Authorization: `Bearer ${authToken}` } },
       );
       toast.success(`Permissions saved for ${selectedRole}.`);
+      if (selectedRole === "admin") {
+        window.dispatchEvent(new CustomEvent("argus-sections-changed"));
+      }
     } catch {
       toast.error("Failed to save permissions.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const createRole = async () => {
+    if (!newRoleDisplayName.trim() || !authToken) return;
+    setCreating(true);
+    try {
+      await axios.post(
+        `${API_URL}/admin/roles`,
+        { display_name: newRoleDisplayName.trim() },
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      toast.success(`Role "${newRoleDisplayName}" created.`);
+      setCreateRoleOpen(false);
+      const prevRoles = roles;
+      const refreshed = await fetchRoles(authToken);
+      setRoles(refreshed);
+      setNewRoleDisplayName("");
+      // Auto-select the newly created role
+      const newRole = refreshed.find((r) => !prevRoles.some((old) => old.role === r.role));
+      if (newRole) setSelectedRole(newRole.role);
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      toast.error(data?.error || "Failed to create role.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const deleteRole = async (r: RoleSummary) => {
+    if (!authToken) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`${API_URL}/admin/roles/${r.role}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      toast.success(`Role "${r.display_name}" deleted.`);
+      setDeleteConfirmRole(null);
+      const refreshed = await fetchRoles(authToken);
+      setRoles(refreshed);
+      if (selectedRole === r.role && refreshed.length > 0) {
+        setSelectedRole(refreshed[0].role);
+      }
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      toast.error(data?.error || "Failed to delete role.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -203,23 +270,32 @@ export default function RolesPage() {
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         {/* Role picker */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
-            Roles
-          </p>
-          {ROLES.map((r) => {
-            const active = selectedRole === r.slug;
+          <div className="flex items-center justify-between px-1 mb-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Roles
+            </p>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setCreateRoleOpen(true)}
+            >
+              <Plus className="h-3 w-3" /> New
+            </Button>
+          </div>
+          <div className="mt-3" />
+          {roles.map((r) => {
+            const active = selectedRole === r.role;
             return (
               <button
-                key={r.slug}
-                onClick={() => setSelectedRole(r.slug)}
+                key={r.role}
+                onClick={() => setSelectedRole(r.role)}
                 className={`w-full text-left p-3 rounded-xl border transition-colors ${
                   active
                     ? "border-primary bg-primary/5"
                     : "border-zinc-200 dark:border-zinc-800 hover:bg-muted/50"
                 }`}
               >
-                <div className="text-sm font-medium">{r.label}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{r.blurb}</div>
+                <div className="text-sm font-medium">{r.display_name}</div>
               </button>
             );
           })}
@@ -238,7 +314,7 @@ export default function RolesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">
-                    {ROLES.find((r) => r.slug === selectedRole)?.label}
+                    {roles.find((r) => r.role === selectedRole)?.display_name}
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     Tick the items members of this role are permitted to use.
@@ -290,97 +366,48 @@ export default function RolesPage() {
                 </Card>
               )}
 
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base">Desktop applications</CardTitle>
-                      <CardDescription className="mt-1">
-                        Apps only appear on a user&apos;s dashboard when the admin has bound their
-                        workstation and the app is actually detected there.
-                      </CardDescription>
+              {selectedRole !== "admin" && registeredApps.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base">Registered Applications</CardTitle>
+                        <CardDescription className="mt-1">
+                          Which external applications members of this role are permitted to access
+                          via the app-auth API.
+                        </CardDescription>
+                      </div>
+                      <Badge variant="outline" className="ml-4">
+                        {perms.registered_apps.filter((slug) => registeredApps.some((a) => a.slug === slug)).length} / {registeredApps.length} allowed
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="ml-4">
-                      {perms.apps.filter((slug) => activeApps.some((a) => a.slug === slug)).length} / {activeApps.length} allowed
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {activeApps.map((a) => {
-                      const isOpen = expanded[a.slug] ?? false;
-                      return (
-                        <div
+                  </CardHeader>
+                  <CardContent>
+                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {registeredApps.map((a) => (
+                        <label
                           key={a.slug}
-                          className="rounded-xl border border-zinc-200 dark:border-zinc-800"
+                          className="flex items-center gap-3 py-3 cursor-pointer"
                         >
-                          <div className="flex items-center gap-3 p-3">
-                            <Checkbox
-                              checked={perms.apps.includes(a.slug)}
-                              onCheckedChange={() => toggle("apps", a.slug)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpanded((prev) => ({ ...prev, [a.slug]: !isOpen }))
-                              }
-                              className="flex-1 flex items-center gap-2 text-left min-w-0"
-                            >
-                              {isOpen ? (
-                                <ChevronDown className="h-4 w-4 shrink-0" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 shrink-0" />
-                              )}
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium truncate">
-                                  {a.display_name}
-                                </div>
-                                <div className="text-xs text-muted-foreground font-mono truncate">
-                                  {a.slug}
-                                </div>
-                              </div>
-                            </button>
-                            <TierPill tier={a.min_tier} />
+                          <Checkbox
+                            checked={perms.registered_apps.includes(a.slug)}
+                            onCheckedChange={() => toggle("registered_apps", a.slug)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm font-medium">{a.name}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground font-mono truncate">
+                              {a.slug}
+                            </div>
                           </div>
-                          {isOpen && (
-                            <>
-                              <Separator />
-                              <div className="p-3 pl-11 bg-muted/30 rounded-b-xl">
-                                {a.features.length === 0 ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    No features defined for this application.
-                                  </div>
-                                ) : (
-                                  <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                                    {a.features.map((f) => (
-                                      <label
-                                        key={f.slug}
-                                        className="flex items-center gap-3 py-2 cursor-pointer"
-                                      >
-                                        <Checkbox
-                                          checked={perms.app_features.includes(f.slug)}
-                                          onCheckedChange={() => toggle("app_features", f.slug)}
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-sm">{f.display_name}</div>
-                                          <div className="text-xs text-muted-foreground font-mono truncate">
-                                            {f.slug}
-                                          </div>
-                                        </div>
-                                        <TierPill tier={f.min_tier} />
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+                        </label>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {selectedRole === "admin" && (
                 <Card>
@@ -393,13 +420,13 @@ export default function RolesPage() {
                         </CardDescription>
                       </div>
                       <Badge variant="outline" className="ml-4">
-                        {perms.admin_sections.length} / {ADMIN_SECTIONS.length} allowed
+                        {perms.admin_sections.length} / {ADMIN_NAV_SECTIONS.length} allowed
                       </Badge>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                      {ADMIN_SECTIONS.map((s) => (
+                      {ADMIN_NAV_SECTIONS.map((s) => (
                         <label
                           key={s.slug}
                           className="flex items-center gap-3 py-3 cursor-pointer"
@@ -409,7 +436,14 @@ export default function RolesPage() {
                             onCheckedChange={() => toggle("admin_sections", s.slug)}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">{s.label}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{s.label}</span>
+                              {s.elevated && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/50 border-0">
+                                  Key required
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-xs text-muted-foreground font-mono">{s.slug}</div>
                           </div>
                         </label>
@@ -418,10 +452,90 @@ export default function RolesPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {!roles.find((r) => r.role === selectedRole)?.is_system && (
+                <Card className="border-destructive/40">
+                  <CardHeader>
+                    <CardTitle className="text-base text-destructive">Delete role</CardTitle>
+                    <CardDescription>
+                      Permanently remove <strong>{roles.find((r) => r.role === selectedRole)?.display_name}</strong> and all its permissions. This cannot be undone. Users currently assigned this role must be reassigned before deletion.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        const r = roles.find((x) => x.role === selectedRole);
+                        if (r) setDeleteConfirmRole(r);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1.5" />
+                      Delete {roles.find((r) => r.role === selectedRole)?.display_name}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </div>
       </div>
+
+      {/* Create Role dialog */}
+      <Dialog open={createRoleOpen} onOpenChange={(open) => { setCreateRoleOpen(open); if (!open) setNewRoleDisplayName(""); }}>
+        <DialogContent className="sm:max-w-[400px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Create Role</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="roleDisplayName">Role Name</Label>
+              <Input
+                id="roleDisplayName"
+                value={newRoleDisplayName}
+                onChange={(e) => setNewRoleDisplayName(e.target.value)}
+                placeholder="e.g. Finance, Legal, HR, Marketing..."
+                onKeyDown={(e) => e.key === "Enter" && createRole()}
+              />
+              {newRoleDisplayName && (
+                <p className="text-xs text-muted-foreground font-mono">
+                  slug: {slugPreview(newRoleDisplayName)}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateRoleOpen(false)}>Cancel</Button>
+            <Button onClick={createRole} disabled={creating || !newRoleDisplayName.trim()}>
+              {creating ? "Creating…" : "Create Role"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog open={!!deleteConfirmRole} onOpenChange={(open) => !open && setDeleteConfirmRole(null)}>
+        <DialogContent className="sm:max-w-[400px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Delete Role</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm">
+              Delete <strong>{deleteConfirmRole?.display_name}</strong>? This removes all permissions
+              assigned to this role and cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmRole(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => deleteConfirmRole && deleteRole(deleteConfirmRole)}
+            >
+              {deleting ? "Deleting…" : "Delete Role"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

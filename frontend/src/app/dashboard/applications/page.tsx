@@ -13,52 +13,94 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { AppWindow, KeyRound, Rocket } from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  AppWindow,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { API_URL } from "@/app/utils/constants";
-import { Tier, tierLabel, TierPill } from "@/app/utils/tiers";
 
-interface AccessApplication {
-  slug: string;
-  display_name: string;
-  min_tier: Tier;
-  launch_uri: string | null;
-}
-
-interface AccessApplicationsResponse {
-  tier: Tier;
-  applications: AccessApplication[];
-}
-
-interface CatalogFeature {
+interface RegisteredApp {
   id: number;
+  name: string;
   slug: string;
-  display_name: string;
-  min_tier: Tier;
+  description: string | null;
+  api_key_prefix: string;
+  callback_url: string | null;
   is_active: boolean;
+  created_at: string | null;
+  created_by: string | null;
 }
 
-interface CatalogApp {
-  id: number;
-  slug: string;
-  display_name: string;
-  min_tier: Tier;
-  is_active: boolean;
-  detect_hints: Record<string, string> | null;
-  features: CatalogFeature[];
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={copy}
+      className="ml-2 p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-muted-foreground"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
 }
 
 export default function ApplicationsPage() {
   const router = useRouter();
-  const [role, setRole] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [apps, setApps] = useState<RegisteredApp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notAdmin, setNotAdmin] = useState(false);
+
+  // Register dialog
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newCallbackUrl, setNewCallbackUrl] = useState("");
+  const [registering, setRegistering] = useState(false);
+
+  // Edit dialog
+  const [editApp, setEditApp] = useState<RegisteredApp | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editCallbackUrl, setEditCallbackUrl] = useState("");
+  const [editActive, setEditActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Delete dialog
+  const [deleteApp, setDeleteApp] = useState<RegisteredApp | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Regenerate key dialog
+  const [regenApp, setRegenApp] = useState<RegisteredApp | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // API key reveal dialog
+  const [revealedKey, setRevealedKey] = useState<{ key: string; name: string } | null>(null);
+  const [keyVisible, setKeyVisible] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -67,92 +109,153 @@ export default function ApplicationsPage() {
       router.push("/");
       return;
     }
-    setRole(user.role);
+    if (user.role !== "admin") {
+      setNotAdmin(true);
+      setLoading(false);
+      return;
+    }
     setAuthToken(user.authToken);
   }, [router]);
 
-  if (!authToken || !role) {
-    return (
-      <div className="p-6 font-montserrat">
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
+  const fetchApps = async (token: string) => {
+    const res = await axios.get<{ apps: RegisteredApp[] }>(
+      `${API_URL}/admin/registered-apps`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
-  }
-
-  return role === "admin" ? (
-    <AdminCatalog authToken={authToken} />
-  ) : (
-    <UserLauncher authToken={authToken} />
-  );
-}
-
-/* ---------- Admin catalog editor ---------- */
-
-function AdminCatalog({ authToken }: { authToken: string }) {
-  const [apps, setApps] = useState<CatalogApp[]>([]);
-  const [loading, setLoading] = useState(true);
+    return res.data.apps;
+  };
 
   useEffect(() => {
+    if (!authToken) return;
     (async () => {
-      setLoading(true);
       try {
-        const res = await axios.get<{ applications: CatalogApp[] }>(
-          `${API_URL}/admin/applications`,
-          { headers: { Authorization: `Bearer ${authToken}` } },
-        );
-        setApps(res.data.applications);
-      } catch (err) {
-        const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
-        toast.error(data?.error || "Could not load application catalog.");
+        setApps(await fetchApps(authToken));
+      } catch {
+        toast.error("Could not load registered applications.");
       } finally {
         setLoading(false);
       }
     })();
   }, [authToken]);
 
-  const patchApp = async (app: CatalogApp, patch: Partial<CatalogApp>) => {
+  const register = async () => {
+    if (!newName.trim() || !authToken) return;
+    setRegistering(true);
     try {
-      const res = await axios.patch<CatalogApp>(
-        `${API_URL}/admin/applications/${app.id}`,
-        patch,
-        { headers: { Authorization: `Bearer ${authToken}` } },
+      const res = await axios.post<RegisteredApp & { api_key?: string }>(
+        `${API_URL}/admin/registered-apps`,
+        {
+          name: newName.trim(),
+          description: newDesc.trim() || undefined,
+          callback_url: newCallbackUrl.trim() || undefined,
+        },
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      setApps((prev) =>
-        prev.map((a) => (a.id === app.id ? { ...a, ...res.data, features: a.features } : a)),
-      );
-      toast.success(`${app.display_name} updated.`);
-    } catch {
-      toast.error("Update failed.");
+      const created = res.data;
+      setApps(await fetchApps(authToken));
+      setRegisterOpen(false);
+      setNewName("");
+      setNewDesc("");
+      setNewCallbackUrl("");
+      if (created.api_key) {
+        setRevealedKey({ key: created.api_key, name: created.name });
+        setKeyVisible(false);
+      }
+      toast.success(`"${created.name}" registered.`);
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      toast.error(data?.error || "Failed to register application.");
+    } finally {
+      setRegistering(false);
     }
   };
 
-  const patchFeature = async (
-    appId: number,
-    feature: CatalogFeature,
-    patch: Partial<CatalogFeature>,
-  ) => {
+  const openEdit = (app: RegisteredApp) => {
+    setEditApp(app);
+    setEditName(app.name);
+    setEditDesc(app.description ?? "");
+    setEditCallbackUrl(app.callback_url ?? "");
+    setEditActive(app.is_active);
+  };
+
+  const saveEdit = async () => {
+    if (!editApp || !authToken) return;
+    setSaving(true);
     try {
-      const res = await axios.patch<CatalogFeature>(
-        `${API_URL}/admin/application-features/${feature.id}`,
-        patch,
-        { headers: { Authorization: `Bearer ${authToken}` } },
+      await axios.patch(
+        `${API_URL}/admin/registered-apps/${editApp.id}`,
+        {
+          name: editName.trim(),
+          description: editDesc.trim() || null,
+          callback_url: editCallbackUrl.trim() || null,
+          is_active: editActive,
+        },
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      setApps((prev) =>
-        prev.map((a) =>
-          a.id !== appId
-            ? a
-            : {
-                ...a,
-                features: a.features.map((f) =>
-                  f.id === feature.id ? { ...f, ...res.data } : f,
-                ),
-              },
-        ),
-      );
+      setApps(await fetchApps(authToken));
+      setEditApp(null);
+      toast.success("Changes saved.");
     } catch {
-      toast.error("Feature update failed.");
+      toast.error("Failed to save changes.");
+    } finally {
+      setSaving(false);
     }
   };
+
+  const confirmDelete = async () => {
+    if (!deleteApp || !authToken) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`${API_URL}/admin/registered-apps/${deleteApp.id}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      setApps(await fetchApps(authToken));
+      setDeleteApp(null);
+      toast.success(`"${deleteApp.name}" removed.`);
+    } catch {
+      toast.error("Failed to delete application.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const regenerateKey = async () => {
+    if (!regenApp || !authToken) return;
+    setRegenerating(true);
+    try {
+      const res = await axios.post<RegisteredApp & { api_key?: string }>(
+        `${API_URL}/admin/registered-apps/${regenApp.id}/regenerate-key`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      setApps(await fetchApps(authToken));
+      setRegenApp(null);
+      if (res.data.api_key) {
+        setRevealedKey({ key: res.data.api_key, name: res.data.name });
+        setKeyVisible(false);
+      }
+      toast.success("API key regenerated.");
+    } catch {
+      toast.error("Failed to regenerate API key.");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  if (notAdmin) {
+    return (
+      <div className="p-6 font-montserrat max-w-xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Admins only</CardTitle>
+            <CardDescription>
+              Application registration is restricted to administrators.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 font-montserrat">
@@ -161,175 +264,19 @@ function AdminCatalog({ authToken }: { authToken: string }) {
           <AppWindow className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold">Application catalog</h1>
+          <h1 className="text-2xl font-semibold">Registered Applications</h1>
           <p className="text-sm text-muted-foreground max-w-3xl mt-1">
-            The master list of desktop applications Argus recognises. An app appears on a
-            user&apos;s dashboard only when (1) it is active here, (2) their role is allowed in{" "}
-            <strong>Roles</strong>, and (3) it is actually installed on their bound workstation.
+            External applications (such as chat clients) register here to receive an API key.
+            They use it to verify user sessions and retrieve role-based access information.
           </p>
         </div>
       </div>
 
-      {loading ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Loading catalog…
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {apps.map((app) => (
-            <Card key={app.id} className={!app.is_active ? "opacity-60" : ""}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base">{app.display_name}</CardTitle>
-                      <TierPill tier={app.min_tier} />
-                      {!app.is_active && (
-                        <Badge variant="outline" className="text-xs">
-                          inactive
-                        </Badge>
-                      )}
-                    </div>
-                    <CardDescription className="mt-1 font-mono text-xs truncate">
-                      {app.slug}
-                      {app.detect_hints?.launch_uri ? (
-                        <>
-                          {" · "}launch: <code>{app.detect_hints.launch_uri}</code>
-                        </>
-                      ) : null}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      Active
-                      <Switch
-                        checked={app.is_active}
-                        onCheckedChange={(v) => patchApp(app, { is_active: v })}
-                      />
-                    </label>
-                    <Select
-                      value={app.min_tier}
-                      onValueChange={(v) => patchApp(app, { min_tier: v as Tier })}
-                    >
-                      <SelectTrigger className="h-8 w-[170px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{tierLabel.none}</SelectItem>
-                        <SelectItem value="key_unbound">{tierLabel.key_unbound}</SelectItem>
-                        <SelectItem value="key_bound">{tierLabel.key_bound}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardHeader>
-              {app.features.length > 0 && (
-                <CardContent>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                    Features
-                  </p>
-                  <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {app.features.map((f) => (
-                      <div key={f.id} className="flex items-center gap-3 py-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm">{f.display_name}</div>
-                          <div className="text-xs text-muted-foreground font-mono truncate">
-                            {f.slug}
-                          </div>
-                        </div>
-                        <Select
-                          value={f.min_tier}
-                          onValueChange={(v) =>
-                            patchFeature(app.id, f, { min_tier: v as Tier })
-                          }
-                        >
-                          <SelectTrigger className="h-8 w-[170px] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">{tierLabel.none}</SelectItem>
-                            <SelectItem value="key_unbound">{tierLabel.key_unbound}</SelectItem>
-                            <SelectItem value="key_bound">{tierLabel.key_bound}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                          Active
-                          <Switch
-                            checked={f.is_active}
-                            onCheckedChange={(v) =>
-                              patchFeature(app.id, f, { is_active: v })
-                            }
-                          />
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- End-user launcher ---------- */
-
-function UserLauncher({ authToken }: { authToken: string }) {
-  const [tier, setTier] = useState<Tier>("none");
-  const [apps, setApps] = useState<AccessApplication[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fp = sessionStorage.getItem("workstation_fingerprint");
-    const machineId = fp ? (JSON.parse(fp)?.machine_id ?? "") : "";
-
-    axios
-      .get<AccessApplicationsResponse>(`${API_URL}/access/applications`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          ...(machineId ? { "X-Machine-Id": machineId } : {}),
-        },
-      })
-      .then((res) => {
-        setTier(res.data.tier);
-        setApps(res.data.applications);
-        setLoading(false);
-      })
-      .catch(() => {
-        toast.error("Could not load applications.");
-        setLoading(false);
-      });
-  }, [authToken]);
-
-  const launch = (app: AccessApplication) => {
-    if (!app.launch_uri) {
-      toast.error(`${app.display_name} has no configured launch URI.`);
-      return;
-    }
-    const a = document.createElement("a");
-    a.href = app.launch_uri;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  return (
-    <div className="p-6 font-montserrat">
-      <div className="mb-8 flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-          <Rocket className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold">Applications</h1>
-          <p className="text-sm text-muted-foreground">
-            Desktop applications you are authorised to launch from this workstation.
-          </p>
-        </div>
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => setRegisterOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Register App
+        </Button>
       </div>
 
       {loading ? (
@@ -338,63 +285,276 @@ function UserLauncher({ authToken }: { authToken: string }) {
             Loading…
           </CardContent>
         </Card>
-      ) : tier !== "key_bound" ? (
-        <Card className="border-amber-500/30 bg-amber-500/5 max-w-2xl">
-          <CardHeader>
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                <KeyRound className="h-5 w-5" />
-              </div>
-              <div>
-                <CardTitle>Sign in with your security key on a registered machine</CardTitle>
-                <CardDescription className="mt-1">
-                  Enterprise applications only appear once you&apos;ve verified your security key
-                  and you&apos;re on a workstation that has been bound to it. Your current session
-                  is at tier <code>{tier}</code>.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
       ) : apps.length === 0 ? (
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CardTitle>No installed applications detected</CardTitle>
-            <CardDescription className="mt-1">
-              This workstation hasn&apos;t reported any of the applications your role is allowed
-              to launch. Ask your administrator to verify the application inventory for this
-              machine.
-            </CardDescription>
-          </CardHeader>
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            No applications registered yet. Click <strong>Register App</strong> to add one.
+          </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-3">
           {apps.map((app) => (
-            <Card key={app.slug}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <CardTitle className="text-base truncate">{app.display_name}</CardTitle>
-                    <CardDescription className="font-mono text-xs truncate">
-                      {app.slug}
-                    </CardDescription>
+            <Card key={app.id}>
+              <CardContent className="py-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <AppWindow className="h-4 w-4" />
                   </div>
-                  <TierPill tier={app.min_tier} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{app.name}</span>
+                      <Badge variant={app.is_active ? "default" : "secondary"}>
+                        {app.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    {app.description && (
+                      <p className="text-sm text-muted-foreground mt-0.5">{app.description}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        <span className="font-medium text-foreground">slug: </span>
+                        <span className="font-mono">{app.slug}</span>
+                      </span>
+                      <span>
+                        <span className="font-medium text-foreground">key: </span>
+                        <span className="font-mono">{app.api_key_prefix}…</span>
+                      </span>
+                      {app.callback_url && (
+                        <span>
+                          <span className="font-medium text-foreground">callback: </span>
+                          <span className="font-mono truncate max-w-[200px] inline-block align-bottom">{app.callback_url}</span>
+                        </span>
+                      )}
+                      {app.created_at && (
+                        <span>
+                          Added {new Date(app.created_at).toLocaleDateString()}
+                          {app.created_by ? ` by ${app.created_by}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Edit"
+                      onClick={() => openEdit(app)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Regenerate API key"
+                      onClick={() => setRegenApp(app)}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      title="Delete"
+                      onClick={() => setDeleteApp(app)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  onClick={() => launch(app)}
-                  disabled={!app.launch_uri}
-                  className="w-full"
-                >
-                  Launch
-                </Button>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Register dialog */}
+      <Dialog
+        open={registerOpen}
+        onOpenChange={(open) => {
+          setRegisterOpen(open);
+          if (!open) { setNewName(""); setNewDesc(""); setNewCallbackUrl(""); }
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Register Application</DialogTitle>
+            <DialogDescription>
+              An API key will be generated. Store it securely — it is only shown once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="appName">Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="appName"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Nexus AI Chat"
+                onKeyDown={(e) => e.key === "Enter" && register()}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="appDesc">Description</Label>
+              <Textarea
+                id="appDesc"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="Short description of what this app does…"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="callbackUrl">Callback URL</Label>
+              <Input
+                id="callbackUrl"
+                value={newCallbackUrl}
+                onChange={(e) => setNewCallbackUrl(e.target.value)}
+                placeholder="https://your-app.example.com/callback"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegisterOpen(false)}>Cancel</Button>
+            <Button onClick={register} disabled={registering || !newName.trim()}>
+              {registering ? "Registering…" : "Register"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editApp} onOpenChange={(open) => !open && setEditApp(null)}>
+        <DialogContent className="sm:max-w-[440px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Edit Application</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Name</Label>
+              <Input
+                id="editName"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editDesc">Description</Label>
+              <Textarea
+                id="editDesc"
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editCallbackUrl">Callback URL</Label>
+              <Input
+                id="editCallbackUrl"
+                value={editCallbackUrl}
+                onChange={(e) => setEditCallbackUrl(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="editActive"
+                checked={editActive}
+                onChange={(e) => setEditActive(e.target.checked)}
+                className="h-4 w-4 rounded"
+              />
+              <Label htmlFor="editActive">Active</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditApp(null)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={saving || !editName.trim()}>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Regenerate key confirm dialog */}
+      <Dialog open={!!regenApp} onOpenChange={(open) => !open && setRegenApp(null)}>
+        <DialogContent className="sm:max-w-[400px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Regenerate API Key</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm">
+              Regenerate the API key for <strong>{regenApp?.name}</strong>? The existing key will
+              stop working immediately. The new key is shown once.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegenApp(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={regenerating} onClick={regenerateKey}>
+              {regenerating ? "Regenerating…" : "Regenerate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog open={!!deleteApp} onOpenChange={(open) => !open && setDeleteApp(null)}>
+        <DialogContent className="sm:max-w-[400px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Delete Application</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm">
+              Permanently delete <strong>{deleteApp?.name}</strong>? Its API key will stop working
+              immediately and this cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteApp(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleting} onClick={confirmDelete}>
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* API key one-time display dialog */}
+      <Dialog open={!!revealedKey} onOpenChange={(open) => !open && setRevealedKey(null)}>
+        <DialogContent className="sm:max-w-[480px] font-montserrat">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-primary" />
+              API Key for {revealedKey?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Copy this key now. It will not be shown again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="flex items-center rounded-lg border bg-muted px-3 py-2.5 font-mono text-sm break-all">
+              <span className={keyVisible ? "" : "select-none blur-sm"}>
+                {revealedKey?.key}
+              </span>
+              <div className="ml-auto flex items-center gap-1 pl-2 shrink-0">
+                <button
+                  onClick={() => setKeyVisible(!keyVisible)}
+                  className="p-1 rounded hover:bg-background text-muted-foreground"
+                >
+                  {keyVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+                {revealedKey && <CopyButton text={revealedKey.key} />}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Pass this as <code className="font-mono bg-muted px-1 rounded">api_key</code> in calls
+              to <code className="font-mono bg-muted px-1 rounded">POST /api/app-auth/verify</code>.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setRevealedKey(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
