@@ -53,7 +53,7 @@ def upgrade():
     )
 
     op.create_table(
-        'applications',
+        'application_catalog',
         sa.Column('id', sa.Integer, primary_key=True),
         sa.Column('slug', sa.String(128), nullable=False, unique=True),
         sa.Column('display_name', sa.String(128), nullable=False),
@@ -258,7 +258,7 @@ def _seed(bind):
             'app_feature': set(all_feature_slugs),
             'admin_section': set(ADMIN_SECTIONS),
         },
-        'it_department': {
+        'it': {
             'model': set(all_model_slugs),
             'app': set(all_app_slugs),
             'app_feature': set(all_feature_slugs),
@@ -329,5 +329,5 @@ def downgrade():
     op.drop_table('machine_installed_apps')
     op.drop_table('role_permissions')
     op.drop_table('application_features')
-    op.drop_table('applications')
+    op.drop_table('application_catalog')
     op.drop_table('ai_models')
