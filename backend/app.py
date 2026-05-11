@@ -17,6 +17,8 @@ from flask_migrate import Migrate
 from flask_socketio import SocketIO, emit, join_room
 from threading import Lock
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import subprocess
 import mimetypes
 
@@ -141,8 +143,8 @@ def check_auth_middleware():
 thread = None
 thread_lock = Lock()
 
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "postgresql://postgres:postgres@localhost/argus_ai_secure_poc"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL", "postgresql://user:password@localhost/your_db_name"
 )
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
