@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import axios from "axios";
-import { toast } from "sonner";
 import { API_URL } from "@/app/utils/constants";
+import { useAuth } from "@/app/utils/useAuth";
+import { toast } from "sonner";
 import { Bell, LogOut, Search, Settings } from "lucide-react" // Added Search and Settings
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -55,24 +56,34 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const [userInitials, setUserInitials] = useState("SA"); // Default to SA
+  const { user } = useAuth();
+  const [userInitials, setUserInitials] = useState("SA");
+  const [adminSections, setAdminSections] = useState<string[] | undefined>(undefined);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const userData = sessionStorage.getItem("user");
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.firstName && user.lastName) {
-            const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`;
-            setUserInitials(initials.toUpperCase());
-          }
-        } catch (e) {
-          console.error("Failed to parse user data from sessionStorage", e);
-        }
-      }
+    if (user?.firstName && user?.lastName) {
+      setUserInitials(`${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase());
     }
-  }, []);
+  }, [user]);
+
+  const fetchAdminSections = useCallback(() => {
+    if (!user?.authToken || user.role !== "admin") return;
+    axios
+      .get<{ admin_sections: string[] }>(
+        `${API_URL}/admin/roles/admin/permissions`,
+        { headers: { Authorization: `Bearer ${user.authToken}` } },
+      )
+      .then((res) => setAdminSections(res.data.admin_sections))
+      .catch(() => setAdminSections([]));
+  }, [user?.authToken, user?.role]);
+
+  // Fetch on mount and whenever permissions are saved
+  useEffect(() => { fetchAdminSections(); }, [fetchAdminSections]);
+
+  useEffect(() => {
+    window.addEventListener("argus-sections-changed", fetchAdminSections);
+    return () => window.removeEventListener("argus-sections-changed", fetchAdminSections);
+  }, [fetchAdminSections]);
 
   const handleLogout = async () => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
@@ -102,7 +113,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       {/* Add font-montserrat class here */}
       <div className="relative flex min-h-screen font-montserrat w-full">
-        <AppSidebar />
+        <AppSidebar allowedSections={adminSections} />
         <SidebarInset>
           <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 px-4 backdrop-blur-xl lg:h-[60px]"> {/* Removed border-b */}
             <SidebarTrigger className="size-9 p-0 flex items-center justify-center border border-sidebar-border bg-sidebar shadow-xs hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 rounded-full" /> {/* Removed md:hidden, changed to rounded-xl and bg-sidebar */}
