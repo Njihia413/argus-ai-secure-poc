@@ -122,12 +122,8 @@ export default function UserDetailsPage() {
     os_info: string | null
     is_active: boolean
     created_at: string | null
-    installed_apps: Array<{ slug: string; display_name: string; version: string | null; detected_at: string | null }>
-    raw_inventory: Array<{ id: number; bundle_id: string | null; name: string; path: string | null; in_catalog: boolean }>
   }>>([])
   const [machinesLoading, setMachinesLoading] = useState(false);
-  const [expandedInventory, setExpandedInventory] = useState<Record<number, boolean>>({});
-  const [promoting, setPromoting] = useState<Record<string, boolean>>({});
   const [keyDetails, setKeyDetails] = useState<SecurityKeyDetails>({
     device_type: '',
     form_factor: '',
@@ -184,41 +180,6 @@ export default function UserDetailsPage() {
       router.push("/dashboard/users")
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const promoteToCatalog = async (
-    entry: { bundle_id: string | null; name: string },
-    machineId: number
-  ) => {
-    if (!entry.bundle_id) {
-      toast.error("No bundle ID — cannot add to catalog")
-      return
-    }
-    const key = `${machineId}:${entry.bundle_id}`
-    setPromoting((p) => ({ ...p, [key]: true }))
-    try {
-      const authToken = sessionStorage.getItem("authToken") ||
-        JSON.parse(sessionStorage.getItem("user") || "{}").authToken
-      const slug = entry.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
-      await axios.post(
-        `${API_URL}/admin/applications`,
-        {
-          slug,
-          display_name: entry.name,
-          min_tier: "key_bound",
-          is_active: true,
-          detect_hints: { macos_bundle_id: entry.bundle_id },
-        },
-        { headers: { Authorization: `Bearer ${authToken}` } }
-      )
-      toast.success(`Added "${entry.name}" to catalog`)
-      fetchBoundMachines(authToken)
-    } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      toast.error(msg || "Failed to add to catalog")
-    } finally {
-      setPromoting((p) => ({ ...p, [key]: false }))
     }
   }
 
@@ -823,7 +784,7 @@ export default function UserDetailsPage() {
           <CardHeader>
             <CardTitle>Bound machines</CardTitle>
             <CardDescription>
-              Workstations this user has bound a security key to. The installed-app list is what Argus detected on that machine at bind time.
+              Workstations this user has bound a security key to.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -852,70 +813,6 @@ export default function UserDetailsPage() {
                       <span className={`text-xs px-2 py-1 rounded ${m.is_active ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                         {m.is_active ? "active" : "inactive"}
                       </span>
-                    </div>
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-                        Catalogued apps ({m.installed_apps.length})
-                      </div>
-                      {m.installed_apps.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">None of the catalog apps are installed.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {m.installed_apps.map((a) => (
-                            <span key={a.slug} className="text-xs px-2 py-1 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300">
-                              {a.display_name}{a.version ? ` · ${a.version}` : ""}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-4 pt-3">
-                      <button
-                        onClick={() => setExpandedInventory((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
-                        className="flex items-center justify-between w-full text-xs font-semibold uppercase text-muted-foreground hover:text-foreground transition"
-                      >
-                        <span>All installed apps ({m.raw_inventory.length})</span>
-                        <span>{expandedInventory[m.id] ? "▲" : "▼"}</span>
-                      </button>
-                      {expandedInventory[m.id] && (
-                        <div className="mt-3 max-h-96 overflow-y-auto">
-                          {m.raw_inventory.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-3">No apps detected in raw scan.</p>
-                          ) : (
-                            <div>
-                              {m.raw_inventory.map((r) => {
-                                const key = `${m.id}:${r.bundle_id}`
-                                return (
-                                  <div key={r.id} className="flex items-center justify-between gap-3 py-2">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="text-sm font-medium truncate">{r.name}</div>
-                                      {r.bundle_id && (
-                                        <div className="text-muted-foreground font-mono text-[11px] truncate">{r.bundle_id}</div>
-                                      )}
-                                    </div>
-                                    {r.in_catalog ? (
-                                      <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 whitespace-nowrap">
-                                        In catalog
-                                      </span>
-                                    ) : r.bundle_id ? (
-                                      <button
-                                        onClick={() => promoteToCatalog(r, m.id)}
-                                        disabled={promoting[key]}
-                                        className="text-[10px] px-2 py-0.5 rounded border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition disabled:opacity-50 whitespace-nowrap"
-                                      >
-                                        {promoting[key] ? "Adding…" : "+ Catalog"}
-                                      </button>
-                                    ) : (
-                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">No bundle ID</span>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}

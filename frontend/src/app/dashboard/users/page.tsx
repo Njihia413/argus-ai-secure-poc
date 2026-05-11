@@ -86,6 +86,7 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [availableRoles, setAvailableRoles] = useState<{ role: string; display_name: string }[]>([])
   const router = useRouter()
 
   // Dialog states
@@ -168,6 +169,15 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers()
+    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+    if (userInfo?.authToken && userInfo?.role === "admin") {
+      axios
+        .get<{ roles: { role: string; display_name: string }[] }>(`${API_URL}/admin/roles`, {
+          headers: { Authorization: `Bearer ${userInfo.authToken}` },
+        })
+        .then((res) => setAvailableRoles(res.data.roles))
+        .catch(() => {})
+    }
   }, [router])
 
   useEffect(() => {
@@ -360,11 +370,9 @@ export default function UsersPage() {
                     <SelectContent>
                       <SelectGroup>
                         <SelectItem value="all">All Roles</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="hr">HR</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="it_department">IT Department</SelectItem>
-                        <SelectItem value="customer_service">Customer Service</SelectItem>
+                        {availableRoles.map((r) => (
+                          <SelectItem key={r.role} value={r.role}>{r.display_name}</SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -475,11 +483,9 @@ export default function UsersPage() {
                   <SelectContent>
                     <SelectGroup>
                       <SelectLabel>Available Roles</SelectLabel>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="hr">HR</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="it_department">IT Department</SelectItem>
-                      <SelectItem value="customer_service">Customer Service</SelectItem>
+                      {availableRoles.map((r) => (
+                        <SelectItem key={r.role} value={r.role}>{r.display_name}</SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -553,11 +559,9 @@ export default function UsersPage() {
                     <SelectContent>
                       <SelectGroup>
                         <SelectLabel>Available Roles</SelectLabel>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="hr">HR</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="it_department">IT Department</SelectItem>
-                        <SelectItem value="customer_service">Customer Service</SelectItem>
+                        {availableRoles.map((r) => (
+                          <SelectItem key={r.role} value={r.role}>{r.display_name}</SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
