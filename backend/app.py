@@ -68,7 +68,7 @@ CORS(
         r"/api/*": {
             "origins": "*",
             "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-Security-Key-ID"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Security-Key-ID", "X-Machine-Id"],
         }
     },
 )
