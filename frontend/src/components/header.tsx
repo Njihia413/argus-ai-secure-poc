@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { User, Settings, LogOut, FileKey } from "lucide-react";
+import { User, Settings, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearBindingData } from "@/app/utils/webauthn";
 import axios from "axios";
@@ -306,7 +306,7 @@ export const Header = () => {
       <div className="fixed right-0 left-0 w-full top-0 bg-white dark:bg-zinc-900 z-50 border-b border-zinc-200 dark:border-zinc-800 font-montserrat">
         <div className="flex justify-between items-center p-4">
           <div className="flex items-center space-x-2">
-            <Link href="/chat" className="flex items-center space-x-2">
+            <Link href="/dashboard" className="flex items-center space-x-2">
               <span className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white">
                Argus AI
               </span>
@@ -344,10 +344,6 @@ export const Header = () => {
                     <DropdownMenuItem onClick={() => openSettingsWithTab("general")}>
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push("/chat/secure-files")}>
-                      <FileKey className="mr-2 h-4 w-4" />
-                      <span>Secure Files</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout}>

@@ -268,12 +268,8 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
         };
     }
 
-    const redirectBasedOnRole = (role: string) => {
-        if (role === 'admin') {
-            router.push("/dashboard");
-        } else {
-            router.push("/chat");
-        }
+    const redirectBasedOnRole = (_role: string) => {
+        router.push("/dashboard");
     }
 
     const handlePasswordLogin = async (e: React.FormEvent) => {
