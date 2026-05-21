@@ -25,12 +25,20 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AppWindow,
   Check,
   Copy,
   Eye,
   EyeOff,
   KeyRound,
+  Network,
   Pencil,
   Plus,
   RefreshCw,
@@ -44,10 +52,16 @@ interface RegisteredApp {
   slug: string;
   description: string | null;
   api_key_prefix: string;
-  callback_url: string | null;
   is_active: boolean;
+  required_zone_id: number | null;
   created_at: string | null;
   created_by: string | null;
+}
+
+interface NetworkZone {
+  id: number;
+  name: string;
+  requires_key: boolean;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -72,6 +86,7 @@ export default function ApplicationsPage() {
   const router = useRouter();
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [apps, setApps] = useState<RegisteredApp[]>([]);
+  const [zones, setZones] = useState<NetworkZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [notAdmin, setNotAdmin] = useState(false);
 
@@ -79,15 +94,14 @@ export default function ApplicationsPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newCallbackUrl, setNewCallbackUrl] = useState("");
   const [registering, setRegistering] = useState(false);
 
   // Edit dialog
   const [editApp, setEditApp] = useState<RegisteredApp | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
-  const [editCallbackUrl, setEditCallbackUrl] = useState("");
   const [editActive, setEditActive] = useState(true);
+  const [editZoneId, setEditZoneId] = useState<string>("none");
   const [saving, setSaving] = useState(false);
 
   // Delete dialog
@@ -129,7 +143,14 @@ export default function ApplicationsPage() {
     if (!authToken) return;
     (async () => {
       try {
-        setApps(await fetchApps(authToken));
+        const [appsData, zonesRes] = await Promise.all([
+          fetchApps(authToken),
+          axios.get<{ zones: NetworkZone[] }>(`${API_URL}/admin/network-zones`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          }),
+        ]);
+        setApps(appsData);
+        setZones(zonesRes.data.zones.filter((z) => z.id !== undefined));
       } catch {
         toast.error("Could not load registered applications.");
       } finally {
@@ -147,7 +168,6 @@ export default function ApplicationsPage() {
         {
           name: newName.trim(),
           description: newDesc.trim() || undefined,
-          callback_url: newCallbackUrl.trim() || undefined,
         },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
@@ -156,7 +176,6 @@ export default function ApplicationsPage() {
       setRegisterOpen(false);
       setNewName("");
       setNewDesc("");
-      setNewCallbackUrl("");
       if (created.api_key) {
         setRevealedKey({ key: created.api_key, name: created.name });
         setKeyVisible(false);
@@ -174,8 +193,8 @@ export default function ApplicationsPage() {
     setEditApp(app);
     setEditName(app.name);
     setEditDesc(app.description ?? "");
-    setEditCallbackUrl(app.callback_url ?? "");
     setEditActive(app.is_active);
+    setEditZoneId(app.required_zone_id != null ? String(app.required_zone_id) : "none");
   };
 
   const saveEdit = async () => {
@@ -187,8 +206,8 @@ export default function ApplicationsPage() {
         {
           name: editName.trim(),
           description: editDesc.trim() || null,
-          callback_url: editCallbackUrl.trim() || null,
           is_active: editActive,
+          required_zone_id: editZoneId === "none" ? null : Number(editZoneId),
         },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
@@ -306,6 +325,15 @@ export default function ApplicationsPage() {
                       <Badge variant={app.is_active ? "default" : "secondary"}>
                         {app.is_active ? "Active" : "Inactive"}
                       </Badge>
+                      {app.required_zone_id != null && (() => {
+                        const zone = zones.find((z) => z.id === app.required_zone_id);
+                        return zone ? (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Network className="h-3 w-3" />
+                            {zone.name}
+                          </Badge>
+                        ) : null;
+                      })()}
                     </div>
                     {app.description && (
                       <p className="text-sm text-muted-foreground mt-0.5">{app.description}</p>
@@ -319,12 +347,6 @@ export default function ApplicationsPage() {
                         <span className="font-medium text-foreground">key: </span>
                         <span className="font-mono">{app.api_key_prefix}…</span>
                       </span>
-                      {app.callback_url && (
-                        <span>
-                          <span className="font-medium text-foreground">callback: </span>
-                          <span className="font-mono truncate max-w-[200px] inline-block align-bottom">{app.callback_url}</span>
-                        </span>
-                      )}
                       {app.created_at && (
                         <span>
                           Added {new Date(app.created_at).toLocaleDateString()}
@@ -374,14 +396,14 @@ export default function ApplicationsPage() {
         open={registerOpen}
         onOpenChange={(open) => {
           setRegisterOpen(open);
-          if (!open) { setNewName(""); setNewDesc(""); setNewCallbackUrl(""); }
+          if (!open) { setNewName(""); setNewDesc(""); }
         }}
       >
         <DialogContent className="sm:max-w-[440px] font-montserrat">
           <DialogHeader>
             <DialogTitle>Register Application</DialogTitle>
             <DialogDescription>
-              An API key will be generated. Store it securely — it is only shown once.
+              An API key will be generated. Store it securely, it is only shown once.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -403,15 +425,6 @@ export default function ApplicationsPage() {
                 onChange={(e) => setNewDesc(e.target.value)}
                 placeholder="Short description of what this app does…"
                 rows={2}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="callbackUrl">Callback URL</Label>
-              <Input
-                id="callbackUrl"
-                value={newCallbackUrl}
-                onChange={(e) => setNewCallbackUrl(e.target.value)}
-                placeholder="https://your-app.example.com/callback"
               />
             </div>
           </div>
@@ -449,12 +462,23 @@ export default function ApplicationsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="editCallbackUrl">Callback URL</Label>
-              <Input
-                id="editCallbackUrl"
-                value={editCallbackUrl}
-                onChange={(e) => setEditCallbackUrl(e.target.value)}
-              />
+              <Label>Network Zone</Label>
+              <Select value={editZoneId} onValueChange={setEditZoneId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="No zone restriction" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No zone restriction</SelectItem>
+                  {zones.map((z) => (
+                    <SelectItem key={z.id} value={String(z.id)}>
+                      {z.name}{z.requires_key ? " (requires key)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Restrict this app to requests originating from a specific network zone.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <input
