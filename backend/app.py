@@ -4,6 +4,7 @@ eventlet.monkey_patch()
 import json
 import hashlib
 import math
+import ipaddress
 import re
 import secrets
 import requests
@@ -626,6 +627,20 @@ def tier_at_least(actual: str, required: str) -> bool:
         return False
 
 
+class NetworkZone(db.Model):
+    __tablename__ = "network_zones"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True, nullable=False)
+    description = db.Column(db.String(256), nullable=True)
+    cidrs = db.Column(db.JSON, nullable=False, default=list)
+    requires_key = db.Column(db.Boolean, nullable=False, default=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class AIModel(db.Model):
     __tablename__ = "ai_models"
 
@@ -688,8 +703,8 @@ class RegisteredApp(db.Model):
     description = db.Column(db.String(256), nullable=True)
     api_key_hash = db.Column(db.String(128), nullable=False)
     api_key_prefix = db.Column(db.String(16), nullable=False)
-    callback_url = db.Column(db.String(256), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    required_zone_id = db.Column(db.Integer, db.ForeignKey("network_zones.id"), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -710,8 +725,8 @@ def _serialize_registered_app(app_obj, include_key=None):
         "slug": app_obj.slug,
         "description": app_obj.description,
         "api_key_prefix": app_obj.api_key_prefix,
-        "callback_url": app_obj.callback_url,
         "is_active": app_obj.is_active,
+        "required_zone_id": app_obj.required_zone_id,
         "created_at": app_obj.created_at.isoformat() if app_obj.created_at else None,
         "created_by": app_obj.created_by,
     }
@@ -7868,6 +7883,26 @@ def get_access_tier(auth_session, machine_id: str = None) -> str:
     return TIER_KEY_BOUND if match else TIER_KEY_UNBOUND
 
 
+def resolve_client_zone(req) -> "NetworkZone | None":
+    """Resolve the client's IP to an active NetworkZone, or None if no match."""
+    ip_str = req.headers.get("X-Forwarded-For", req.remote_addr or "")
+    ip_str = ip_str.split(",")[0].strip()
+    if not ip_str:
+        return None
+    try:
+        client_ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return None
+    for zone in NetworkZone.query.filter_by(is_active=True).all():
+        for cidr in (zone.cidrs or []):
+            try:
+                if client_ip in ipaddress.ip_network(cidr, strict=False):
+                    return zone
+            except ValueError:
+                continue
+    return None
+
+
 @app.route("/api/verify_key_ownership", methods=["POST"])
 def verify_key_ownership():
     """
@@ -8024,7 +8059,6 @@ def access_models():
     machine_id = request.headers.get("X-Machine-Id")
     tier = get_access_tier(auth_session, machine_id)
     allowed = _allowed_slugs(user.role, "model")
-
     result = []
     for m in AIModel.query.filter_by(is_active=True).order_by(AIModel.slug).all():
         if m.slug not in allowed:
@@ -8391,7 +8425,6 @@ def admin_create_registered_app(admin_user):
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     description = (data.get("description") or "").strip() or None
-    callback_url = (data.get("callback_url") or "").strip() or None
     if not name:
         return jsonify({"error": "name is required"}), 400
 
@@ -8409,7 +8442,6 @@ def admin_create_registered_app(admin_user):
         description=description,
         api_key_hash=key_hash,
         api_key_prefix=prefix,
-        callback_url=callback_url,
         is_active=True,
         created_by=admin_user.username,
     )
@@ -8429,10 +8461,13 @@ def admin_update_registered_app(admin_user, app_id):
         app_obj.name = data["name"].strip()
     if "description" in data:
         app_obj.description = (data["description"] or "").strip() or None
-    if "callback_url" in data:
-        app_obj.callback_url = (data["callback_url"] or "").strip() or None
     if "is_active" in data:
         app_obj.is_active = bool(data["is_active"])
+    if "required_zone_id" in data:
+        zone_id = data["required_zone_id"]
+        if zone_id is not None and not db.session.get(NetworkZone, zone_id):
+            return jsonify({"error": "invalid required_zone_id"}), 400
+        app_obj.required_zone_id = zone_id
     db.session.commit()
     return jsonify(_serialize_registered_app(app_obj))
 
@@ -8459,6 +8494,100 @@ def admin_regenerate_app_key(admin_user, app_id):
     app_obj.api_key_prefix = prefix
     db.session.commit()
     return jsonify(_serialize_registered_app(app_obj, include_key=raw_key))
+
+
+# ---------- Admin: network zones ----------
+
+
+def _serialize_zone(z):
+    return {
+        "id": z.id,
+        "name": z.name,
+        "description": z.description,
+        "cidrs": z.cidrs or [],
+        "requires_key": z.requires_key,
+        "is_active": z.is_active,
+        "created_at": z.created_at.isoformat() if z.created_at else None,
+    }
+
+
+@app.route("/api/admin/network-zones", methods=["GET"])
+@admin_required
+def admin_list_network_zones(admin_user):
+    zones = NetworkZone.query.order_by(NetworkZone.name).all()
+    return jsonify({"zones": [_serialize_zone(z) for z in zones]})
+
+
+@app.route("/api/admin/network-zones", methods=["POST"])
+@admin_required
+def admin_create_network_zone(admin_user):
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    if NetworkZone.query.filter_by(name=name).first():
+        return jsonify({"error": "name already exists"}), 409
+
+    cidrs = data.get("cidrs") or []
+    for cidr in cidrs:
+        try:
+            ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            return jsonify({"error": f"invalid CIDR: {cidr}"}), 400
+
+    zone = NetworkZone(
+        name=name,
+        description=(data.get("description") or "").strip() or None,
+        cidrs=cidrs,
+        requires_key=bool(data.get("requires_key", False)),
+        is_active=bool(data.get("is_active", True)),
+    )
+    db.session.add(zone)
+    db.session.commit()
+    return jsonify(_serialize_zone(zone)), 201
+
+
+@app.route("/api/admin/network-zones/<int:zone_id>", methods=["PATCH"])
+@admin_required
+def admin_update_network_zone(admin_user, zone_id):
+    zone = db.session.get(NetworkZone, zone_id)
+    if not zone:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    if "name" in data:
+        new_name = data["name"].strip()
+        existing = NetworkZone.query.filter_by(name=new_name).first()
+        if existing and existing.id != zone_id:
+            return jsonify({"error": "name already exists"}), 409
+        zone.name = new_name
+    if "description" in data:
+        zone.description = (data["description"] or "").strip() or None
+    if "cidrs" in data:
+        cidrs = data["cidrs"] or []
+        for cidr in cidrs:
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                return jsonify({"error": f"invalid CIDR: {cidr}"}), 400
+        zone.cidrs = cidrs
+    if "requires_key" in data:
+        zone.requires_key = bool(data["requires_key"])
+    if "is_active" in data:
+        zone.is_active = bool(data["is_active"])
+    db.session.commit()
+    return jsonify(_serialize_zone(zone))
+
+
+@app.route("/api/admin/network-zones/<int:zone_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_network_zone(admin_user, zone_id):
+    zone = db.session.get(NetworkZone, zone_id)
+    if not zone:
+        return jsonify({"error": "Not found"}), 404
+    RegisteredApp.query.filter_by(required_zone_id=zone_id).update({"required_zone_id": None})
+    db.session.delete(zone)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ---------- External app verification ----------
@@ -8500,6 +8629,16 @@ def app_auth_verify():
     allowed_apps = _allowed_slugs(user.role, "registered_app")
     if registered.slug not in allowed_apps:
         return jsonify({"error": "Role not permitted to access this application"}), 403
+
+    if registered.required_zone_id is not None:
+        client_zone = resolve_client_zone(request)
+        if client_zone is None or client_zone.id != registered.required_zone_id:
+            return jsonify({"error": "Request originates from a disallowed network zone"}), 403
+        zone = db.session.get(NetworkZone, registered.required_zone_id)
+        if zone and zone.requires_key:
+            pre_tier = get_access_tier(auth_session, machine_id)
+            if pre_tier == TIER_NONE:
+                return jsonify({"error": "This zone requires a security key"}), 403
 
     tier = get_access_tier(auth_session, machine_id)
     allowed_model_slugs = _allowed_slugs(user.role, "model")
