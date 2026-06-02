@@ -35,60 +35,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { CalendarIcon, UserIcon, AlertCircleIcon, InfoIcon } from "lucide-react";
+import { InfoIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/app/utils/constants";
 
-// Action type options for filtering - This will be a more comprehensive list
-const actionOptions = [
-  { value: "all", label: "All Actions" },
-  // User Actions
-  { value: "USER_LOGIN_FAILURE", label: "User Login Failure" },
-  { value: "USER_LOGIN_SUCCESS", label: "User Login Success" },
-  { value: "USER_LOGIN_PASSWORD_VERIFIED", label: "User Login Password Verified" },
-  { value: "USER_REGISTER_FAILURE", label: "User Register Failure" },
-  { value: "USER_REGISTER_SUCCESS", label: "User Register Success" },
-  { value: "USER_UPDATE_FAILURE", label: "User Update Failure" },
-  { value: "USER_UPDATE_SUCCESS", label: "User Update Success" },
-  { value: "USER_ROLE_UPDATE_FAILURE", label: "Role Update Failure" },
-  { value: "USER_ROLE_UPDATE_SUCCESS", label: "Role Update Success" },
-  { value: "USER_DELETE_FAILURE", label: "User Delete Failure" },
-  { value: "USER_DELETE_SUCCESS", label: "User Delete Success" },
-  { value: "USER_ACCOUNT_UNLOCK_FAILURE", label: "User Account Unlock Failure" },
-  { value: "USER_ACCOUNT_UNLOCK_SUCCESS", label: "User Account Unlock Success" },
-
-  // WebAuthn Actions
-  { value: "SECURITY_KEY_REGISTER_BEGIN_FAILURE", label: "Security Key Register Begin Failure" },
-  { value: "SECURITY_KEY_REGISTER_BEGIN_SUCCESS", label: "Security Key Register Begin Success" },
-  { value: "SECURITY_KEY_REGISTER_COMPLETE_FAILURE", label: "Security Key Register Complete Failure" },
-  { value: "SECURITY_KEY_INITIAL_REGISTER_SUCCESS", label: "Security Key Initial Register Success" },
-  { value: "SECURITY_KEY_RE_REGISTER_SUCCESS", label: "Security Key Re-Register Success" },
-  { value: "SECURITY_KEY_LOGIN_BEGIN_FAILURE", label: "Security Key Login Begin Failure" },
-  { value: "SECURITY_KEY_LOGIN_BEGIN_SUCCESS", label: "Security Key Login Begin Success" },
-  { value: "SECURITY_KEY_LOGIN_COMPLETE_FAILURE", label: "Security Key Login Complete Failure" },
-  { value: "SECURITY_KEY_DIRECT_LOGIN_SUCCESS", label: "Security Key Direct Login Success" },
-  { value: "SECURITY_KEY_2FA_LOGIN_SUCCESS", label: "Security Key 2FA Login Success" },
-  { value: "SECURITY_KEY_LOGIN_COMPLETE_ERROR", label: "Security Key Login Complete Error" },
-  // Security Key Actions
-  { value: "SECURITY_KEY_DELETE_FAILURE", label: "Security Key Delete Failure" },
-  { value: "SECURITY_KEY_DELETE_SUCCESS", label: "Security Key Delete Success" },
-  { value: "SECURITY_KEY_STATUS_CHANGE_FAILURE", label: "Security Key Status Change Failure" },
-  { value: "SECURITY_KEY_ACTIVATE_FAILURE", label: "Security Key Activate Failure" },
-  { value: "SECURITY_KEY_ACTIVATE_SUCCESS", label: "Security Key Activate Success" },
-  { value: "SECURITY_KEY_DEACTIVATE_SUCCESS", label: "Security Key Deactivate Success" },
-  { value: "SECURITY_KEY_UPDATE_FAILURE", label: "Security Key Update Failure" },
-  { value: "SECURITY_KEY_UPDATE_SUCCESS", label: "Security Key Update Success" },
-  { value: "SECURITY_KEY_RESET_FAILURE", label: "Security Key Reset Failure" },
-  { value: "SECURITY_KEY_RESET_SUCCESS", label: "Security Key Reset Success" },
-  { value: "SECURITY_KEY_REASSIGN_FAILURE", label: "Security Key Reassign Failure" },
-  { value: "SECURITY_KEY_REASSIGN_SUCCESS", label: "Security Key Reassign Success" },
-  // System Actions
-  { value: "DATABASE_RESET_SUCCESS", label: "DB Reset Success" },
-  { value: "DATABASE_RESET_FAILURE", label: "DB Reset Failure" },
-  { value: "SYSTEM_LOCKDOWN_ENABLED", label: "System Lockdown Enabled" },
-  { value: "SYSTEM_LOCKDOWN_DISABLED", label: "System Lockdown Disabled" },
-];
 
 interface TableInstance {
   getColumn: (id: string) => {
@@ -111,7 +61,6 @@ export default function AuditLogsPage() {
   const [data, setData] = useState<AuditLog[]>([]);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -122,6 +71,7 @@ export default function AuditLogsPage() {
     pageSize: 10,
   });
   const [actionFilterValue, setActionFilterValue] = useState<string>("all");
+  const [actionOptions, setActionOptions] = useState<{ value: string; label: string }[]>([{ value: "all", label: "All Actions" }]);
   const [exporting, setExporting] = useState<"excel" | "pdf" | false>(false);
   const [table, setTable] = useState<TableInstance | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -134,6 +84,7 @@ export default function AuditLogsPage() {
       }
       const searchTerm = globalFilter.toLowerCase();
       return (
+        !searchTerm ||
         log.action_type.toLowerCase().includes(searchTerm) ||
         (log.performed_by_username || '').toLowerCase().includes(searchTerm) ||
         log.timestamp.toLowerCase().includes(searchTerm) ||
@@ -147,46 +98,46 @@ export default function AuditLogsPage() {
     setTable(tableInstance);
   };
 
-  const paginatedLogs = useMemo(() => {
-    const start = pagination.pageIndex * pagination.pageSize;
-    const end = start + pagination.pageSize;
-    return filteredLogs.slice(start, end);
-  }, [filteredLogs, pagination]);
-
   useEffect(() => {
-    if (filteredLogs.length > 0) {
-      setPageCount(Math.ceil(filteredLogs.length / pagination.pageSize));
-    }
-  }, [filteredLogs, pagination.pageSize]);
+    const userStr = sessionStorage.getItem('user');
+    if (!userStr) return;
+    const { authToken } = JSON.parse(userStr) as { authToken: string };
+    if (!authToken) return;
+    fetch(`${API_URL}/system-audit-logs/action-types`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.action_types) {
+          setActionOptions([
+            { value: "all", label: "All Actions" },
+            ...d.action_types.map((t: string) => ({
+              value: t,
+              label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            })),
+          ]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchAuditLogs = async () => {
       setLoading(true);
-      setError(null);
       try {
         const userStr = sessionStorage.getItem('user');
-        if (!userStr) {
-          throw new Error('User not authenticated. Session storage empty.');
-        }
-        
-        interface UserData {
-          authToken: string;
-        }
-        
-        const user = JSON.parse(userStr) as UserData;
-        const authToken = user.authToken;
+        if (!userStr) throw new Error('User not authenticated.');
 
+        const { authToken } = JSON.parse(userStr) as { authToken: string };
         if (!authToken) {
-          setError("Authentication token not found in session storage.");
-          setLoading(false);
+          toast.error("Authentication token not found.");
           return;
         }
 
-        const response = await fetch(`${API_URL}/system-audit-logs`, {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
+        const response = await fetch(
+          `${API_URL}/system-audit-logs?page=${pagination.pageIndex + 1}&per_page=${pagination.pageSize}`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -195,16 +146,16 @@ export default function AuditLogsPage() {
 
         const result = await response.json();
         setData(result.logs || []);
+        setPageCount(result.pages || 0);
       } catch (err: any) {
-        console.error("Error fetching audit logs:", err.response?.data || err.message)
-        toast.error(err.response?.data?.error || "Failed to load audit logs.")
+        toast.error(err.message || "Failed to load audit logs.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchAuditLogs();
-  }, []);
+  }, [pagination]);
 
   // Function to escape CSV values
   const escapeCsvValue = (value: any): string => {
@@ -429,7 +380,7 @@ export default function AuditLogsPage() {
             ) : (
               <DataTable
                 columns={columns}
-                data={paginatedLogs}
+                data={filteredLogs}
               pageCount={pageCount} // Pass pageCount to DataTable
               onTableInit={handleTableInit}
               onRowClick={handleRowClick}
@@ -463,12 +414,7 @@ export default function AuditLogsPage() {
                       value={actionFilterValue}
                       onValueChange={(value) => {
                         setActionFilterValue(value);
-                        // This will trigger the useEffect to refetch data with the new action_type filter
-                        // Client-side filtering for 'action_type' column can also be set if preferred:
-                        // const column = table?.getColumn("action_type");
-                        // if (column) {
-                        //   column.setFilterValue(value === "all" ? undefined : value);
-                        // }
+                        setPagination((p) => ({ ...p, pageIndex: 0 }));
                       }}
                     >
                       <SelectTrigger className="w-auto bg-white dark:bg-zinc-900 border border-[var(--border)] rounded-3xl text-foreground hover:bg-transparent">
