@@ -321,28 +321,6 @@ export default function SecurityKeyDetailsPage() {
     }
   }
   
-  // Placeholder for delete action
-  const handleDeleteKey = async () => {
-    if (!securityKey) return;
-    // setIsDeleting(true);
-    // try {
-    //   const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    //   await axios.delete(`${API_URL}/security-keys/${securityKey.id}`, {
-    //     headers: { Authorization: `Bearer ${userInfo.authToken}` },
-    //   });
-    //   toast.success("Security key deleted successfully");
-    //   router.push("/dashboard/security-keys");
-    // } catch (error: any) {
-    //   toast.error(error.response?.data?.error || "Failed to delete security key");
-    // } finally {
-    //   setIsDeleting(false);
-    //   setShowDeleteConfirm(false);
-    // }
-    console.log("Delete key action for ID:", securityKey.id)
-    toast.info("Delete functionality to be implemented.")
-  };
-
-
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-2 text-muted-foreground">
