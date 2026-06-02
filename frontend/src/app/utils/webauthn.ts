@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
-import { toast } from 'sonner';
 import { API_URL } from "@/app/utils/constants";
 
 // Extend the Navigator interface to include the 'usb' property
