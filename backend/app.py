@@ -566,11 +566,33 @@ class EncryptedFile(db.Model):
     )
     is_deleted = db.Column(db.Boolean, default=False)
 
+    # Vault grouping (nullable — files without a vault are "ungrouped")
+    vault_id = db.Column(db.Integer, db.ForeignKey("vaults.id"), nullable=True)
+
     # Relationships
     user = db.relationship("Users", backref=db.backref("encrypted_files", lazy=True))
     security_key = db.relationship(
         "SecurityKey", backref=db.backref("encrypted_files", lazy=True)
     )
+    vault = db.relationship("Vault", backref=db.backref("files", lazy=True))
+
+
+class Vault(db.Model):
+    __tablename__ = "vaults"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True), onupdate=lambda: datetime.now(timezone.utc)
+    )
+    is_deleted = db.Column(db.Boolean, default=False)
+
+    owner = db.relationship("Users", backref=db.backref("vaults", lazy=True))
 
 
 # Model for machine bindings — ties a security key to specific workstations
@@ -9185,6 +9207,20 @@ def upload_encrypted_file():
         if not file.filename:
             return jsonify({"error": "No filename provided"}), 400
 
+        # Optional vault assignment
+        vault_id_raw = request.form.get("vault_id")
+        vault_id = None
+        if vault_id_raw:
+            try:
+                vault_id = int(vault_id_raw)
+            except ValueError:
+                return jsonify({"error": "Invalid vault ID"}), 400
+            vault = Vault.query.filter_by(id=vault_id, is_deleted=False).first()
+            if not vault:
+                return jsonify({"error": "Vault not found"}), 404
+            if vault.owner_user_id != upload_user.id and user.role != "admin":
+                return jsonify({"error": "Access denied to this vault"}), 403
+
         # Read file data
         file_data = file.read()
         file_size = len(file_data)
@@ -9215,6 +9251,7 @@ def upload_encrypted_file():
             iv=iv,
             salt=salt,
             encrypted_path=encrypted_path,
+            vault_id=vault_id,
         )
 
         db.session.add(encrypted_file)
@@ -9555,12 +9592,17 @@ def list_encrypted_files():
         else:
             query_user_id = user.id
 
-        # Get all non-deleted files for the target user
-        files = (
-            EncryptedFile.query.filter_by(user_id=query_user_id, is_deleted=False)
-            .order_by(EncryptedFile.created_at.desc())
-            .all()
-        )
+        # Optional vault filter
+        vault_id_filter = request.args.get("vault_id", type=int)
+        ungrouped_only = request.args.get("ungrouped", type=str) == "true"
+
+        query = EncryptedFile.query.filter_by(user_id=query_user_id, is_deleted=False)
+        if vault_id_filter is not None:
+            query = query.filter_by(vault_id=vault_id_filter)
+        elif ungrouped_only:
+            query = query.filter(EncryptedFile.vault_id.is_(None))
+
+        files = query.order_by(EncryptedFile.created_at.desc()).all()
 
         files_data = []
         for f in files:
@@ -9573,6 +9615,7 @@ def list_encrypted_files():
                     "mime_type": f.mime_type,
                     "created_at": f.created_at.isoformat(),
                     "security_key_id": f.security_key_id,
+                    "vault_id": f.vault_id,
                     "security_key_serial": (
                         security_key.serial_number if security_key else None
                     ),
@@ -9587,6 +9630,63 @@ def list_encrypted_files():
     except Exception as e:
         print(f"Error listing encrypted files: {str(e)}")
         return jsonify({"error": "Failed to list files"}), 500
+
+
+@app.route("/api/files/<int:file_id>/vault", methods=["PATCH"])
+def move_file_to_vault(file_id):
+    """Move a file into a vault or ungroup it (vault_id: null)."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        encrypted_file = EncryptedFile.query.filter_by(
+            id=file_id, is_deleted=False
+        ).first()
+        if not encrypted_file:
+            return jsonify({"error": "File not found"}), 404
+
+        if encrypted_file.user_id != user.id and user.role != "admin":
+            return jsonify({"error": "Access denied"}), 403
+
+        data = request.get_json()
+        if data is None:
+            return jsonify({"error": "No data provided"}), 400
+
+        new_vault_id = data.get("vault_id")  # None means ungroup
+
+        if new_vault_id is not None:
+            vault = Vault.query.filter_by(id=new_vault_id, is_deleted=False).first()
+            if not vault:
+                return jsonify({"error": "Vault not found"}), 404
+            if vault.owner_user_id != encrypted_file.user_id and user.role != "admin":
+                return jsonify({"error": "Access denied to this vault"}), 403
+
+        encrypted_file.vault_id = new_vault_id
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": "File moved successfully",
+                "file_id": file_id,
+                "vault_id": new_vault_id,
+            }
+        )
+
+    except Exception as e:
+        print(f"Error moving file to vault: {str(e)}")
+        return jsonify({"error": "Failed to move file"}), 500
 
 
 @app.route("/api/files/<int:file_id>", methods=["DELETE"])
@@ -9850,6 +9950,253 @@ def handle_disconnect():
     as the background thread will continue to run as long as the server is alive.
     """
     print("Client disconnected")
+
+
+# ==================== VAULT API ENDPOINTS ====================
+
+
+@app.route("/api/vaults", methods=["GET"])
+def list_vaults():
+    """List vaults. Admins can pass ?user_id= to view another user's vaults."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        target_user_id = request.args.get("user_id", type=int)
+        if target_user_id and target_user_id != user.id:
+            if user.role != "admin":
+                return jsonify({"error": "Admin privileges required"}), 403
+            query_user_id = target_user_id
+        else:
+            query_user_id = user.id
+
+        vaults = (
+            Vault.query.filter_by(owner_user_id=query_user_id, is_deleted=False)
+            .order_by(Vault.created_at.desc())
+            .all()
+        )
+
+        vaults_data = []
+        for v in vaults:
+            file_count = EncryptedFile.query.filter_by(
+                vault_id=v.id, is_deleted=False
+            ).count()
+            total_size = (
+                db.session.query(db.func.sum(EncryptedFile.file_size))
+                .filter_by(vault_id=v.id, is_deleted=False)
+                .scalar()
+                or 0
+            )
+            vaults_data.append(
+                {
+                    "id": v.id,
+                    "name": v.name,
+                    "description": v.description,
+                    "owner_user_id": v.owner_user_id,
+                    "file_count": file_count,
+                    "total_size": total_size,
+                    "created_at": v.created_at.isoformat(),
+                    "updated_at": v.updated_at.isoformat() if v.updated_at else None,
+                }
+            )
+
+        return jsonify({"vaults": vaults_data, "total": len(vaults_data)})
+
+    except Exception as e:
+        print(f"Error listing vaults: {str(e)}")
+        return jsonify({"error": "Failed to list vaults"}), 500
+
+
+@app.route("/api/vaults", methods=["POST"])
+def create_vault():
+    """Create a new vault."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.get_json()
+        if not data or not data.get("name", "").strip():
+            return jsonify({"error": "Vault name is required"}), 400
+
+        owner_user_id = user.id
+        if user.role == "admin" and data.get("owner_user_id"):
+            target_user = db.session.get(Users, int(data["owner_user_id"]))
+            if not target_user:
+                return jsonify({"error": "Target user not found"}), 404
+            owner_user_id = target_user.id
+
+        vault = Vault(
+            name=data["name"].strip(),
+            description=data.get("description", "").strip() or None,
+            owner_user_id=owner_user_id,
+        )
+        db.session.add(vault)
+        db.session.commit()
+
+        log_system_event(
+            user_id=owner_user_id,
+            performed_by_user_id=user.id,
+            action_type="VAULT_CREATE",
+            status="SUCCESS",
+            target_entity_type="VAULT",
+            target_entity_id=str(vault.id),
+            details=f"Vault '{vault.name}' created by '{user.username}'"
+            + (f" on behalf of user id {owner_user_id}" if owner_user_id != user.id else ""),
+        )
+
+        return (
+            jsonify(
+                {
+                    "message": "Vault created successfully",
+                    "vault": {
+                        "id": vault.id,
+                        "name": vault.name,
+                        "description": vault.description,
+                        "owner_user_id": vault.owner_user_id,
+                        "file_count": 0,
+                        "total_size": 0,
+                        "created_at": vault.created_at.isoformat(),
+                    },
+                }
+            ),
+            201,
+        )
+
+    except Exception as e:
+        print(f"Error creating vault: {str(e)}")
+        return jsonify({"error": "Failed to create vault"}), 500
+
+
+@app.route("/api/vaults/<int:vault_id>", methods=["PUT"])
+def update_vault(vault_id):
+    """Rename or update vault description."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        vault = Vault.query.filter_by(id=vault_id, is_deleted=False).first()
+        if not vault:
+            return jsonify({"error": "Vault not found"}), 404
+
+        if vault.owner_user_id != user.id and user.role != "admin":
+            return jsonify({"error": "Access denied"}), 403
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        if "name" in data:
+            name = data["name"].strip()
+            if not name:
+                return jsonify({"error": "Vault name cannot be empty"}), 400
+            vault.name = name
+        if "description" in data:
+            vault.description = data["description"].strip() or None
+
+        vault.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": "Vault updated successfully",
+                "vault": {
+                    "id": vault.id,
+                    "name": vault.name,
+                    "description": vault.description,
+                },
+            }
+        )
+
+    except Exception as e:
+        print(f"Error updating vault: {str(e)}")
+        return jsonify({"error": "Failed to update vault"}), 500
+
+
+@app.route("/api/vaults/<int:vault_id>", methods=["DELETE"])
+def delete_vault(vault_id):
+    """Soft-delete a vault. Files inside become ungrouped."""
+    try:
+        auth_token = request.headers.get("Authorization")
+        if not auth_token or not auth_token.startswith("Bearer "):
+            return jsonify({"error": "Authorization required"}), 401
+
+        auth_token = auth_token.replace("Bearer ", "")
+        auth_session = AuthenticationSession.query.filter_by(
+            session_token=auth_token
+        ).first()
+        if not auth_session:
+            return jsonify({"error": "Invalid session"}), 401
+
+        user = db.session.get(Users, auth_session.user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        vault = Vault.query.filter_by(id=vault_id, is_deleted=False).first()
+        if not vault:
+            return jsonify({"error": "Vault not found"}), 404
+
+        if vault.owner_user_id != user.id and user.role != "admin":
+            return jsonify({"error": "Access denied"}), 403
+
+        # Ungroup files inside the deleted vault
+        EncryptedFile.query.filter_by(vault_id=vault_id, is_deleted=False).update(
+            {"vault_id": None}
+        )
+
+        vault.is_deleted = True
+        db.session.commit()
+
+        log_system_event(
+            user_id=vault.owner_user_id,
+            performed_by_user_id=user.id,
+            action_type="VAULT_DELETE",
+            status="SUCCESS",
+            target_entity_type="VAULT",
+            target_entity_id=str(vault_id),
+            details=f"User '{user.username}' deleted vault '{vault.name}'",
+        )
+
+        return jsonify({"message": "Vault deleted successfully"})
+
+    except Exception as e:
+        print(f"Error deleting vault: {str(e)}")
+        return jsonify({"error": "Failed to delete vault"}), 500
 
 
 if __name__ == "__main__":
