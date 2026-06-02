@@ -145,7 +145,7 @@ export default function ApplicationsPage() {
       try {
         const [appsData, zonesRes] = await Promise.all([
           fetchApps(authToken),
-          axios.get<{ zones: NetworkZone[] }>(`${API_URL}/admin/network-zones`, {
+          axios.get<{ zones: NetworkZone[] }>(`${API_URL}/admin/network-zones?all=true`, {
             headers: { Authorization: `Bearer ${authToken}` },
           }),
         ]);
@@ -311,6 +311,7 @@ export default function ApplicationsPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="space-y-3">
           {apps.map((app) => (
             <Card key={app.id}>
@@ -389,6 +390,7 @@ export default function ApplicationsPage() {
             </Card>
           ))}
         </div>
+        </>
       )}
 
       {/* Register dialog */}
