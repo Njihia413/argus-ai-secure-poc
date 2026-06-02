@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import psutil
 import json
+import os
 import platform
 import hid # Added for HID device detection
 import requests # Added for making HTTP requests to Flask backend
@@ -15,7 +16,7 @@ HOST = "localhost"
 PORT = 12345
 CHECK_INTERVAL = 2 # For normal USB drives
 HID_CHECK_INTERVAL = 1 # For HID security keys (can be more frequent)
-FLASK_API_URL = "http://localhost:5000/api/verify_key_ownership" # URL for the new verification endpoint
+FLASK_API_URL = os.environ.get("FLASK_API_URL", "http://localhost:5000/api/verify-key-ownership")
 
 # Dictionary to store client connections and their associated auth tokens
 # {websocket_client: "user_auth_token"}
