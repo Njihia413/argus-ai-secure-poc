@@ -511,26 +511,35 @@ export default function SecureFilesPage() {
               <CardDescription>Files not assigned to any vault</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search files..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
+              {isLoading ? (
+                <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+                  <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
+                  <span>Loading files...</span>
                 </div>
-              </div>
-              <DataTable
-                columns={secureFilesColumns({
-                  onPreview: handlePreview,
-                  onDownload: (file) => setFileToDownload(file),
-                  onDelete: (file) => setFileToDelete(file),
-                  onMoveToVault: (file) => setFileToMove(file),
-                })}
-                data={filteredFiles}
-              />
+              ) : (
+                <>
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search files..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <DataTable
+                    columns={secureFilesColumns({
+                      onPreview: handlePreview,
+                      onDownload: (file) => setFileToDownload(file),
+                      onDelete: (file) => setFileToDelete(file),
+                      onMoveToVault: (file) => setFileToMove(file),
+                    })}
+                    data={filteredFiles}
+                  />
+                </>
+              )}
             </CardContent>
           </Card>
         </>
@@ -549,26 +558,35 @@ export default function SecureFilesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search files..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+            {isLoading ? (
+              <div className="flex flex-col items-center space-y-2 text-muted-foreground py-8">
+                <div className="animate-spin rounded-xl h-8 w-8 border-b-2 border-primary"></div>
+                <span>Loading files...</span>
               </div>
-            </div>
-            <DataTable
-              columns={secureFilesColumns({
-                onPreview: handlePreview,
-                onDownload: (file) => setFileToDownload(file),
-                onDelete: (file) => setFileToDelete(file),
-                onMoveToVault: (file) => setFileToMove(file),
-              })}
-              data={filteredFiles}
-            />
+            ) : (
+              <>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search files..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <DataTable
+                  columns={secureFilesColumns({
+                    onPreview: handlePreview,
+                    onDownload: (file) => setFileToDownload(file),
+                    onDelete: (file) => setFileToDelete(file),
+                    onMoveToVault: (file) => setFileToMove(file),
+                  })}
+                  data={filteredFiles}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       )}
