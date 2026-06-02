@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
-import { CirclePlus, Eye, EyeOff, LockOpen, ChevronDown } from "lucide-react"
+import { CirclePlus, Eye, EyeOff, ChevronDown } from "lucide-react"
 import {
   ColumnFiltersState,
   SortingState,
@@ -85,7 +85,6 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [availableRoles, setAvailableRoles] = useState<{ role: string; display_name: string }[]>([])
   const router = useRouter()
 
@@ -136,10 +135,9 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     setIsLoading(true)
-    setError(null)
     try {
       const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-      if (!userInfo || !userInfo.authToken) {
+      if (!userInfo?.authToken) {
         toast.error("You need to log in")
         router.push("/")
         return
@@ -150,12 +148,14 @@ export default function UsersPage() {
         return
       }
 
-      const response = await axios.get<{ users: User[] }>(`${API_URL}/users`, {
-        headers: { Authorization: `Bearer ${userInfo.authToken}` },
-      })
+      const response = await axios.get<{ users: User[]; pages: number; total: number }>(
+        `${API_URL}/users?page=${pagination.pageIndex + 1}&per_page=${pagination.pageSize}`,
+        { headers: { Authorization: `Bearer ${userInfo.authToken}` } },
+      )
 
-      if (response.data && response.data.users) {
+      if (response.data?.users) {
         setUsers(response.data.users)
+        setPageCount(response.data.pages || 0)
       } else {
         throw new Error("Invalid data format received from server")
       }
@@ -168,7 +168,6 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    fetchUsers()
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
     if (userInfo?.authToken && userInfo?.role === "admin") {
       axios
@@ -181,18 +180,8 @@ export default function UsersPage() {
   }, [router])
 
   useEffect(() => {
-    if (selectedUser) {
-      setEditUserForm({
-        firstName: selectedUser.firstName,
-        middlename: selectedUser.middlename || "",
-        lastName: selectedUser.lastName,
-        nationalId: selectedUser.nationalId,
-        username: selectedUser.username,
-        email: selectedUser.email,
-        role: selectedUser.role,
-      })
-    }
-  }, [selectedUser])
+    fetchUsers()
+  }, [pagination])
 
   useEffect(() => {
     if (selectedUser) {
@@ -231,15 +220,6 @@ export default function UsersPage() {
     })
   }, [users, roleFilter, securityKeyFilter, accountStatusFilter, searchFilter])
 
-  const paginatedUsers = useMemo(() => {
-    const start = pagination.pageIndex * pagination.pageSize
-    const end = start + pagination.pageSize
-    return filteredUsers.slice(start, end)
-  }, [filteredUsers, pagination])
-
-  useEffect(() => {
-    setPageCount(Math.ceil(filteredUsers.length / pagination.pageSize))
-  }, [filteredUsers, pagination.pageSize])
 
   const handleNewUserInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -334,7 +314,7 @@ export default function UsersPage() {
           ) : (
             <DataTable
               columns={columns}
-              data={paginatedUsers}
+              data={filteredUsers}
               pageCount={pageCount}
               meta={{
                 setSelectedUser,
