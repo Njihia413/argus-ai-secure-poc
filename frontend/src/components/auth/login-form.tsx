@@ -3,7 +3,7 @@
 import React, { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, ShieldCheck, Key, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, Key, AlertTriangle } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 import { useAuth } from "@/app/utils/useAuth"
@@ -215,13 +215,13 @@ interface LoginFormProps {
 
 export function LoginForm({ open, onOpenChange }: LoginFormProps) {
     const router = useRouter()
-    const { setHasElevatedAccess } = useAuth()
+
 
     const [showPassword, setShowPassword] = useState(false)
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [loadingStatus, setLoadingStatus] = useState("Logging in...")
+    const [, setLoadingStatus] = useState("Logging in...")
 
     const [securityKeyDialogOpen, setSecurityKeyDialogOpen] = useState(false)
     const [inactiveKeyDialogOpen, setInactiveKeyDialogOpen] = useState(false)
