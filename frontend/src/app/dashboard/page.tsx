@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import React from "react"
 import { API_URL } from "@/app/utils/constants"
 import type { Payload, VerticalAlignmentType } from "recharts/types/component/DefaultLegendContent";
@@ -12,9 +12,6 @@ import {
   Bell,
   ArrowUpRight,
   ArrowDownRight,
-  Laptop,
-  Smartphone,
-  Tablet,
 } from "lucide-react"
 import {
   Bar,
@@ -25,15 +22,10 @@ import {
   // Pie, PieChart, // Already imported above with Label and Sector
   XAxis,
   YAxis,
-  ResponsiveContainer,
-  Legend,
-  Tooltip,
-  Cell
 } from "recharts"
 
 
 import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -55,10 +47,9 @@ import {
   ChartConfig,
   ChartContainer,
   ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  ChartStyle, // Added ChartStyle
+  ChartStyle,
 } from "@/components/ui/chart"
 import { useChart } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
@@ -129,11 +120,6 @@ interface FailedLoginStat {
   last_attempt: string | null;
 }
 
-interface DeviceStat {
-  name: string;
-  value: number;
-}
-
 interface RiskTrendItem {
   name: string;
   riskScore: number;
@@ -149,101 +135,11 @@ export default function DashboardPage() {
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([]);
   const [failedLogins, setFailedLogins] = useState<FailedLoginStat[]>([]);
-  const [tierDistribution, setTierDistribution] = useState<{ none: number; key_unbound: number; key_bound: number }>({ none: 0, key_unbound: 0, key_bound: 0 });
   const [adoptionFunnel, setAdoptionFunnel] = useState<{ total: number; with_active_key: number; with_machine_binding: number; used_bound_this_week: number }>({ total: 0, with_active_key: 0, with_machine_binding: 0, used_bound_this_week: 0 });
-  const [deviceStats, setDeviceStats] = useState<DeviceStat[]>([]);
   const [riskTrend, setRiskTrend] = useState<RiskTrendItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
-  // Add refresh trigger state for dashboard updates
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-
-  // Function to trigger a refresh of dashboard data
-  const triggerRefresh = useCallback(() => {
-    console.log("Triggering dashboard refresh")
-    setRefreshTrigger(prev => prev + 1)
-  }, [])
-
-  // Function to toggle security key status
-  const toggleKeyStatus = async (keyId: string) => {
-    try {
-      setIsLoading(true)
-      const userStr = sessionStorage.getItem('user')
-      if (!userStr) {
-        throw new Error('User not authenticated')
-      }
-      const user = JSON.parse(userStr) as StoredUser;
-      const authToken = user.authToken;
-
-      const response = await fetch(`${API_URL}/security-keys/${keyId}/toggle-status`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to toggle key status')
-      }
-
-      const result = await response.json()
-      console.log('Key status updated:', result)
-
-      // Trigger dashboard refresh
-      triggerRefresh()
-
-      return result
-    } catch (error: any) {
-      console.error('Error toggling key status:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Function to delete a security key
-  const deleteSecurityKey = async (keyId: string) => {
-    try {
-      setIsLoading(true)
-      const userStr = sessionStorage.getItem('user')
-      if (!userStr) {
-        throw new Error('User not authenticated')
-      }
-      const user = JSON.parse(userStr) as StoredUser;
-      const authToken = user.authToken;
-
-      const response = await fetch(`${API_URL}/security-keys/${keyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete security key')
-      }
-
-      const result = await response.json()
-      console.log('Security key deleted:', result)
-
-      // Trigger refresh of dashboard data
-      triggerRefresh()
-
-      return result
-    } catch (error: any) {
-      console.error('Error deleting security key:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   useEffect(() => {
     console.log("Starting data fetch...")
     setIsLoading(true)
@@ -312,21 +208,11 @@ export default function DashboardPage() {
         if (!deviceResponse.ok) {
           throw new Error('Failed to fetch device stats')
         }
-        const deviceData = await deviceResponse.json()
-        setDeviceStats(deviceData.deviceStats)
-
         // Fetch top accounts by failed login attempts (last 30 days)
         const failedResponse = await fetch(`${API_URL}/failed-login-stats`, { headers })
         if (failedResponse.ok) {
           const failedData = await failedResponse.json()
           setFailedLogins(failedData.failedLoginStats || [])
-        }
-
-        // Fetch access-tier distribution across users
-        const tierResponse = await fetch(`${API_URL}/tier-distribution`, { headers })
-        if (tierResponse.ok) {
-          const tierData = await tierResponse.json()
-          if (tierData.tierDistribution) setTierDistribution(tierData.tierDistribution)
         }
 
         // Fetch zero-trust adoption funnel
@@ -352,18 +238,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [refreshTrigger, timeRange]) // Add refreshTrigger and timeRange to dependency array
-
-  const DEVICE_COLOR_MAP: { [key: string]: string } = {
-    'windows pc': '#2563eb',
-    'desktop': '#2563eb', // Assuming general 'Desktop' might also map to Windows or be a fallback
-    'mobile': '#a6c4fc',
-    'tablet': '#60A5FA',
-    'mac': '#8B5CF6',
-    'linux': '#C4B5FD',
-    'others': '#9CA3AF', // Default for 'Others'
-    'unknown': '#9CA3AF' // Fallback for unknown or null device types
-  };
+  }, [timeRange])
 
   // Helper function for bar color based on risk score
   const getRiskColor = (score: number) => {
