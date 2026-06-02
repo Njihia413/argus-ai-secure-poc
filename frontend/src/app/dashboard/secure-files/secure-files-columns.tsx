@@ -2,7 +2,7 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Download, Trash2, FileText, FileImage, FileArchive, File, Key, Eye } from "lucide-react";
+import { Download, Trash2, FileText, FileImage, FileArchive, File, Key, Eye, FolderInput } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export interface EncryptedFile {
@@ -12,6 +12,7 @@ export interface EncryptedFile {
   mime_type: string | null;
   created_at: string;
   security_key_id: number;
+  vault_id: number | null;
   security_key_serial: number | null;
   security_key_device: string | null;
 }
@@ -20,6 +21,7 @@ interface ColumnOptions {
   onPreview: (file: EncryptedFile) => void;
   onDownload: (file: EncryptedFile) => void;
   onDelete: (file: EncryptedFile) => void;
+  onMoveToVault?: (file: EncryptedFile) => void;
 }
 
 const getFileIcon = (mimeType: string | null) => {
@@ -139,6 +141,17 @@ export function secureFilesColumns(options: ColumnOptions): ColumnDef<EncryptedF
             >
               <Download className="h-4 w-4" />
             </Button>
+            {options.onMoveToVault && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => options.onMoveToVault!(file)}
+                title={file.vault_id ? "Move to another vault" : "Move to vault"}
+              >
+                <FolderInput className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
