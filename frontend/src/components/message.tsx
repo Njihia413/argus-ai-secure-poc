@@ -13,7 +13,6 @@ import {
   ChevronUpIcon,
   Loader2,
   PocketKnife,
-  SparklesIcon,
   StopCircle,
 } from "lucide-react";
 import { SpinnerIcon } from "./icons";
