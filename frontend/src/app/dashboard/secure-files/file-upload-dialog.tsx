@@ -29,6 +29,7 @@ interface FileUploadDialogProps {
   securityKeys: SecurityKey[]; // Still used as a fallback or reference if needed
   onUploadComplete: () => void;
   userId?: number | null;
+  vaultId?: number | null;
 }
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
@@ -36,8 +37,9 @@ type UploadStatus = "idle" | "uploading" | "success" | "error";
 export function FileUploadDialog({
   open,
   onOpenChange,
-  onUploadComplete, // Corrected prop usage
+  onUploadComplete,
   userId,
+  vaultId,
 }: FileUploadDialogProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -105,6 +107,9 @@ export function FileUploadDialog({
       formData.append("security_key_id", matchedKey.id.toString());
       if (userId) {
         formData.append("user_id", userId.toString());
+      }
+      if (vaultId) {
+        formData.append("vault_id", vaultId.toString());
       }
 
       // Simulate progress for better UX
