@@ -47,6 +47,8 @@ export default function SecurityKeysPage() {
   const [data, setData] = useState<SecurityKey[]>([])
   const [loading, setLoading] = useState(true)
   const [pageCount, setPageCount] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [perPage, setPerPage] = useState(0)
   const router = useRouter()
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -54,42 +56,25 @@ export default function SecurityKeysPage() {
   const [rowSelection, setRowSelection] = useState({})
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 10,
+    pageSize: 50,
   })
   const [statusFilterValue, setStatusFilterValue] = useState<string>("all")
   const [searchFilter, setSearchFilter] = useState("")
 
   const filteredData = useMemo(() => {
-    return data
-      .filter(key => {
-        if (statusFilterValue !== "all" && key.status !== statusFilterValue) {
-          return false
-        }
-        const searchTerm = searchFilter.toLowerCase()
-        if (!searchTerm) return true
-        return (
-          (key.device_type && key.device_type.toLowerCase().includes(searchTerm)) ||
-          (key.form_factor && key.form_factor.toLowerCase().includes(searchTerm)) ||
-          (key.serialNumber && key.serialNumber.toLowerCase().includes(searchTerm)) ||
-          (key.version && key.version.toLowerCase().includes(searchTerm)) ||
-          key.username.toLowerCase().includes(searchTerm)
-        )
-      })
+    return data.filter(key => {
+      if (statusFilterValue !== "all" && key.status !== statusFilterValue) return false
+      const searchTerm = searchFilter.toLowerCase()
+      if (!searchTerm) return true
+      return (
+        (key.device_type && key.device_type.toLowerCase().includes(searchTerm)) ||
+        (key.form_factor && key.form_factor.toLowerCase().includes(searchTerm)) ||
+        (key.serialNumber && key.serialNumber.toLowerCase().includes(searchTerm)) ||
+        (key.version && key.version.toLowerCase().includes(searchTerm)) ||
+        key.username.toLowerCase().includes(searchTerm)
+      )
+    })
   }, [data, statusFilterValue, searchFilter])
-
-  const paginatedData = useMemo(() => {
-    const start = pagination.pageIndex * pagination.pageSize
-    const end = start + pagination.pageSize
-    return filteredData.slice(start, end)
-  }, [filteredData, pagination])
-
-  useEffect(() => {
-    if (filteredData.length > 0) {
-      setPageCount(Math.ceil(filteredData.length / pagination.pageSize))
-    } else {
-      setPageCount(0)
-    }
-  }, [filteredData, pagination.pageSize])
 
   useEffect(() => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
@@ -107,7 +92,7 @@ export default function SecurityKeysPage() {
     }
     
     fetchSecurityKeys(userInfo.authToken)
-  }, [router])
+  }, [router, pagination])
 
   const refreshData = () => {
     const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
@@ -119,20 +104,19 @@ export default function SecurityKeysPage() {
   const fetchSecurityKeys = async (authToken: string) => {
     setLoading(true)
     try {
-      const response = await axios.get<{ securityKeys: SecurityKey[] }>(`${API_URL}/security-keys/all`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      })
- 
+      const response = await axios.get<{ securityKeys: SecurityKey[]; page: number; pages: number; per_page: number; total: number }>(
+        `${API_URL}/security-keys/all?page=${pagination.pageIndex + 1}`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      )
       if (response.data && response.data.securityKeys) {
         setData(response.data.securityKeys)
+        setPageCount(response.data.pages)
+        setTotal(response.data.total)
+        setPerPage(response.data.per_page)
       } else {
-        console.error("Invalid response format for security keys:", response.data)
         toast.error("Invalid data format received from server for security keys.")
       }
     } catch (error: any) {
-      console.error("Error fetching security keys:", error.response?.data || error.message)
       toast.error(error.response?.data?.error || "Failed to load security keys.")
     } finally {
       setLoading(false)
@@ -155,9 +139,15 @@ export default function SecurityKeysPage() {
               <span>Loading security keys...</span>
             </div>
           ) : (
+            <>
+            {total > 0 && (
+              <p className="text-xs text-muted-foreground mb-3">
+                Showing {pagination.pageIndex * perPage + 1}–{pagination.pageIndex * perPage + filteredData.length} of {total} keys
+              </p>
+            )}
             <DataTable
               columns={securityKeysColumns}
-              data={paginatedData}
+              data={filteredData}
               pageCount={pageCount}
               meta={{
                 refreshData
@@ -232,6 +222,7 @@ export default function SecurityKeysPage() {
               </div>
             )}
           />
+            </>
           )}
         </CardContent>
       </Card>
