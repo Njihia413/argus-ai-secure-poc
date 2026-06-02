@@ -2,20 +2,24 @@ import eventlet
 
 eventlet.monkey_patch()
 import json
+import ipaddress
+import warnings
+from datetime import datetime, timedelta, timezone
 import hashlib
 import math
-import ipaddress
 import re
 import secrets
 import requests
-from datetime import datetime, timedelta, timezone
 import uuid
 
-from flask import Flask, request, jsonify, session
+
+from flask import Flask, request, jsonify, session, redirect, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_socketio import SocketIO, emit, join_room
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from threading import Lock
 import os
 from dotenv import load_dotenv
@@ -60,35 +64,33 @@ from fido2.utils import websafe_decode, websafe_encode
 from fido2 import cbor
 from functools import wraps
 
-from sqlalchemy import func, case, MetaData, or_, BigInteger
-from sqlalchemy.orm import aliased
+from sqlalchemy import func, case, MetaData, or_, BigInteger, update as sa_update, desc, text
 from sqlalchemy.orm import aliased
 
 app = Flask(__name__)
+_allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 CORS(
     app,
     resources={
         r"/api/*": {
-            "origins": "*",
+            "origins": _allowed_origins,
             "supports_credentials": True,
             "allow_headers": ["Content-Type", "Authorization", "X-Security-Key-ID", "X-Machine-Id"],
         }
     },
 )
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins=_allowed_origins)
 
 # Public endpoints that don't require authentication
 PUBLIC_ENDPOINTS = [
     "/api/health",
     "/api/login",
-    "/api/register",
     "/api/webauthn/login/begin",
     "/api/webauthn/login/complete",
-    # Registration now requires auth (admin)
     "/api/webauthn/check-status",
     "/api/webauthn/check-status/complete",
-    "/api/verify_key_ownership",
-    "/api/internal/hid_security_key_event",  # Internal endpoint, might need specific protection logic, but typically exempted from user session auth
+    "/api/verify-key-ownership",
     "/api/logout",
     "/api/app-auth/verify",
 ]
@@ -154,7 +156,11 @@ app.config["SESSION_COOKIE_SECURE"] = False  # Set to True in production with HT
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Use 'Strict' in production
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SECRET_KEY"] = os.urandom(32)
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    warnings.warn("SECRET_KEY env var not set — sessions will not survive restarts. Set SECRET_KEY in production.", stacklevel=2)
+    _secret_key = os.urandom(32)
+app.config["SECRET_KEY"] = _secret_key
 app.config["SESSION_TYPE"] = "redis"  # Or 'filesystem', 'sqlalchemy', etc.
 Session(app)
 db = SQLAlchemy(app)
@@ -251,12 +257,19 @@ class Users(db.Model):
     # Increment failed login attempts
     def increment_failed_attempts(self):
         """Increment failed login attempts and update total"""
-        self.failed_login_attempts += 1
-        self.total_login_attempts = (
-            self.successful_login_attempts + self.failed_login_attempts
+        # Atomic DB-level increment prevents concurrent requests from both reading
+        # the same counter value and both bypassing the lockout threshold
+        db.session.execute(
+            sa_update(Users)
+            .where(Users.id == self.id)
+            .values(
+                failed_login_attempts=Users.failed_login_attempts + 1,
+                total_login_attempts=Users.total_login_attempts + 1,
+            )
         )
+        # Expire the cached ORM state so the next attribute access re-reads from DB
+        db.session.expire(self)
 
-        # Get configurable failed login attempts limit
         settings = db.session.execute(db.select(AppSettings)).scalar_one_or_none()
         max_attempts = settings.failed_login_attempts if settings else 5
 
@@ -703,7 +716,8 @@ class RolePermission(db.Model):
 class Role(db.Model):
     __tablename__ = "roles"
 
-    slug = db.Column(db.String(32), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(32), unique=True, nullable=False)
     display_name = db.Column(db.String(64), nullable=False)
     is_system = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(
@@ -832,7 +846,7 @@ def get_public_ip():
         if response.status_code == 200:
             return response.json().get("ip")
     except Exception as e:
-        print(f"Error getting public IP: {str(e)}")
+        pass
     return None
 
 
@@ -901,7 +915,7 @@ def get_location_from_ip(ip_address):
 
         return "Unknown Location"
     except Exception as e:
-        print(f"Error getting location from IP: {str(e)}")
+        pass
         return "Unknown Location"
 
 
@@ -927,16 +941,14 @@ def generate_binding_data(request):
 
 # Function to validate token binding
 def validate_token_binding(session_token, binding_nonce, request):
-    print(f"Validating token: {session_token[:8]}... nonce: {binding_nonce[:8]}...")
+    pass
 
     # Check if this is direct security key authentication
     data = request.get_json() or {}
     direct_security_key_auth = data.get("directSecurityKeyAuth", False)
 
     if direct_security_key_auth:
-        print(
-            "Direct security key authentication detected - bypassing token validation"
-        )
+        pass
         # For direct security key auth, skip token validation completely
         return True
 
@@ -945,7 +957,7 @@ def validate_token_binding(session_token, binding_nonce, request):
         session_token=session_token
     ).first()
     if not auth_session:
-        print("No session found with this token")
+        pass
         # Show available tokens for debugging
         recent_sessions = (
             AuthenticationSession.query.order_by(
@@ -954,12 +966,10 @@ def validate_token_binding(session_token, binding_nonce, request):
             .limit(5)
             .all()
         )
-        print(f"Recent sessions: {len(recent_sessions)}")
         for s in recent_sessions:
-            print(f"- Token: {s.session_token[:8]}... for user_id: {s.user_id}")
+            pass
         return False
 
-    print(f"Found session for user_id: {auth_session.user_id}")
 
     # Check if session is expired - with proper timezone handling
     now = datetime.now(timezone.utc)
@@ -971,24 +981,20 @@ def validate_token_binding(session_token, binding_nonce, request):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
     if now > expires_at:
-        print(f"Session expired at {expires_at}")
+        pass
         return False
 
-    # For development purposes, use simpler binding validation
     user_agent = request.headers.get("User-Agent", "")
     simplified_binding = hashlib.sha256(
         f"{user_agent}|{binding_nonce}".encode()
     ).hexdigest()
 
-    # Log binding information for debugging
-    print(f"Original stored binding: {auth_session.client_binding[:15]}...")
-    print(f"Simplified binding: {simplified_binding[:15]}...")
-
-    # Use the simplified binding comparison
     result = secrets.compare_digest(auth_session.client_binding, simplified_binding)
     if not result:
-        print(f"Binding validation failed (but continuing for development purposes)")
-        # For development, we're returning True even on binding mismatch
+        enforce = os.environ.get("ENFORCE_TOKEN_BINDING", "true").lower() == "true"
+        if enforce:
+            app.logger.warning("Token binding mismatch for session %s", auth_session.session_token[:8])
+            return False
         return True
 
     return True
@@ -1101,7 +1107,6 @@ def assess_risk(user_id, request):
 
     # Start with a base risk score - start at 30 for all logins
     risk_score = 30
-    print(f"Risk: Starting with base score of 30 for all logins")
 
     # Get current time
     now = datetime.now(timezone.utc)
@@ -1119,7 +1124,6 @@ def assess_risk(user_id, request):
     if ip_history == 0:
         # New IP address for today
         risk_score += 30
-        print(f"Risk: +30 for new IP address {current_ip} today")
 
     # 2. Check for failed attempts today
     recent_failed_attempts = AuthenticationAttempt.query.filter(
@@ -1133,16 +1137,13 @@ def assess_risk(user_id, request):
     failed_risk = recent_failed_attempts * 15
     risk_score += failed_risk
     if failed_risk > 0:
-        print(
-            f"Risk: +{failed_risk} for {recent_failed_attempts} failed attempts today"
-        )
+        pass
 
     # 3. Check for unusual timing
     user_timezone = user.timezone or "UTC"  # Assuming you store user's timezone
     current_hour = now.hour
     if current_hour < 6 or current_hour > 22:  # Outside normal hours
         risk_score += 10
-        print(f"Risk: +10 for unusual hour ({current_hour})")
 
     # 4. Check device history (for today only)
     current_user_agent = request.headers.get("User-Agent", "")
@@ -1157,7 +1158,6 @@ def assess_risk(user_id, request):
     if device_history == 0:
         # New device today
         risk_score += 20
-        print(f"Risk: +20 for new device today")
 
     # 5. Check location (for today only)
     # Get last successful login from today
@@ -1173,16 +1173,13 @@ def assess_risk(user_id, request):
 
     if last_login_today and last_login_today.ip_address != current_ip:
         risk_score += 15
-        print(f"Risk: +15 for location change today")
 
         # Check for rapid authentication from different locations (within the last hour)
         time_since_last_login = now - last_login_today.timestamp
         if time_since_last_login < timedelta(hours=1):
             risk_score += 25
-            print(f"Risk: +25 for rapid location change (within the last hour)")
 
     final_score = min(risk_score, 100)  # Cap at 100
-    print(f"Final risk score: {final_score}")
     return final_score
 
 
@@ -1231,11 +1228,8 @@ def get_risk_score_trend():
             )
 
             # Debug the query results
-            print(f"Found {len(results)} days with risk data")
             for row in results:
-                print(
-                    f"Date: {row.date}, Avg Score: {row.avg_risk_score}, Count: {row.attempt_count}"
-                )
+                pass
 
             # Format data for the chart with better type handling
             risk_trend = []
@@ -1247,7 +1241,7 @@ def get_risk_score_trend():
                         round(float(avg_score), 1) if avg_score is not None else 0
                     )
                 except (ValueError, TypeError):
-                    print(f"Error converting risk score for {date}: {avg_score}")
+                    pass
                     avg_risk_score = 0
 
                 risk_trend.append(
@@ -1266,10 +1260,8 @@ def get_risk_score_trend():
             return jsonify({"riskTrend": risk_trend})
 
         except Exception as db_error:
-            print(f"Database error in risk trend calculation: {str(db_error)}")
-            import traceback
+            pass
 
-            print(traceback.format_exc())
 
             # Return graceful fallback with current date
             today = now.strftime("%b %d")
@@ -1278,10 +1270,8 @@ def get_risk_score_trend():
             )
 
     except Exception as e:
-        print(f"Error fetching risk score trend: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch risk score trend"}), 500
 
 
@@ -1308,7 +1298,7 @@ def ensure_default_settings():
     try:
         settings = AppSettings.query.first()
         if not settings:
-            print("Creating default AppSettings record...")
+            pass
             settings = AppSettings(
                 session_timeout=15,
                 failed_login_attempts=5,
@@ -1322,11 +1312,10 @@ def ensure_default_settings():
             )
             db.session.add(settings)
             db.session.commit()
-            print("Default AppSettings created successfully")
         else:
-            print("AppSettings record already exists")
+            pass
     except Exception as e:
-        print(f"Error creating default settings: {str(e)}")
+        pass
         db.session.rollback()
 
 
@@ -1386,6 +1375,7 @@ def get_password_policy_info():
 
 # Updated route for user registration with first and last name and role (only accessible to admins)
 @app.route("/api/register", methods=["POST"])
+@limiter.limit("10 per minute")
 def register():
     data = request.get_json()
 
@@ -1453,40 +1443,14 @@ def register():
         )
         return jsonify({"error": "National ID must be a number"}), 400
 
-    # Get the admin's auth token for authorization
-    admin_token = request.headers.get("Authorization")
-    if not admin_token:
-        log_system_event(
-            user_id=None,
-            performed_by_user_id=None,  # No admin token provided
-            action_type="USER_REGISTER_FAILURE",
-            status="FAILURE",
-            details=f"Registration attempt for username '{data.get('username')}' failed: Admin authorization required.",
-        )
-        return jsonify({"error": "Admin authorization required"}), 401
-
-    # Verify the admin token
-    admin_token = admin_token.replace("Bearer ", "")
-    auth_session = AuthenticationSession.query.filter_by(
-        session_token=admin_token
-    ).first()
-
-    if not auth_session:
-        log_system_event(
-            user_id=None,
-            performed_by_user_id=None,  # Admin token was invalid or session not found
-            action_type="USER_REGISTER_FAILURE",
-            status="FAILURE",
-            details=f"Registration attempt for username '{data.get('username')}' failed: Invalid admin token.",
-        )
-        return jsonify({"error": "Invalid admin token"}), 401
-
-    # Get the admin user
+    # Middleware already validated the token — resolve the acting admin for role check and audit logging
+    admin_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    auth_session = AuthenticationSession.query.filter_by(session_token=admin_token).first()
     admin_user = db.session.get(Users, auth_session.user_id)
     if not admin_user or admin_user.role != "admin":
         log_system_event(
             user_id=None,
-            performed_by_user_id=auth_session.user_id,  # ID of user who attempted action
+            performed_by_user_id=auth_session.user_id,
             action_type="USER_REGISTER_FAILURE",
             status="FAILURE",
             details=f"Registration attempt for username '{data.get('username')}' failed: Admin privileges required. Attempted by user ID: {auth_session.user_id}.",
@@ -1506,7 +1470,7 @@ def register():
             ),
             details=f"Registration attempt for username '{data['username']}' failed: Username already exists.",
         )
-        return jsonify({"error": "Username already exists"}), 409
+        return jsonify({"error": "A user with the provided details already exists"}), 409
 
     role = data.get("role")
     valid_roles = get_valid_roles()
@@ -1723,10 +1687,8 @@ def get_users():
         return jsonify({"users": user_list, "pages": total_pages})
 
     except Exception as e:
-        print(f"Error in get_users: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "An error occurred while retrieving users"}), 500
 
 
@@ -1899,10 +1861,12 @@ def get_all_security_keys():
             elif status_filter == "inactive":
                 query = query.filter(SecurityKey.is_active == False)
 
-        keys = query.order_by(SecurityKey.created_at.desc()).all()
+        page = request.args.get("page", 1, type=int)
+        per_page = min(request.args.get("per_page", 20, type=int), 100)
+        pagination = query.order_by(SecurityKey.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
         keys_list = []
-        for key_data in keys:
+        for key_data in pagination.items:
             keys_list.append(
                 {
                     "id": key_data.id,
@@ -1925,13 +1889,16 @@ def get_all_security_keys():
                 }
             )
 
-        return jsonify({"securityKeys": keys_list})
+        return jsonify({
+            "securityKeys": keys_list,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "total": pagination.total,
+            "pages": pagination.pages,
+        })
 
     except Exception as e:
-        print(f"Error fetching all security keys: {str(e)}")
-        import traceback
-
-        print(traceback.format_exc())
+        app.logger.exception("Error fetching all security keys: %s", e)
         return jsonify({"error": "Failed to fetch all security keys"}), 500
 
 
@@ -1979,7 +1946,8 @@ def detect_yubikeys():
         return jsonify({"success": True, "yubikeys": yubikeys, "count": len(yubikeys)})
 
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        app.logger.exception("Error listing YubiKeys: %s", e)
+        return jsonify({"success": False, "error": "An unexpected error occurred"}), 500
 
 
 @app.route("/api/security-keys/check-serial", methods=["POST"])
@@ -2111,12 +2079,11 @@ def get_security_key_details(key_id):
         return jsonify({"securityKey": key_details})
 
     except Exception as e:
-        print(f"Error fetching security key details for key ID {key_id}: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
+        app.logger.exception("Error fetching security key details: %s", e)
         return (
-            jsonify({"error": f"Failed to fetch security key details: {str(e)}"}),
+            jsonify({"error": "Failed to fetch security key details"}),
             500,
         )
 
@@ -2212,14 +2179,9 @@ def delete_security_key(key_id):
             try:
                 if os.path.exists(enc_file.encrypted_path):
                     os.remove(enc_file.encrypted_path)
-                    print(
-                        f"Deleted encrypted file from disk: {enc_file.encrypted_path}"
-                    )
             except Exception as file_error:
+                pass
                 # Log error but continue with DB deletion
-                print(
-                    f"Error deleting file from disk {enc_file.encrypted_path}: {file_error}"
-                )
 
         # Delete the database records for these files
         EncryptedFile.query.filter_by(security_key_id=key_id).delete()
@@ -2287,7 +2249,6 @@ def delete_security_key(key_id):
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error deleting security key: {str(e)}")
         log_system_event(
             user_id=(
                 user.id
@@ -2312,6 +2273,7 @@ def deactivate_security_key_status(key_id):
     """Toggle a security key's active status with security checks.
 
     Security measures:
+        pass
     - Only admins can toggle other users' keys
     - Cannot activate a previously deactivated key
     - Only one active key allowed per user
@@ -2376,15 +2338,9 @@ def deactivate_security_key_status(key_id):
         )
         return jsonify({"error": "Security key not found"}), 404
 
-    print(
-        f"[DEACTIVATE_KEY] Initial key state for ID {key_id}: is_active={key.is_active}, reason='{key.deactivation_reason}'"
-    )
 
     reason_from_payload = (
         request.json.get("reason") if request.json else "REQUEST_JSON_IS_NONE"
-    )
-    print(
-        f"[DEACTIVATE_KEY] Reason from request payload for key ID {key_id}: '{reason_from_payload}'"
     )
 
     # If trying to activate a deactivated key
@@ -2445,9 +2401,6 @@ def deactivate_security_key_status(key_id):
         ),
         "deactivation_reason": key.deactivation_reason,  # This is the reason *before* update
     }
-    print(
-        f"[DEACTIVATE_KEY] Previous state for audit for key ID {key_id}: {previous_state}"
-    )
 
     # Toggle the status and set deactivation details
     key.is_active = not key.is_active  # key.is_active is now the new state
@@ -2460,15 +2413,9 @@ def deactivate_security_key_status(key_id):
         key.deactivation_reason = (
             reason_from_payload  # Use the captured reason from request
         )
-        print(
-            f"[DEACTIVATE_KEY] Deactivating key ID {key_id}. Set deactivation_reason to: '{key.deactivation_reason}'"
-        )
     else:  # This means the key was inactive, and is now being made active
         key.deactivated_at = None
         key.deactivation_reason = None
-        print(
-            f"[DEACTIVATE_KEY] Activating key ID {key_id}. Cleared deactivation_reason."
-        )
 
     new_state = {
         "is_active": key.is_active,  # This is the new state *after* toggle
@@ -2477,7 +2424,6 @@ def deactivate_security_key_status(key_id):
         ),
         "deactivation_reason": key.deactivation_reason,  # This is the new reason *after* update
     }
-    print(f"[DEACTIVATE_KEY] New state for audit for key ID {key_id}: {new_state}")
 
     # Create audit log
     audit_log = SecurityKeyAudit(
@@ -2901,7 +2847,6 @@ def reset_security_key(key_id):
         )
     except Exception as e:
         db.session.rollback()
-        print(f"Error resetting security key: {str(e)}")
         log_system_event(
             user_id=key.user_id if "key" in locals() and key else None,
             performed_by_user_id=(
@@ -2913,7 +2858,8 @@ def reset_security_key(key_id):
             target_entity_id=key_id,
             details=f"Error resetting security key ID {key_id} for user '{key.user.username if 'key' in locals() and key and key.user else 'N/A'}' by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}",
         )
-        return jsonify({"error": f"Failed to reset security key: {str(e)}"}), 500
+        app.logger.exception("Error resetting security key %s: %s", key_id, e)
+        return jsonify({"error": "Failed to reset security key"}), 500
 
 
 @app.route("/api/security-keys/<int:key_id>/reassign", methods=["POST"])
@@ -3124,7 +3070,6 @@ def reassign_security_key(key_id):
         )
     except Exception as e:
         db.session.rollback()
-        print(f"Error reassigning security key: {str(e)}")
         log_system_event(
             user_id=(
                 key.user_id if "key" in locals() and key else None
@@ -3138,7 +3083,8 @@ def reassign_security_key(key_id):
             target_entity_id=key_id,
             details=f"Error reassigning security key ID {key_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}",
         )
-        return jsonify({"error": f"Failed to reassign security key: {str(e)}"}), 500
+        app.logger.exception("Error reassigning security key %s: %s", key_id, e)
+        return jsonify({"error": "Failed to reassign security key"}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -3374,6 +3320,7 @@ def update_binding_policy(key_id):
 
 # Login endpoint
 @app.route("/api/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     # First, check for system-wide lockdown
     system_status = SystemStatus.query.first()
@@ -3684,6 +3631,7 @@ def bytes_to_base64url(bytes_data):
 
 
 @app.route("/api/webauthn/register/begin", methods=["POST"])
+@limiter.limit("10 per minute")
 def webauthn_register_begin():
     data = request.get_json()
     username = data.get("username")
@@ -3691,9 +3639,6 @@ def webauthn_register_begin():
     binding_nonce = data.get("binding_nonce")
     force_registration = data.get("forceRegistration", False)  # Add this parameter
 
-    print(
-        f"Registration begin request: username={username}, force_registration={force_registration}"
-    )
 
     if not username:
         log_system_event(
@@ -3775,7 +3720,6 @@ def webauthn_register_begin():
 
     # Only gather exclude credentials if we're not forcing registration
     if not force_registration:
-        print("Getting existing credentials to exclude them")
         user_credentials = SecurityKey.query.filter_by(user_id=user.id).all()
 
         for cred in user_credentials:
@@ -3788,10 +3732,8 @@ def webauthn_register_begin():
                         )
                     )
                 except Exception as e:
-                    print(f"Error decoding credential ID for key {cred.id}: {e}")
+                    app.logger.warning("Error decoding credential ID for key %s: %s", cred.id, e)
                     continue
-    else:
-        print("Force registration enabled - not excluding any existing credentials")
 
     # Prepare registration options
     user_entity = PublicKeyCredentialUserEntity(
@@ -3826,10 +3768,6 @@ def webauthn_register_begin():
         )
 
     # Print information about the challenge (using ASCII-safe characters only)
-    print("Challenge details:")
-    print(f"- Type: {type(challenge_bytes).__name__}")
-    print(f"- Length: {len(challenge_bytes)} bytes")
-    print(f"- Preview: {challenge_bytes[:10].hex()}")
 
     # Clear any existing challenges for this user
     SecurityKeyChallenge.query.filter_by(user_id=user.id, expired=False).update(
@@ -3915,10 +3853,9 @@ def webauthn_register_begin():
 
 @app.route("/api/webauthn/register/complete", methods=["POST"])
 def webauthn_register_complete():
-    print("\n=================== REGISTER COMPLETE REQUEST ===================")
+    pass
 
     data = request.get_json()
-    print("Request data:", data)
 
     username = data.get("username")
     auth_token = data.get("auth_token")
@@ -3926,9 +3863,6 @@ def webauthn_register_complete():
     force_registration = data.get("forceRegistration", False)
     keyId = data.get("keyId")  # Get the key ID if provided
 
-    print(
-        f"Registration complete request: username={username}, force_registration={force_registration}, keyId={keyId}"
-    )
 
     # Get security key details
     model = data.get("model")
@@ -3967,9 +3901,6 @@ def webauthn_register_complete():
         None  # Will hold the admin User object if identified from header
     )
 
-    print(
-        f"[REGISTER_COMPLETE] Initial actor_id set to target user.id: {user.id} for user '{user.username}'. force_registration={force_registration}"
-    )
 
     # Attempt to identify an admin from the Authorization header
     header_auth_token_str = request.headers.get("Authorization")
@@ -3988,32 +3919,19 @@ def webauthn_register_complete():
                 actor_id = (
                     admin_performing_action.id
                 )  # This is the admin performing the action
-                print(
-                    f"[REGISTER_COMPLETE] Admin actor (ID: {actor_id}, Username: {admin_performing_action.username}) identified from Authorization header."
-                )
             elif potential_admin_from_header:  # User in header is not an admin
-                print(
-                    f"[REGISTER_COMPLETE] User (ID: {potential_admin_from_header.id}, Role: {potential_admin_from_header.role}) found in Authorization header, but is not an admin."
-                )
+                pass
             else:  # No user found for the session token in header
-                print(
-                    f"[REGISTER_COMPLETE] No user found for session token in Authorization header."
-                )
+                pass
         else:  # No session found for the token in header
-            print(
-                f"[REGISTER_COMPLETE] No session found for token in Authorization header."
-            )
+            pass
     else:  # No Authorization: Bearer token in header
-        print(
-            f"[REGISTER_COMPLETE] No 'Authorization: Bearer ...' token found in headers."
-        )
+        pass
 
     # If force_registration is true (re-register), an admin MUST be the actor identified from the Authorization header.
     if force_registration:
         if not admin_performing_action:
-            print(
-                f"[REGISTER_COMPLETE] AUDIT FAIL: force_registration=True for user '{user.username}', but no admin actor was identified from the Authorization header. This is an admin-driven flow and requires admin authentication via header."
-            )
+            pass
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=None,  # Admin actor not identified
@@ -4032,23 +3950,16 @@ def webauthn_register_complete():
                 403,
             )
         # If admin_performing_action is set, actor_id is already correctly the admin's ID.
-        print(
-            f"[REGISTER_COMPLETE] AUDIT: Re-registration flow for user '{user.username}'. Actor is Admin ID: {actor_id} (Username: {admin_performing_action.username})."
-        )
     else:  # Not force_registration (this is an initial registration)
         if admin_performing_action:
+            pass
             # An admin is in the header. This could be an admin registering their *own* first key,
             # or an admin initiating the *first* key registration for another user.
             # In both these cases, the admin from the header is the correct actor.
-            print(
-                f"[REGISTER_COMPLETE] AUDIT: Initial registration. Admin actor (ID: {actor_id}, Username: {admin_performing_action.username}) present in header. Target user: '{user.username}'."
-            )
         else:
+            pass
             # No admin in header, this is a true self-registration by the target user.
             # actor_id remains user.id (the target user).
-            print(
-                f"[REGISTER_COMPLETE] AUDIT: Initial self-registration for user '{user.username}'. Actor is Target User ID: {actor_id}."
-            )
 
     # The `auth_token` variable (from `data.get('auth_token')`) is used for binding validation if present.
     # It is NOT used to determine the `actor_id` for audit logging in `force_registration` cases.
@@ -4102,10 +4013,6 @@ def webauthn_register_complete():
     stored_challenge_base64 = challenge_record.challenge
     challenge_bytes = base64.b64decode(stored_challenge_base64)
 
-    print(f"Retrieved challenge from DB (Base64): {stored_challenge_base64}")
-    print(f"Challenge bytes (Hex): {challenge_bytes.hex()}")
-    print(f"Challenge length: {len(challenge_bytes)} bytes")
-
     try:
         attestation_response = data.get("attestationResponse")
         if not attestation_response:
@@ -4120,13 +4027,7 @@ def webauthn_register_complete():
             )
             return jsonify({"error": "No attestation response provided"}), 400
 
-        print("\nProcessing attestation response:")
-        print(f"Response contains: {list(attestation_response.keys())}")
-        print(f"Response type: {attestation_response.get('type')}")
-        print(f"Credential ID: {attestation_response.get('id')}")
-
         response_section = attestation_response.get("response", {})
-        print(f"Response section keys: {list(response_section.keys())}")
 
         client_data_json = response_section.get("clientDataJSON", "")
         client_data_bytes = base64url_to_bytes(client_data_json)
@@ -4143,19 +4044,12 @@ def webauthn_register_complete():
                 f"Invalid challenge format: expected string, got {type(client_data_obj['challenge'])}"
             )
 
-        print("Challenge format verified successfully")
-
         client_challenge_base64url = client_data_obj.get("challenge", "")
         client_challenge_bytes = base64url_to_bytes(client_challenge_base64url)
 
-        print(f"Client challenge bytes (Hex): {client_challenge_bytes.hex()}")
-        print(f"Client challenge length: {len(client_challenge_bytes)} bytes")
-
         challenges_match = challenge_bytes == client_challenge_bytes
-        print(f"\nChallenges match: {challenges_match}")
 
         if not challenges_match:
-            print("CHALLENGE MISMATCH!")
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=actor_id,
@@ -4184,9 +4078,8 @@ def webauthn_register_complete():
         }
 
         try:
-            print("\nAttempting register_complete...")
+            pass
             auth_data = server.register_complete(state, attestation_response)
-            print("Registration successful!")
 
             # Mark the challenge as expired
             challenge_record.expired = True
@@ -4213,20 +4106,17 @@ def webauthn_register_complete():
                 # If forcing registration and keyId is provided, look up that specific key
                 target_key = None
                 if keyId:
-                    print(f"Looking up specific key ID: {keyId}")
+                    pass
                     target_key = db.session.get(SecurityKey, keyId)
 
                 # If no key found by ID but we're forcing registration, try by credential ID
                 if not target_key:
-                    print(f"Looking up key by credential ID: {credential_id[:10]}...")
                     target_key = SecurityKey.query.filter_by(
                         credential_id=credential_id
                     ).first()
 
                 if target_key:
-                    print(
-                        f"Force registration: Updating existing key {target_key.id} for user {user.id}"
-                    )
+                    pass
 
                     # Update the existing key
                     target_key.user_id = user.id
@@ -4302,9 +4192,7 @@ def webauthn_register_complete():
                         }
                     )
                 else:
-                    print(
-                        f"Warning: Force registration requested but no existing key found with ID {keyId}"
-                    )
+                    pass
                     # If we're using keyId but couldn't find the key, return error
                     if keyId:
                         log_system_event(
@@ -4394,7 +4282,7 @@ def webauthn_register_complete():
                                     session_key_details.get("pin")
                                 )
                         except (json.JSONDecodeError, TypeError):
-                            print("Error parsing client_binding from session")
+                            pass
 
                     # If we couldn't get details from session, use the ones from the request
                     if not session_key_details:
@@ -4406,7 +4294,7 @@ def webauthn_register_complete():
                             "pin": generate_password_hash(pin) if pin else None,
                         }
                 except Exception as e:
-                    print(f"Error processing key details: {str(e)}")
+                    pass
                     session_key_details = {
                         "device_type": device_type,
                         "form_factor": form_factor,
@@ -4495,7 +4383,7 @@ def webauthn_register_complete():
                 }
             )
         except ValueError as ve:
-            print(f"ValueError during register_complete: {str(ve)}")
+            pass
             log_system_event(
                 user_id=user.id if "user" in locals() and user else None,
                 performed_by_user_id=actor_id if "actor_id" in locals() else None,
@@ -4511,10 +4399,8 @@ def webauthn_register_complete():
             )
 
     except Exception as e:
-        print(f"\nRegistration error: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         log_system_event(
             user_id=user.id if "user" in locals() and user else None,
             performed_by_user_id=actor_id if "actor_id" in locals() else None,
@@ -4524,11 +4410,13 @@ def webauthn_register_complete():
             target_entity_id=user.id if "user" in locals() and user else None,
             details=f"SecurityKey registration complete for username '{username if 'username' in locals() else 'N/A'}' failed due to Exception: {str(e)}.",
         )
-        return jsonify({"error": str(e)}), 400
+        app.logger.exception("Error in webauthn_register_complete: %s", e)
+        return jsonify({"error": "Security key registration failed"}), 400
 
 
 # SecurityKey authentication endpoints
 @app.route("/api/webauthn/login/begin", methods=["POST"])
+@limiter.limit("10 per minute")
 def webauthn_login_begin():
     try:
         data = request.get_json()
@@ -4720,7 +4608,7 @@ def webauthn_login_begin():
                     )
                 )
             except Exception as e:
-                print(f"❌ Error decoding credential_id for key {key.id}: {e}")
+                app.logger.warning("Error decoding credential_id for key %s: %s", key.id, e)
                 continue
 
         if not credentials:
@@ -4743,15 +4631,12 @@ def webauthn_login_begin():
             # If second factor and risk score is high, require stronger verification
             if auth_session and auth_session.risk_score > 50:
                 verification_requirement = UserVerificationRequirement.REQUIRED
-                print(
-                    f"High risk score ({auth_session.risk_score}): Requiring stronger verification"
-                )
 
             auth_data, state = server.authenticate_begin(
                 credentials=credentials, user_verification=verification_requirement
             )
         except Exception as e:
-            print(f"❌ Error in authenticate_begin: {e}")
+            pass
             log_system_event(
                 user_id=user.id,
                 performed_by_user_id=user.id,
@@ -4858,10 +4743,7 @@ def webauthn_login_begin():
             }
         )
     except Exception as e:
-        print(f"❌ Unexpected error in webauthn_login_begin: {str(e)}")
-        import traceback
-
-        print(traceback.format_exc())
+        app.logger.exception("Unexpected error in webauthn_login_begin: %s", e)
         # Log unexpected error
         user_id_for_log = user.id if "user" in locals() and user else None
         log_system_event(
@@ -4887,7 +4769,6 @@ def webauthn_login_begin():
 def webauthn_login_complete():
     data = request.get_json()
     identifier = data.get("username")
-    print(f"SecurityKey login/complete with identifier: {identifier}")
     second_factor = data.get("secondFactor", False)
     auth_token = data.get("auth_token")
     binding_nonce = data.get("binding_nonce")
@@ -5006,9 +4887,7 @@ def webauthn_login_complete():
                     credential_id=credential_id
                 ).first()
                 if other_user_key:
-                    print(
-                        f"Security key {credential_id[:8]}... is registered to another user"
-                    )
+                    pass
                     db.session.commit()  # Commit the failed attempt
                     log_system_event(
                         user_id=user.id,
@@ -5037,7 +4916,7 @@ def webauthn_login_complete():
 
         # Check if the key exists and is active
         if not security_key:
-            print("Could not determine which security key was used")
+            pass
             db.session.commit()  # Commit the failed attempt
             log_system_event(
                 user_id=user.id,
@@ -5052,7 +4931,7 @@ def webauthn_login_complete():
 
         # Check if the key is active
         if not security_key.is_active:
-            print(f"Security key {security_key.id} is inactive")
+            pass
             db.session.commit()  # Commit the failed attempt
             log_system_event(
                 user_id=user.id,
@@ -5101,9 +4980,6 @@ def webauthn_login_complete():
 
             if auth_session and auth_session.risk_score > 50:
                 verification_requirement = "required"
-                print(
-                    f"High risk score ({auth_session.risk_score}): Using stronger verification requirement"
-                )
 
         state = {
             "challenge": websafe_encode(challenge_bytes).rstrip("="),
@@ -5118,9 +4994,6 @@ def webauthn_login_complete():
             security_key.sign_count = auth_data.counter
         elif auth_data.counter < security_key.sign_count:
             # This could indicate a cloned security key - potential security issue!
-            print(
-                f"⚠️ SECURITY ALERT: Counter regression detected! Stored: {security_key.sign_count}, Received: {auth_data.counter}"
-            )
             auth_attempt.risk_score = 100
             db.session.commit()
             log_system_event(
@@ -5310,10 +5183,8 @@ def webauthn_login_complete():
             )
 
     except Exception as e:
-        print(f"Authentication error: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
 
         # Update the authentication attempt
         auth_attempt.success = False
@@ -5374,7 +5245,8 @@ def webauthn_login_complete():
                 400,
             )
         else:
-            return jsonify({"error": str(e)}), 400
+            app.logger.exception("Error in webauthn_login_complete: %s", e)
+            return jsonify({"error": "Authentication failed"}), 400
 
 
 @app.route("/api/webauthn/check-status", methods=["POST"])
@@ -5390,12 +5262,10 @@ def webauthn_check_status():
     if not username:
         return jsonify({"error": "Username required"}), 400
 
-    # Find user
     user = Users.query.filter_by(username=username).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # If user doesn't have a security key registered, return false
     if not user.credential_id:
         return (
             jsonify(
@@ -5418,7 +5288,7 @@ def webauthn_check_status():
                 type=PublicKeyCredentialType.PUBLIC_KEY, id=credential_id
             )
         except Exception as e:
-            print(f"Error decoding credential ID: {e}")
+            app.logger.warning("Error decoding credential ID: %s", e)
             return (
                 jsonify({"isConnected": False, "message": "Invalid credential format"}),
                 200,
@@ -5484,21 +5354,8 @@ def webauthn_check_status():
         )
 
     except Exception as e:
-        print(f"Error checking security key status: {str(e)}")
-        import traceback
-
-        print(traceback.format_exc())
-
-        return (
-            jsonify(
-                {
-                    "isConnected": False,
-                    "error": "Failed to check security key status",
-                    "message": str(e),
-                }
-            ),
-            500,
-        )
+        app.logger.exception("Error in webauthn_check_status: %s", e)
+        return jsonify({"isConnected": False, "error": "Failed to check security key status"}), 500
 
 
 @app.route("/api/webauthn/check-status/complete", methods=["POST"])
@@ -5514,7 +5371,6 @@ def webauthn_check_status_complete():
     if not username or not assertion_response or not challenge_id:
         return jsonify({"error": "Missing required parameters"}), 400
 
-    # Find user
     user = Users.query.filter_by(username=username).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
@@ -5601,10 +5457,8 @@ def webauthn_check_status_complete():
         )
 
     except Exception as e:
-        print(f"Error completing security key status check: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
 
         # Log the failed attempt
         auth_attempt = (
@@ -5870,10 +5724,8 @@ def get_dashboard_stats():
         )
 
     except Exception as e:
-        print(f"Error getting dashboard stats: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())  # Print full stack trace for debugging
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -5896,7 +5748,6 @@ def get_login_attempts():
 
         # Get the time range from query parameters (default to 30d)
         time_range = request.args.get("range", "30d")
-        print(f"Received time range: {time_range}")  # Debug log
 
         # Calculate the start date based on the time range
         now = datetime.now(timezone.utc)
@@ -5909,7 +5760,6 @@ def get_login_attempts():
 
         # Normalize start_date to start of day
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        print(f"Calculated start date: {start_date}")  # Debug log
 
         # Query authentication attempts for the selected time range
         attempts = (
@@ -5920,7 +5770,6 @@ def get_login_attempts():
             .all()
         )
 
-        print(f"Found {len(attempts)} attempts since {start_date}")  # Debug log
 
         # Group attempts by day and initialize all days in the range
         attempts_by_day = {}
@@ -5966,11 +5815,10 @@ def get_login_attempts():
         # Sort by date
         formatted_attempts.sort(key=lambda x: datetime.strptime(x["name"], "%b %d"))
 
-        print(f"Returning {len(formatted_attempts)} days of data")  # Debug log
         return jsonify({"attempts": formatted_attempts})
 
     except Exception as e:
-        print(f"Error getting login attempts: {str(e)}")
+        pass
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -6036,9 +5884,6 @@ def get_security_metrics():
         )
 
         # Log counts for debugging
-        print(
-            f"Security metrics: Active={users_with_active_keys}, Inactive={users_with_inactive_keys}, None={users_without_keys}"
-        )
 
         # Create metrics data with colors
         metrics_data = [
@@ -6067,10 +5912,8 @@ def get_security_metrics():
         )
 
     except Exception as e:
-        print(f"Error getting security metrics: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch security metrics"}), 500
 
 
@@ -6111,7 +5954,7 @@ def get_device_stats():
         return jsonify({"deviceStats": stats_data})
 
     except Exception as e:
-        print(f"Error getting device stats: {str(e)}")
+        pass
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -6121,7 +5964,7 @@ def create_admin_user():
     try:
         admin = Users.query.filter_by(username="admin").first()
         if admin:
-            print("Admin user already exists.")
+            pass
             return admin
 
         # Create admin user
@@ -6140,10 +5983,9 @@ def create_admin_user():
 
         db.session.add(admin)
         db.session.commit()
-        print("Default admin user created successfully.")
         return admin
     except Exception as e:
-        print(f"Error creating admin user: {str(e)}")
+        pass
         db.session.rollback()
         return None
 
@@ -6257,6 +6099,17 @@ def update_user(user_id):
             )
             return jsonify({"error": "National ID must be a number"}), 400
 
+    # Validate field lengths and formats before applying
+    _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    if "firstName" in data and (not isinstance(data["firstName"], str) or len(data["firstName"]) > 64):
+        return jsonify({"error": "firstName must be a string of at most 64 characters"}), 400
+    if "middlename" in data and data["middlename"] is not None and (not isinstance(data["middlename"], str) or len(data["middlename"]) > 64):
+        return jsonify({"error": "middlename must be a string of at most 64 characters"}), 400
+    if "lastName" in data and (not isinstance(data["lastName"], str) or len(data["lastName"]) > 64):
+        return jsonify({"error": "lastName must be a string of at most 64 characters"}), 400
+    if "email" in data and not _EMAIL_RE.match(str(data.get("email", ""))):
+        return jsonify({"error": "Invalid email format"}), 400
+
     # Update other fields
     if "firstName" in data:
         user.first_name = data["firstName"]
@@ -6334,9 +6187,46 @@ def update_user(user_id):
             status="FAILURE",
             target_entity_type="USER",
             target_entity_id=user_id,
-            details=f"Error updating user '{user.username if user else 'N/A'}' (ID: {user_id}) by admin '{admin_user.username}': {str(e)}",
+            details=f"Error updating user (ID: {user_id}) by admin '{admin_user.username}'.",
         )
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error updating user %s: %s", user_id, e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
+
+
+@app.route("/api/users/<int:user_id>/password", methods=["PATCH"])
+@admin_required
+def change_user_password(admin_user, user_id):
+    target = db.session.get(Users, user_id)
+    if not target:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    new_password = data.get("new_password", "")
+
+    if not new_password:
+        return jsonify({"error": "new_password is required"}), 400
+
+    policy_errors = validate_password_policy(new_password)
+    if policy_errors:
+        return jsonify({"error": "Password does not meet policy requirements", "details": policy_errors}), 422
+
+    target.set_password(new_password)
+    try:
+        db.session.commit()
+        log_system_event(
+            user_id=user_id,
+            performed_by_user_id=admin_user.id,
+            action_type="USER_PASSWORD_CHANGE_SUCCESS",
+            status="SUCCESS",
+            target_entity_type="USER",
+            target_entity_id=user_id,
+            details=f"Password for user '{target.username}' (ID: {user_id}) reset by admin '{admin_user.username}'.",
+        )
+        return jsonify({"message": "Password updated successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Error changing password for user %s: %s", user_id, e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 @app.route("/api/reset-db", methods=["POST"])
@@ -6393,9 +6283,10 @@ def reset_db():
             action_type="DATABASE_RESET_FAILURE",
             status="FAILURE",
             target_entity_type="SYSTEM",
-            details=f"Database reset failed: {str(e)}",
+            details=f"Database reset failed.",
         )
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Database reset failed: %s", e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 # Add a route for updating user roles (admin only)
@@ -6638,9 +6529,42 @@ def delete_user_data(user_id):
             status="FAILURE",
             target_entity_type="USER",
             target_entity_id=user_id,
-            details=f"Error soft-deleting user ID {user_id} by admin '{admin_user.username if 'admin_user' in locals() and admin_user else 'N/A'}': {str(e)}",
+            details=f"Error soft-deleting user ID {user_id} by admin.",
         )
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error deleting user %s: %s", user_id, e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
+
+
+@app.route("/api/admin/users/<int:user_id>/purge", methods=["DELETE"])
+@admin_required
+def purge_user(admin_user, user_id):
+    """Hard-delete a user and all associated data for GDPR right-to-erasure compliance."""
+    user = db.session.get(Users, user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if user.role == "admin":
+        return jsonify({"error": "Admin accounts cannot be purged"}), 403
+
+    username_for_log = user.username
+    try:
+        SecurityKey.query.filter_by(user_id=user_id).delete()
+        AuthenticationSession.query.filter_by(user_id=user_id).delete()
+        db.session.delete(user)
+        db.session.commit()
+        log_system_event(
+            user_id=None,
+            performed_by_user_id=admin_user.id,
+            action_type="USER_PURGED",
+            status="SUCCESS",
+            target_entity_type="USER",
+            target_entity_id=user_id,
+            details=f"Admin '{admin_user.username}' permanently purged user '{username_for_log}' (ID: {user_id}) and all associated data.",
+        )
+        return jsonify({"message": f"User '{username_for_log}' permanently deleted"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Error purging user %s: %s", user_id, e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 @app.route("/api/update-user-id/<int:old_id>/<int:new_id>", methods=["POST"])
@@ -6678,7 +6602,6 @@ def update_user_id(old_id, new_id):
             Users.query.filter_by(id=temp_id).update({"id": new_id})
 
             # Reset the sequence to use the next highest ID
-            from sqlalchemy import text
 
             db.session.execute(
                 text("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))")
@@ -6687,7 +6610,8 @@ def update_user_id(old_id, new_id):
         return jsonify({"message": f"User ID changed from {old_id} to {new_id}"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error updating user ID %s→%s: %s", old_id, new_id, e)
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 @app.route("/api/adoption-funnel", methods=["GET"])
@@ -6763,7 +6687,7 @@ def get_adoption_funnel():
             }
         })
     except Exception as e:
-        print(f"Error getting adoption funnel: {str(e)}")
+        pass
         return jsonify({"error": "Failed to fetch adoption funnel"}), 500
 
 
@@ -6812,7 +6736,7 @@ def get_tier_distribution():
 
         return jsonify({"tierDistribution": counts})
     except Exception as e:
-        print(f"Error getting tier distribution: {str(e)}")
+        pass
         return jsonify({"error": "Failed to fetch tier distribution"}), 500
 
 
@@ -6857,7 +6781,7 @@ def get_failed_login_stats():
             ]
         })
     except Exception as e:
-        print(f"Error getting failed-login stats: {str(e)}")
+        pass
         return jsonify({"error": "Failed to fetch failed-login stats"}), 500
 
 
@@ -6911,7 +6835,7 @@ def get_location_stats():
         return jsonify({"locationStats": stats_data})
 
     except Exception as e:
-        print(f"Error getting location stats: {str(e)}")
+        pass
         return jsonify({"error": "Failed to fetch location stats"}), 500
 
 
@@ -6933,10 +6857,6 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
         return False
 
     try:
-        import ipaddress
-        from datetime import datetime, timedelta, timezone
-        from sqlalchemy import func, desc, and_, case
-        from app import db, AuthenticationAttempt
 
         now = datetime.now(timezone.utc)
         past_day = now - timedelta(days=1)
@@ -6944,19 +6864,12 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
         # 1. QUICK CHECKS FIRST: Network validation checks (no DB queries)
         try:
             ip_obj = ipaddress.ip_address(ip_address)
-            if any(
-                [
-                    ip_obj.is_private,
-                    ip_obj.is_multicast,
-                    ip_obj.is_reserved,
-                    ip_obj.is_loopback,
-                ]
-            ):
-                print(f"Suspicious IP: {ip_address} is in a special/private IP range")
+            # Loopback and private IPs are expected in an enterprise environment — not suspicious
+            if ip_obj.is_loopback or ip_obj.is_private:
+                return False
+            if ip_obj.is_multicast or ip_obj.is_reserved:
                 return True
         except ValueError:
-            # Invalid IP format
-            print(f"Suspicious IP: {ip_address} is not a valid IP format")
             return True
 
         # Skip further checks if we don't have user_id
@@ -6986,16 +6899,12 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
         if ip_stats:
             # High number of failed attempts from this IP across all users
             if ip_stats.failed_attempts and ip_stats.failed_attempts > 10:
-                print(
-                    f"Suspicious IP: {ip_address} has {ip_stats.failed_attempts} failed login attempts"
-                )
+                pass
                 return True
 
             # IP is used by many different users in a short time (potential credential stuffing)
             if ip_stats.distinct_users and ip_stats.distinct_users > 5:
-                print(
-                    f"Suspicious IP: {ip_address} used by {ip_stats.distinct_users} different users in 24 hours"
-                )
+                pass
                 return True
 
         # 3. USER-SPECIFIC BEHAVIORAL ANALYSIS
@@ -7046,15 +6955,11 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
             if location_count > 0:
                 location_percentage = (location_count / total_logins) * 100
                 if location_percentage < 5:
-                    print(
-                        f"Suspicious IP: Rare location for user (only {location_percentage:.1f}% of logins)"
-                    )
+                    pass
                     return True
             # Or if it's a completely new location for a user with established patterns
             elif len(login_locations) >= 2:
-                print(
-                    f"Suspicious IP: New location for user with established login patterns"
-                )
+                pass
                 return True
 
         # b. Impossible Travel Detection
@@ -7074,28 +6979,21 @@ def is_suspicious_ip(ip_address, location, user_id=None, attempt_id=None):
                 ).total_seconds() / 3600
                 # Simple travel time check - in production use geolocation APIs for distance
                 if hours_since_last_login < 1:
-                    print(
-                        f"Suspicious IP: Impossible travel detected ({last_login.location} to {location})"
-                    )
+                    pass
                     return True
 
         # c. Time-based Anomaly Detection
         if total_logins > 10 and login_hours:
             current_hour = now.hour
             if current_hour not in login_hours and total_logins > 20:
-                print(
-                    f"Suspicious IP: Login at unusual hour ({current_hour}:00) for this user"
-                )
+                pass
                 return True
 
         return False
 
     except Exception as e:
         # Log error but don't block login
-        print(f"Error in suspicious IP detection: {str(e)}")
-        import traceback
 
-        print(traceback.format_exc())
         return False
 
 
@@ -7126,9 +7024,8 @@ def log_system_event(
         )
         db.session.add(log_entry)
         db.session.commit()
-        print(f"Audit log for action '{action_type}' committed to database.")
     except Exception as e:
-        print(f"Error adding audit log to database: {str(e)}")
+        pass
         # Rollback only the audit log transaction, don't affect the main transaction
         db.session.rollback()
         # Don't re-raise - audit logging failures shouldn't break the main operation
@@ -7319,10 +7216,8 @@ def get_security_alerts():
         )
 
     except Exception as e:
-        print(f"Error fetching security alerts: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch security alerts"}), 500
 
 
@@ -7379,8 +7274,20 @@ def get_security_key_audit_logs():
         )
 
     except Exception as e:
-        print(f"Error fetching security key audit logs: {str(e)}")
+        pass
         return jsonify({"error": "Failed to fetch audit logs"}), 500
+
+
+@app.route("/api/system-audit-logs/action-types", methods=["GET"])
+@admin_required
+def get_audit_log_action_types(admin_user):
+    types = (
+        db.session.query(AuditLog.action_type)
+        .distinct()
+        .order_by(AuditLog.action_type)
+        .all()
+    )
+    return jsonify({"action_types": [t[0] for t in types]})
 
 
 @app.route("/api/system-audit-logs", methods=["GET"])
@@ -7481,10 +7388,12 @@ def get_system_audit_logs():
                     400,
                 )
 
-        audit_logs = query.order_by(AuditLog.timestamp.desc()).all()
+        page = request.args.get("page", 1, type=int)
+        per_page = min(request.args.get("per_page", 50, type=int), 200)
+        pagination = query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
         logs_data = []
-        for log in audit_logs:
+        for log in pagination.items:
             logs_data.append(
                 {
                     "id": log.id,
@@ -7503,13 +7412,16 @@ def get_system_audit_logs():
                 }
             )
 
-        return jsonify({"logs": logs_data})
+        return jsonify({
+            "logs": logs_data,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "total": pagination.total,
+            "pages": pagination.pages,
+        })
 
     except Exception as e:
-        print(f"Error fetching system audit logs: {str(e)}")
-        import traceback
-
-        print(traceback.format_exc())
+        app.logger.exception("Error fetching system audit logs: %s", e)
         return jsonify({"error": "Failed to fetch system audit logs"}), 500
 
 
@@ -7570,7 +7482,7 @@ def get_security_stats():
         )
 
     except Exception as e:
-        print(f"Error getting security stats: {str(e)}")
+        pass
         return jsonify({"error": "Failed to get security stats"}), 500
 
 
@@ -7622,9 +7534,7 @@ def unlock_user_account(user_id):
             return jsonify({"error": "Admin privileges required"}), 403
 
         if not admin_user.username:
-            print(
-                f"CRITICAL: Admin user (ID: {admin_user.id}) performing unlock for user ID {user_id} has a missing username."
-            )
+            pass
             log_system_event(
                 user_id=user_id,
                 performed_by_user_id=admin_user.id,
@@ -7694,7 +7604,7 @@ def unlock_user_account(user_id):
         )
 
     except Exception as e:
-        print(f"Error unlocking account: {str(e)}")
+        pass
         # It's possible 'user' is not defined if db.session.get(Users, user_id) failed before this,
         # though that specific case is handled above.
         # However, admin_user should be defined if we passed the initial checks.
@@ -7759,7 +7669,7 @@ def get_locked_accounts():
         )
 
     except Exception as e:
-        print(f"Error getting locked accounts: {str(e)}")
+        pass
         return jsonify({"error": "Failed to retrieve locked accounts"}), 500
 
 
@@ -7773,7 +7683,16 @@ with app.app_context():
 
 
 @app.route("/api/internal/hid_security_key_event", methods=["POST"])
+def hid_security_key_event_redirect():
+    return redirect("/api/internal/hid-security-key-event", code=308)
+
+
+@app.route("/api/internal/hid-security-key-event", methods=["POST"])
 def hid_security_key_event():
+    internal_secret = os.environ.get("INTERNAL_SECRET")
+    if not internal_secret or request.headers.get("X-Internal-Secret") != internal_secret:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -7783,9 +7702,6 @@ def hid_security_key_event():
     device_path = data.get("path")  # Unique path for the connected device session
     status = data.get("status")  # 'connected' or 'disconnected'
 
-    print(
-        f"Received HID event: Status={status}, VID={vendor_id}, PID={product_id}, Path={device_path}"
-    )
 
     if status == "connected":
         if vendor_id is None or product_id is None:
@@ -7800,9 +7716,6 @@ def hid_security_key_event():
         # but is missing vendor_id and product_id.
         # This is a simple heuristic and might need refinement for multi-user or multi-key scenarios.
 
-        print(
-            f"Flask: Searching for active SecurityKey with NULL VID/PID and a credential_id..."
-        )
         # Prioritize keys that are active and missing VID/PID
         key_to_update = SecurityKey.query.filter(
             SecurityKey.credential_id.isnot(None),
@@ -7812,9 +7725,7 @@ def hid_security_key_event():
         ).first()
 
         if not key_to_update:
-            print(
-                f"Flask: No active key found. Searching for any SecurityKey with NULL VID/PID and a credential_id..."
-            )
+            pass
             # Fallback: check any key missing VID/PID if no active ones are found
             key_to_update = SecurityKey.query.filter(
                 SecurityKey.credential_id.isnot(None),
@@ -7823,14 +7734,11 @@ def hid_security_key_event():
             ).first()
 
         if key_to_update:
-            print(f"Flask: Found SecurityKey ID {key_to_update.id} to update.")
+            pass
             key_to_update.vendor_id = str(vendor_id)  # Ensure string
             key_to_update.product_id = str(product_id)  # Ensure string
             try:
                 db.session.commit()
-                print(
-                    f"Updated SecurityKey ID {key_to_update.id} with VID: {vendor_id}, PID: {product_id}"
-                )
 
                 # Optional: Log this update in SecurityKeyAudit
                 # This would require knowing which admin/user context this update is for,
@@ -7847,12 +7755,10 @@ def hid_security_key_event():
                 )
             except Exception as e:
                 db.session.rollback()
-                print(f"Error updating SecurityKey with VID/PID: {e}")
-                return jsonify({"error": f"Failed to update database: {str(e)}"}), 500
+                app.logger.exception("Error updating SecurityKey with VID/PID: %s", e)
+                return jsonify({"error": "Failed to update database"}), 500
         else:
-            print(
-                f"No suitable SecurityKey record found to update with VID: {vendor_id}, PID: {product_id}"
-            )
+            pass
             return (
                 jsonify(
                     {"message": "No matching SecurityKey record to update with VID/PID"}
@@ -7862,7 +7768,6 @@ def hid_security_key_event():
 
     elif status == "disconnected":
         # Handle disconnection if needed, e.g., logging
-        print(f"Security key disconnected event received for path: {device_path}")
         # No database update typically needed on disconnect for VID/PID here
         return jsonify({"message": "Disconnected event received"}), 200
     else:
@@ -7926,6 +7831,11 @@ def resolve_client_zone(req) -> "NetworkZone | None":
 
 
 @app.route("/api/verify_key_ownership", methods=["POST"])
+def verify_key_ownership_redirect():
+    return redirect("/api/verify-key-ownership", code=308)
+
+
+@app.route("/api/verify-key-ownership", methods=["POST"])
 def verify_key_ownership():
     """
     Verifies that a connected security key belongs to the authenticated user.
@@ -7982,14 +7892,13 @@ def verify_key_ownership():
         # key_bound (active match). Rejecting on unbound machines used to
         # short-circuit even the key_unbound tier, which the resource model
         # explicitly supports.
-        print(f"SUCCESS: Key SN {serial_number} verified for user {user.username}")
 
         # Store the serial number in the auth session for the PIN verification step
         auth_session.pending_pin_verification_serial = key_serial_number
 
         # Check if the key has a PIN
         if security_key.pin:
-            print(f"Key SN {serial_number} requires a PIN.")
+            pass
             # PIN flow: do NOT flip security_key_verified yet — that happens in
             # handle_verify_pin once the PIN matches.
             db.session.commit()
@@ -8004,7 +7913,6 @@ def verify_key_ownership():
         else:
             # No-PIN flow: verification is complete the moment the key is
             # confirmed to belong to the user.
-            print(f"Key SN {serial_number} does not require a PIN. Unlocking models.")
             auth_session.security_key_verified = True
             db.session.commit()
             socketio.emit(
@@ -8019,9 +7927,6 @@ def verify_key_ownership():
         return jsonify({"status": "success", "message": "Key ownership verified."}), 200
     else:
         # FAILURE: The key belongs to a different user.
-        print(
-            f"FAILURE: Key SN {serial_number} belongs to another user, not {user.username}"
-        )
         socketio.emit(
             "key_mismatch_error",
             {"message": "This security key is registered to another user."},
@@ -8031,6 +7936,11 @@ def verify_key_ownership():
 
 
 @app.route("/api/security_key/disconnect", methods=["POST"])
+def security_key_disconnect_redirect():
+    return redirect("/api/security-key/disconnect", code=308)
+
+
+@app.route("/api/security-key/disconnect", methods=["POST"])
 def security_key_disconnect():
     """
     Called by the chat page when usb_detector reports SECURITY_KEY_HID_DISCONNECTED.
@@ -8194,7 +8104,9 @@ def _slugify(name: str) -> str:
 @app.route("/api/admin/roles", methods=["GET"])
 @admin_required
 def admin_list_roles(admin_user):
-    all_roles = Role.query.order_by(Role.slug).all()
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    pagination = Role.query.order_by(Role.slug).paginate(page=page, per_page=per_page, error_out=False)
     rows = (
         db.session.query(
             RolePermission.role,
@@ -8206,20 +8118,25 @@ def admin_list_roles(admin_user):
         .all()
     )
     bucket_names = list(_PERMISSION_BUCKETS.values())
-    counts = {r.slug: {rt: 0 for rt in bucket_names} for r in all_roles}
+    counts = {r.slug: {rt: 0 for rt in bucket_names} for r in pagination.items}
     for role, rtype, count in rows:
         if role in counts and rtype in counts[role]:
             counts[role][rtype] = count
     return jsonify({
         "roles": [
             {
+                "id": r.id,
                 "role": r.slug,
                 "display_name": r.display_name,
                 "is_system": r.is_system,
                 "counts": counts[r.slug],
             }
-            for r in all_roles
-        ]
+            for r in pagination.items
+        ],
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
     })
 
 
@@ -8235,7 +8152,7 @@ def admin_create_role(admin_user):
     if not slug:
         return jsonify({"error": "display_name produces an empty slug"}), 400
 
-    if Role.query.get(slug):
+    if Role.query.filter_by(slug=slug).first():
         return jsonify({"error": f"Role '{slug}' already exists"}), 409
 
     role = Role(slug=slug, display_name=display_name, is_system=False)
@@ -8248,28 +8165,28 @@ def admin_create_role(admin_user):
         action_type="ROLE_CREATED",
         status="SUCCESS",
         target_entity_type="ROLE",
-        target_entity_id=slug,
+        target_entity_id=role.id,
         details=f"Admin '{admin_user.username}' created role '{slug}' (display: '{display_name}').",
     )
-    return jsonify({"role": slug, "display_name": display_name, "is_system": False}), 201
+    return jsonify({"id": role.id, "role": slug, "display_name": display_name, "is_system": False}), 201
 
 
-@app.route("/api/admin/roles/<role>", methods=["DELETE"])
+@app.route("/api/admin/roles/<int:role_id>", methods=["DELETE"])
 @admin_required
-def admin_delete_role(admin_user, role):
-    role_obj = Role.query.get(role)
+def admin_delete_role(admin_user, role_id):
+    role_obj = db.session.get(Role, role_id)
     if not role_obj:
         return jsonify({"error": "Unknown role"}), 404
     if role_obj.is_system:
         return jsonify({"error": "System roles cannot be deleted"}), 403
 
-    user_count = Users.query.filter_by(role=role, is_deleted=False).count()
+    user_count = Users.query.filter_by(role=role_obj.slug, is_deleted=False).count()
     if user_count > 0:
         return jsonify({
             "error": f"Cannot delete: {user_count} active user(s) still have this role"
         }), 409
 
-    RolePermission.query.filter_by(role=role).delete()
+    RolePermission.query.filter_by(role=role_obj.slug).delete()
     db.session.delete(role_obj)
     db.session.commit()
 
@@ -8279,26 +8196,28 @@ def admin_delete_role(admin_user, role):
         action_type="ROLE_DELETED",
         status="SUCCESS",
         target_entity_type="ROLE",
-        target_entity_id=role,
-        details=f"Admin '{admin_user.username}' deleted role '{role}'.",
+        target_entity_id=role_id,
+        details=f"Admin '{admin_user.username}' deleted role '{role_obj.slug}'.",
     )
-    return jsonify({"message": f"Role '{role}' deleted"}), 200
+    return jsonify({"message": f"Role '{role_obj.slug}' deleted"}), 200
 
 
-@app.route("/api/admin/roles/<role>/permissions", methods=["GET"])
+@app.route("/api/admin/roles/<int:role_id>/permissions", methods=["GET"])
 @admin_required
-def admin_get_role_permissions(admin_user, role):
-    if not Role.query.get(role):
+def admin_get_role_permissions(admin_user, role_id):
+    role_obj = db.session.get(Role, role_id)
+    if not role_obj:
         return jsonify({"error": "Unknown role"}), 404
 
     granted = {rtype: [] for rtype in _PERMISSION_BUCKETS.values()}
-    for row in RolePermission.query.filter_by(role=role, allowed=True).all():
+    for row in RolePermission.query.filter_by(role=role_obj.slug, allowed=True).all():
         if row.resource_type in granted:
             granted[row.resource_type].append(row.resource_id)
 
     return jsonify(
         {
-            "role": role,
+            "id": role_obj.id,
+            "role": role_obj.slug,
             "models": granted["model"],
             "apps": granted["app"],
             "admin_sections": granted["admin_section"],
@@ -8307,14 +8226,22 @@ def admin_get_role_permissions(admin_user, role):
     )
 
 
-@app.route("/api/admin/roles/<role>/permissions", methods=["PUT"])
+@app.route("/api/admin/roles/<int:role_id>/permissions", methods=["PUT"])
 @admin_required
-def admin_set_role_permissions(admin_user, role):
+def admin_set_role_permissions(admin_user, role_id):
     """Replace the full permission set for a role. Body:
         {"models": [...], "apps": [...], "admin_sections": [...]}
     Any key omitted is left unchanged."""
-    if not Role.query.get(role):
+    role_obj = db.session.get(Role, role_id)
+    if not role_obj:
         return jsonify({"error": "Unknown role"}), 404
+    role = role_obj.slug
+
+    _VALID_ADMIN_SECTIONS = {
+        "overview", "users", "roles", "models", "applications", "network_zones",
+        "security", "audit_logs", "security_keys", "secure_files", "settings",
+        "emergency_actions", "system_config",
+    }
 
     data = request.get_json(silent=True) or {}
     changes = {}
@@ -8323,7 +8250,24 @@ def admin_set_role_permissions(admin_user, role):
             value = data[body_key]
             if not isinstance(value, list):
                 return jsonify({"error": f"'{body_key}' must be a list"}), 400
-            changes[resource_type] = set(value)
+
+            slugs = set(value)
+            if resource_type == "model":
+                valid = {m.slug for m in AIModel.query.filter(AIModel.slug.in_(slugs)).all()}
+                invalid = slugs - valid
+                if invalid:
+                    return jsonify({"error": f"Unknown model slugs: {sorted(invalid)}"}), 422
+            elif resource_type in ("app", "registered_app"):
+                valid = {a.slug for a in RegisteredApp.query.filter(RegisteredApp.slug.in_(slugs)).all()}
+                invalid = slugs - valid
+                if invalid:
+                    return jsonify({"error": f"Unknown app slugs: {sorted(invalid)}"}), 422
+            elif resource_type == "admin_section":
+                invalid = slugs - _VALID_ADMIN_SECTIONS
+                if invalid:
+                    return jsonify({"error": f"Unknown admin section slugs: {sorted(invalid)}"}), 422
+
+            changes[resource_type] = slugs
 
     if not changes:
         return jsonify({"error": "No permission buckets provided"}), 400
@@ -8359,11 +8303,11 @@ def admin_set_role_permissions(admin_user, role):
         action_type="ROLE_PERMISSIONS_UPDATED",
         status="SUCCESS",
         target_entity_type="ROLE",
-        target_entity_id=role,
+        target_entity_id=role_id,
         details=f"Admin '{admin_user.username}' updated permissions for role '{role}'. Buckets touched: {', '.join(changes.keys())}.",
     )
 
-    return admin_get_role_permissions(role=role)
+    return admin_get_role_permissions(admin_user=admin_user, role_id=role_id)
 
 
 # ---------- Admin: AI model catalog ----------
@@ -8382,8 +8326,19 @@ def _serialize_ai_model(m):
 @app.route("/api/admin/ai-models", methods=["GET"])
 @admin_required
 def admin_list_ai_models(admin_user):
-    models = AIModel.query.order_by(AIModel.slug).all()
-    return jsonify({"models": [_serialize_ai_model(m) for m in models]})
+    if request.args.get("all", "false").lower() == "true":
+        models = AIModel.query.order_by(AIModel.slug).all()
+        return jsonify({"models": [_serialize_ai_model(m) for m in models]})
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    pagination = AIModel.query.order_by(AIModel.slug).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        "models": [_serialize_ai_model(m) for m in pagination.items],
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+    })
 
 
 @app.route("/api/admin/ai-models", methods=["POST"])
@@ -8437,8 +8392,19 @@ def admin_update_ai_model(admin_user, model_id):
 @app.route("/api/admin/registered-apps", methods=["GET"])
 @admin_required
 def admin_list_registered_apps(admin_user):
-    apps = RegisteredApp.query.order_by(RegisteredApp.created_at.desc()).all()
-    return jsonify({"apps": [_serialize_registered_app(a) for a in apps]})
+    if request.args.get("all", "false").lower() == "true":
+        apps = RegisteredApp.query.order_by(RegisteredApp.created_at.desc()).all()
+        return jsonify({"apps": [_serialize_registered_app(a) for a in apps]})
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    pagination = RegisteredApp.query.order_by(RegisteredApp.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        "apps": [_serialize_registered_app(a) for a in pagination.items],
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+    })
 
 
 @app.route("/api/admin/registered-apps", methods=["POST"])
@@ -8536,8 +8502,19 @@ def _serialize_zone(z):
 @app.route("/api/admin/network-zones", methods=["GET"])
 @admin_required
 def admin_list_network_zones(admin_user):
-    zones = NetworkZone.query.order_by(NetworkZone.name).all()
-    return jsonify({"zones": [_serialize_zone(z) for z in zones]})
+    if request.args.get("all", "false").lower() == "true":
+        zones = NetworkZone.query.order_by(NetworkZone.name).all()
+        return jsonify({"zones": [_serialize_zone(z) for z in zones]})
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    pagination = NetworkZone.query.order_by(NetworkZone.name).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        "zones": [_serialize_zone(z) for z in pagination.items],
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+    })
 
 
 @app.route("/api/admin/network-zones", methods=["POST"])
@@ -8670,6 +8647,15 @@ def app_auth_verify():
         if m.slug in allowed_model_slugs and tier_at_least(tier, m.min_tier)
     ]
 
+    log_system_event(
+        user_id=user.id,
+        performed_by_user_id=user.id,
+        action_type="APP_AUTH_SUCCESS",
+        status="SUCCESS",
+        target_entity_type="REGISTERED_APP",
+        target_entity_id=registered.id,
+        details=f"App '{registered.slug}' authenticated for user '{user.username}' (ID: {user.id}). Tier: {tier}.",
+    )
     return jsonify({
         "app_slug": registered.slug,
         "user_id": user.id,
@@ -8920,7 +8906,7 @@ def get_app_settings():
             }
         )
     except Exception as e:
-        print(f"Error in get_app_settings: {str(e)}")
+        pass
         return jsonify({"error": "An error occurred while retrieving settings"}), 500
 
 
@@ -9051,7 +9037,7 @@ def update_app_settings():
 
         return jsonify({"message": "Settings updated successfully"})
     except Exception as e:
-        print(f"Error in update_app_settings: {str(e)}")
+        pass
         return jsonify({"error": "An error occurred while updating settings"}), 500
 
 
@@ -9109,7 +9095,7 @@ def reset_app_settings():
 
         return jsonify({"message": "Settings reset to defaults successfully"})
     except Exception as e:
-        print(f"Error in reset_app_settings: {str(e)}")
+        pass
         return jsonify({"error": "An error occurred while resetting settings"}), 500
 
 
@@ -9133,7 +9119,7 @@ def validate_password():
             }
         )
     except Exception as e:
-        print(f"Error in validate_password: {str(e)}")
+        pass
         return jsonify({"error": "An error occurred while validating password"}), 500
 
 
@@ -9285,10 +9271,8 @@ def upload_encrypted_file():
         )
 
     except Exception as e:
-        print(f"Error uploading encrypted file: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to upload file"}), 500
 
 
@@ -9393,7 +9377,7 @@ def download_encrypted_file(file_id):
                 security_key_id,
             )
         except Exception as decrypt_error:
-            print(f"Decryption failed: {decrypt_error}")
+            pass
             return (
                 jsonify({"error": "Failed to decrypt file. Wrong security key?"}),
                 403,
@@ -9420,7 +9404,6 @@ def download_encrypted_file(file_id):
         )
 
         # Return decrypted file
-        from flask import Response
 
         response = Response(
             decrypted_data,
@@ -9433,10 +9416,8 @@ def download_encrypted_file(file_id):
         return response
 
     except Exception as e:
-        print(f"Error downloading encrypted file: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to download file"}), 500
 
 
@@ -9484,7 +9465,7 @@ def preview_encrypted_file(file_id):
                     encrypted_file.storage_key, encrypted_file.salt
                 )
             except Exception as storage_err:
-                print(f"MinIO download failed: {storage_err}")
+                pass
                 return jsonify({"error": "Encrypted file not found in storage"}), 404
         else:
             # Legacy fallback: read from local disk
@@ -9503,7 +9484,7 @@ def preview_encrypted_file(file_id):
                 security_key_id,
             )
         except Exception as decrypt_error:
-            print(f"Decryption failed during preview: {decrypt_error}")
+            pass
             return (
                 jsonify({"error": "Failed to decrypt file for preview"}),
                 403,
@@ -9530,7 +9511,6 @@ def preview_encrypted_file(file_id):
         )
 
         # Return decrypted file with inline disposition
-        from flask import Response
 
         response = Response(
             decrypted_data,
@@ -9543,10 +9523,8 @@ def preview_encrypted_file(file_id):
         return response
 
     except Exception as e:
-        print(f"Error previewing encrypted file: {str(e)}")
-        import traceback
+        pass
 
-        print(traceback.format_exc())
         return jsonify({"error": "Failed to preview file"}), 500
 
 
@@ -9602,10 +9580,12 @@ def list_encrypted_files():
         elif ungrouped_only:
             query = query.filter(EncryptedFile.vault_id.is_(None))
 
-        files = query.order_by(EncryptedFile.created_at.desc()).all()
+        page = request.args.get("page", 1, type=int)
+        per_page = min(request.args.get("per_page", 20, type=int), 100)
+        pagination = query.order_by(EncryptedFile.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
         files_data = []
-        for f in files:
+        for f in pagination.items:
             security_key = db.session.get(SecurityKey, f.security_key_id)
             files_data.append(
                 {
@@ -9625,10 +9605,16 @@ def list_encrypted_files():
                 }
             )
 
-        return jsonify({"files": files_data, "total": len(files_data)})
+        return jsonify({
+            "files": files_data,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "total": pagination.total,
+            "pages": pagination.pages,
+        })
 
     except Exception as e:
-        print(f"Error listing encrypted files: {str(e)}")
+        app.logger.exception("Error listing encrypted files: %s", e)
         return jsonify({"error": "Failed to list files"}), 500
 
 
@@ -9685,7 +9671,7 @@ def move_file_to_vault(file_id):
         )
 
     except Exception as e:
-        print(f"Error moving file to vault: {str(e)}")
+        pass
         return jsonify({"error": "Failed to move file"}), 500
 
 
@@ -9742,7 +9728,7 @@ def delete_encrypted_file(file_id):
         return jsonify({"message": "File deleted successfully"})
 
     except Exception as e:
-        print(f"Error deleting encrypted file: {str(e)}")
+        pass
         return jsonify({"error": "Failed to delete file"}), 500
 
 
@@ -9806,7 +9792,7 @@ def get_user_security_keys_for_files():
         return jsonify({"security_keys": keys_data, "total": len(keys_data)})
 
     except Exception as e:
-        print(f"Error getting user security keys: {str(e)}")
+        pass
         return jsonify({"error": "Failed to get security keys"}), 500
 
 
@@ -9820,7 +9806,6 @@ def handle_join(data):
     if token:
         # The 'room' is the session token itself, ensuring privacy.
         join_room(token)
-        print(f"Client joined room: {token[:10]}...")
         emit("joined_room", {"room": token})
 
 
@@ -9862,7 +9847,6 @@ def handle_verify_pin(data):
     # Check the PIN
     if security_key.pin and check_password_hash(security_key.pin, pin_to_check):
         user = db.session.get(Users, auth_session.user_id)
-        print(f"PIN verification successful for key SN {verified_serial}")
         emit(
             "pin_verified",
             {"message": f"Security key verified! Welcome, {user.first_name}!"},
@@ -9872,8 +9856,25 @@ def handle_verify_pin(data):
         auth_session.security_key_verified = True
         auth_session.pending_pin_verification_serial = None
         db.session.commit()
+        log_system_event(
+            user_id=auth_session.user_id,
+            performed_by_user_id=auth_session.user_id,
+            action_type="SECURITY_KEY_PIN_VERIFY_SUCCESS",
+            status="SUCCESS",
+            target_entity_type="SECURITY_KEY",
+            target_entity_id=verified_serial,
+            details=f"PIN verified for security key SN {verified_serial} by user ID {auth_session.user_id}.",
+        )
     else:
-        print(f"PIN verification failed for key SN {verified_serial}")
+        log_system_event(
+            user_id=auth_session.user_id,
+            performed_by_user_id=auth_session.user_id,
+            action_type="SECURITY_KEY_PIN_VERIFY_FAILURE",
+            status="FAILURE",
+            target_entity_type="SECURITY_KEY",
+            target_entity_id=verified_serial,
+            details=f"Incorrect PIN attempt for security key SN {verified_serial} by user ID {auth_session.user_id}.",
+        )
         emit(
             "pin_incorrect",
             {"message": "The PIN entered is incorrect. Please try again."},
@@ -9897,7 +9898,7 @@ def yubikey_monitor_task():
 
                 # Check for changes
                 if current_serials != previous_serials:
-                    print(f"Change detected: {previous_serials} -> {current_serials}")
+                    pass
                     # Fetch full details for current keys
                     yubikeys = []
                     for serial in current_serials:
@@ -9911,7 +9912,7 @@ def yubikey_monitor_task():
                             info["is_sky"] = "SKY" in info_output
                             yubikeys.append(info)
                         except Exception as e:
-                            print(f"Could not get info for {serial}: {e}")
+                            pass
                             yubikeys.append(
                                 {
                                     "serial": serial,
@@ -9928,7 +9929,7 @@ def yubikey_monitor_task():
                     previous_serials = current_serials
 
         except Exception as e:
-            print(f"Error in monitor task: {e}")
+            pass
 
         socketio.sleep(2)  # Check every 2 seconds
 
@@ -9939,7 +9940,6 @@ def handle_connect():
     with thread_lock:
         if thread is None:
             thread = socketio.start_background_task(yubikey_monitor_task)
-            print("Started background task.")
 
 
 @socketio.on("disconnect")
@@ -9949,7 +9949,6 @@ def handle_disconnect():
     In this implementation, we don't need to do anything special,
     as the background thread will continue to run as long as the server is alive.
     """
-    print("Client disconnected")
 
 
 # ==================== VAULT API ENDPOINTS ====================
@@ -10015,7 +10014,7 @@ def list_vaults():
         return jsonify({"vaults": vaults_data, "total": len(vaults_data)})
 
     except Exception as e:
-        print(f"Error listing vaults: {str(e)}")
+        pass
         return jsonify({"error": "Failed to list vaults"}), 500
 
 
@@ -10087,7 +10086,7 @@ def create_vault():
         )
 
     except Exception as e:
-        print(f"Error creating vault: {str(e)}")
+        pass
         return jsonify({"error": "Failed to create vault"}), 500
 
 
@@ -10144,7 +10143,7 @@ def update_vault(vault_id):
         )
 
     except Exception as e:
-        print(f"Error updating vault: {str(e)}")
+        pass
         return jsonify({"error": "Failed to update vault"}), 500
 
 
@@ -10195,7 +10194,7 @@ def delete_vault(vault_id):
         return jsonify({"message": "Vault deleted successfully"})
 
     except Exception as e:
-        print(f"Error deleting vault: {str(e)}")
+        pass
         return jsonify({"error": "Failed to delete vault"}), 500
 
 
@@ -10208,4 +10207,5 @@ if __name__ == "__main__":
         create_admin_user()
         ensure_default_settings()
         db.session.commit()
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
+    _debug = os.environ.get("DEBUG", "false").lower() == "true"
+    socketio.run(app, debug=_debug, host="0.0.0.0", port=5000)
