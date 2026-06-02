@@ -15,13 +15,8 @@ import type {
   SortingState,
   VisibilityState,
   RowSelectionState,
-  TableOptions,
   Table as TableType,
-  RowModel,
-  Row,
   OnChangeFn,
-  Updater,
-  TableState,
   ColumnSizingInfoState,
 } from "@tanstack/react-table"
 import {
