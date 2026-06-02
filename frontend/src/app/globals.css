@@ -103,7 +103,7 @@
   --accent: oklch(0.15 0.002 302.75); /* Darker shade */
   --accent-foreground: oklch(0.95 0 0); /* Light Gray */
   --destructive: oklch(0.577 0.245 27.325 / 0.9); /* Red, slightly desaturated for dark mode */
-  --border: #46442f; /* Input border dark mode */
+  --border: oklch(0.269 0 0); /* Neutral dark border */
   --input: var(--sidebar); /* Input background dark mode to match sidebar */
   --ring: oklch(0.507 0.191 256.34 / 0.6); /* #2563eb with alpha for focus */
   --chart-1: oklch(0.80 0.12 256.34);    /* Lightest Blue */
