@@ -95,11 +95,18 @@ export default function NetworkZonesPage() {
     setDialogOpen(true);
   };
 
+  const normalizeCidr = (input: string): string => {
+    if (input.includes("/")) return input;
+    // Plain IP — convert to host CIDR (/32 for IPv4, /128 for IPv6)
+    return input.includes(":") ? `${input}/128` : `${input}/32`;
+  };
+
   const addCidr = () => {
     const val = cidrInput.trim();
     if (!val) return;
-    if (form.cidrs.includes(val)) { setCidrInput(""); return; }
-    setForm((f) => ({ ...f, cidrs: [...f.cidrs, val] }));
+    const normalized = normalizeCidr(val);
+    if (form.cidrs.includes(normalized)) { setCidrInput(""); return; }
+    setForm((f) => ({ ...f, cidrs: [...f.cidrs, normalized] }));
     setCidrInput("");
   };
 
@@ -165,9 +172,9 @@ export default function NetworkZonesPage() {
           <div>
             <h1 className="text-2xl font-semibold">Network Zones</h1>
             <p className="text-sm text-muted-foreground max-w-2xl mt-1">
-              Define network zones by CIDR range. Assign zones to registered apps to
-              restrict access based on where requests originate. Zones can optionally require a
-              security key.
+              Define network zones by individual IP addresses or CIDR ranges. Assign zones to
+              registered apps to restrict access based on where requests originate. Zones can
+              optionally require a security key.
             </p>
           </div>
         </div>
@@ -262,10 +269,10 @@ export default function NetworkZonesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>CIDR Ranges</Label>
+              <Label>IP Addresses / CIDR Ranges</Label>
               <div className="flex gap-2">
                 <Input
-                  placeholder="e.g. 192.168.1.0/24"
+                  placeholder="e.g. 192.168.1.100 or 192.168.1.0/24"
                   value={cidrInput}
                   onChange={(e) => setCidrInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCidr(); } }}
@@ -273,6 +280,9 @@ export default function NetworkZonesPage() {
                 />
                 <Button type="button" variant="outline" size="sm" onClick={addCidr}>Add</Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Enter a single IP (e.g. 10.0.0.5) or a CIDR range (e.g. 10.0.0.0/8). Single IPs are stored as /32.
+              </p>
               {form.cidrs.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {form.cidrs.map((cidr) => (
