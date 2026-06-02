@@ -196,6 +196,7 @@ export default function NetworkZonesPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="space-y-4">
           {zones.map((zone) => (
             <Card key={zone.id} className={zone.is_active ? "" : "opacity-60"}>
@@ -237,6 +238,7 @@ export default function NetworkZonesPage() {
             </Card>
           ))}
         </div>
+        </>
       )}
 
       {/* Create / Edit dialog */}
