@@ -22,34 +22,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle";
 
-// Sample security alerts data for notifications
-const securityAlertsData = [
-  {
-    id: 1,
-    type: "High Risk Login",
-    user: "james_s",
-    details: "Login attempt from unrecognized location",
-    time: "4 minutes ago",
-    severity: "High",
-  },
-  {
-    id: 2,
-    type: "Multiple Failed Attempts",
-    user: "guest123",
-    details: "5 failed login attempts",
-    time: "35 minutes ago",
-    severity: "Medium",
-  },
-  {
-    id: 3,
-    type: "Security Key Issue",
-    user: "mike_l",
-    details: "Authentication counter regression",
-    time: "2 hours ago",
-    severity: "Low",
-  },
-]
-
 export default function DashboardLayout({
   children,
 }: {
