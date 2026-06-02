@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
 import {
   Select,
   SelectContent,
@@ -117,42 +118,42 @@ export default function ModelsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {models.map((model) => (
-            <Card key={model.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base">{model.display_name}</CardTitle>
-                      <TierPill tier={model.min_tier} />
+          <div className="space-y-4">
+            {models.map((model) => (
+              <Card key={model.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base">{model.display_name}</CardTitle>
+                        <TierPill tier={model.min_tier} />
+                      </div>
+                      <CardDescription className="mt-1 font-mono text-xs truncate">
+                        {model.slug}
+                      </CardDescription>
                     </div>
-                    <CardDescription className="mt-1 font-mono text-xs truncate">
-                      {model.slug}
-                    </CardDescription>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Select
+                        value={model.min_tier}
+                        onValueChange={(v) => patchModel(model, { min_tier: v as Tier })}
+                      >
+                        <SelectTrigger className="h-8 w-[170px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIER_VALUES.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {tierLabel[t]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <Select
-                      value={model.min_tier}
-                      onValueChange={(v) => patchModel(model, { min_tier: v as Tier })}
-                    >
-                      <SelectTrigger className="h-8 w-[170px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIER_VALUES.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {tierLabel[t]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
       )}
     </div>
   );
