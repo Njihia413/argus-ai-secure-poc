@@ -21,9 +21,8 @@ import {
   ArrowUpDown, 
   ChevronDown, 
   ChevronLeft,
-  ChevronRight, 
-  MoreHorizontal, 
-  UserPlus 
+  ChevronRight,
+  MoreHorizontal,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -46,7 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 interface User {
@@ -143,8 +142,6 @@ export const columns: ColumnDef<RecentUser>[] = [
     id: "actions",
     enableHiding: false,
     cell: ({ row }) => {
-      const user = row.original
-
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
