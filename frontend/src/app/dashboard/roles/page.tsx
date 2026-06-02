@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppWindow, Plus, Shield, Trash2 } from "lucide-react";
+import { AppWindow, ChevronLeft, ChevronRight, Plus, Shield, Trash2 } from "lucide-react";
 import { API_URL } from "@/app/utils/constants";
 import { Tier, TierPill } from "@/app/utils/tiers";
 import { ADMIN_NAV_SECTIONS } from "@/app/utils/admin-nav";
@@ -52,6 +52,7 @@ interface RolePermissions {
 }
 
 interface RoleSummary {
+  id: number;
   role: string;
   display_name: string;
   is_system: boolean;
@@ -74,6 +75,9 @@ export default function RolesPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [selectedRole, setSelectedRole] = useState<string>("");
+  const [rolesPage, setRolesPage] = useState(1);
+  const [rolesTotalPages, setRolesTotalPages] = useState(1);
+  const [rolesTotal, setRolesTotal] = useState(0);
   const [models, setModels] = useState<AIModel[]>([]);
   const [registeredApps, setRegisteredApps] = useState<RegisteredApp[]>([]);
   const [perms, setPerms] = useState<RolePermissions | null>(null);
@@ -105,10 +109,13 @@ const [notAdmin, setNotAdmin] = useState(false);
     setAuthToken(user.authToken);
   }, [router]);
 
-  const fetchRoles = async (token: string) => {
-    const res = await axios.get<{ roles: RoleSummary[] }>(`${API_URL}/admin/roles`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  const fetchRoles = async (token: string, p = rolesPage) => {
+    const res = await axios.get<{ roles: RoleSummary[]; pages: number; total: number }>(
+      `${API_URL}/admin/roles?page=${p}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    setRolesTotalPages(res.data.pages);
+    setRolesTotal(res.data.total);
     return res.data.roles;
   };
 
@@ -118,12 +125,14 @@ const [notAdmin, setNotAdmin] = useState(false);
     (async () => {
       try {
         const [m, r, a] = await Promise.all([
-          axios.get<{ models: AIModel[] }>(`${API_URL}/admin/ai-models`, { headers }),
-          axios.get<{ roles: RoleSummary[] }>(`${API_URL}/admin/roles`, { headers }),
-          axios.get<{ apps: RegisteredApp[] }>(`${API_URL}/admin/registered-apps`, { headers }),
+          axios.get<{ models: AIModel[] }>(`${API_URL}/admin/ai-models?all=true`, { headers }),
+          axios.get<{ roles: RoleSummary[]; pages: number; total: number }>(`${API_URL}/admin/roles?page=${rolesPage}`, { headers }),
+          axios.get<{ apps: RegisteredApp[] }>(`${API_URL}/admin/registered-apps?all=true`, { headers }),
         ]);
         setModels(m.data.models);
         setRoles(r.data.roles);
+        setRolesTotalPages(r.data.pages);
+        setRolesTotal(r.data.total);
         setRegisteredApps(a.data.apps.filter((a) => a.is_active));
         if (r.data.roles.length > 0) {
           setSelectedRole(r.data.roles[0].role);
@@ -133,13 +142,14 @@ const [notAdmin, setNotAdmin] = useState(false);
         toast.error(data?.error || "Could not load catalog.");
       }
     })();
-  }, [authToken]);
+  }, [authToken, rolesPage]);
 
   useEffect(() => {
-    if (!authToken || !selectedRole) return;
+    const selectedRoleId = roles.find((r) => r.role === selectedRole)?.id;
+    if (!authToken || !selectedRole || !selectedRoleId) return;
     setLoading(true);
     axios
-      .get<RolePermissions>(`${API_URL}/admin/roles/${selectedRole}/permissions`, {
+      .get<RolePermissions>(`${API_URL}/admin/roles/${selectedRoleId}/permissions`, {
         headers: { Authorization: `Bearer ${authToken}` },
       })
       .then((res) => {
@@ -151,7 +161,7 @@ const [notAdmin, setNotAdmin] = useState(false);
         toast.error(data?.error || "Could not load role permissions.");
         setLoading(false);
       });
-  }, [authToken, selectedRole]);
+  }, [authToken, selectedRole, roles]);
 
   const activeModels = useMemo(() => models.filter((m) => m.is_active), [models]);
 
@@ -165,10 +175,12 @@ const [notAdmin, setNotAdmin] = useState(false);
 
   const save = async () => {
     if (!perms || !authToken) return;
+    const selectedRoleId = roles.find((r) => r.role === selectedRole)?.id;
+    if (!selectedRoleId) return;
     setSaving(true);
     try {
       await axios.put(
-        `${API_URL}/admin/roles/${selectedRole}/permissions`,
+        `${API_URL}/admin/roles/${selectedRoleId}/permissions`,
         {
           models: perms.models,
           apps: perms.apps,
@@ -218,7 +230,7 @@ const [notAdmin, setNotAdmin] = useState(false);
     if (!authToken) return;
     setDeleting(true);
     try {
-      await axios.delete(`${API_URL}/admin/roles/${r.role}`, {
+      await axios.delete(`${API_URL}/admin/roles/${r.id}`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       toast.success(`Role "${r.display_name}" deleted.`);
@@ -299,6 +311,20 @@ const [notAdmin, setNotAdmin] = useState(false);
               </button>
             );
           })}
+          {rolesTotalPages > 1 && (
+            <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+              <span>{rolesTotal} total</span>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setRolesPage((p) => p - 1)} disabled={rolesPage <= 1}>
+                  <ChevronLeft className="h-3 w-3" />
+                </Button>
+                <span>{rolesPage}/{rolesTotalPages}</span>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setRolesPage((p) => p + 1)} disabled={rolesPage >= rolesTotalPages}>
+                  <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Editor */}
