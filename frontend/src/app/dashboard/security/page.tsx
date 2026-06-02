@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/data-table/data-table"
-import { Table } from "@tanstack/react-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { SecurityAlert, columns } from "@/components/data-table/security-alert-columns"
@@ -111,7 +110,6 @@ export default function SecurityPage() {
   const [stats, setStats] = useState<SecurityStats>(emptyStats)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState<"excel" | "pdf" | false>(false)
-  const [error, setError] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
@@ -137,7 +135,6 @@ export default function SecurityPage() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        setError(null)
 
         const userStr = sessionStorage.getItem('user')
         if (!userStr) {
