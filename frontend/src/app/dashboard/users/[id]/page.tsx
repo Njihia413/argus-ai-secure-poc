@@ -1,9 +1,8 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { Key, ChevronRight, ArrowLeft } from 'lucide-react'
+import { Key, ChevronRight, ArrowLeft, KeyRound } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
 
@@ -132,6 +131,10 @@ export default function UserDetailsPage() {
     pin: ''
   })
   const [isDetectionModalOpen, setIsDetectionModalOpen] = useState(false)
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
 
   // Machine binding state (used during new key registration only)
   const [bindToCurrentMachine, setBindToCurrentMachine] = useState(false)
@@ -401,7 +404,7 @@ export default function UserDetailsPage() {
         return;
       }
       
-      const response = await axios.post(
+      await axios.post(
         `${API_URL}/security-keys/${keyIdToReset}/reset`,
         {},
         {
@@ -612,6 +615,39 @@ export default function UserDetailsPage() {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!newPassword) {
+      toast.error("New password is required")
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match")
+      return
+    }
+    setIsResettingPassword(true)
+    try {
+      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
+      await axios.patch(
+        `${API_URL}/users/${params.id}/password`,
+        { new_password: newPassword },
+        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+      )
+      toast.success("Password reset successfully")
+      setShowResetPasswordDialog(false)
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (error: any) {
+      const err = error.response?.data
+      if (err?.details?.length) {
+        err.details.forEach((msg: string) => toast.error(msg))
+      } else {
+        toast.error(err?.error || "Failed to reset password")
+      }
+    } finally {
+      setIsResettingPassword(false)
+    }
+  }
+
   if (isLoading) {
     return (
         <div className="flex items-center justify-center h-full">
@@ -635,12 +671,16 @@ export default function UserDetailsPage() {
             <ChevronRight className="h-4 w-4 mx-1" />
             <span className="text-foreground">{user.firstName} {user.lastName}</span>
           </div>
-          <Button
-              onClick={() => router.push("/dashboard/users")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Users
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowResetPasswordDialog(true)}>
+              <KeyRound className="h-4 w-4" />
+              Reset Password
+            </Button>
+            <Button onClick={() => router.push("/dashboard/users")}>
+              <ArrowLeft className="h-4 w-4" />
+              Back to Users
+            </Button>
+          </div>
         </div>
 
         <Card className="shadow-sm">
@@ -1318,6 +1358,56 @@ export default function UserDetailsPage() {
         onClose={() => setIsDetectionModalOpen(false)}
         onSelect={handleSelectYubiKey}
       />
+
+      <Dialog open={showResetPasswordDialog} onOpenChange={(open) => {
+        if (!open) { setNewPassword(""); setConfirmPassword("") }
+        setShowResetPasswordDialog(open)
+      }}>
+        <DialogContent className="sm:max-w-sm font-montserrat">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {user?.firstName} {user?.lastName}. They will need to use this password on their next login.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleResetPassword() }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResetPasswordDialog(false)} disabled={isResettingPassword}>
+              Cancel
+            </Button>
+            <Button onClick={handleResetPassword} disabled={isResettingPassword || !newPassword || !confirmPassword}>
+              {isResettingPassword ? (
+                <>
+                  <span className="animate-spin rounded-xl h-4 w-4 border-b-2 border-white mr-2" />
+                  Resetting…
+                </>
+              ) : "Reset Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </React.Fragment>
   )
 }
