@@ -676,6 +676,43 @@ class NetworkZone(db.Model):
     )
 
 
+network_zone_group_zones = db.Table(
+    "network_zone_group_zones",
+    db.Column("zone_group_id", db.Integer, db.ForeignKey("network_zone_groups.id", ondelete="CASCADE"), nullable=False),
+    db.Column("zone_id", db.Integer, db.ForeignKey("network_zones.id", ondelete="CASCADE"), nullable=False),
+    db.UniqueConstraint("zone_group_id", "zone_id", name="uq_zgz_group_zone"),
+)
+
+network_zone_group_apps = db.Table(
+    "network_zone_group_apps",
+    db.Column("zone_group_id", db.Integer, db.ForeignKey("network_zone_groups.id", ondelete="CASCADE"), nullable=False),
+    db.Column("app_id", db.Integer, db.ForeignKey("registered_apps.id", ondelete="CASCADE"), nullable=False),
+    db.UniqueConstraint("zone_group_id", "app_id", name="uq_zga_group_app"),
+)
+
+
+class NetworkZoneGroup(db.Model):
+    __tablename__ = "network_zone_groups"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), unique=True, nullable=False)
+    description = db.Column(db.String(256), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    zones = db.relationship(
+        "NetworkZone",
+        secondary=network_zone_group_zones,
+        backref=db.backref("network_zone_groups", lazy="dynamic"),
+    )
+    apps = db.relationship(
+        "RegisteredApp",
+        secondary=network_zone_group_apps,
+        backref=db.backref("network_zone_groups", lazy="dynamic"),
+    )
+
+
 class AIModel(db.Model):
     __tablename__ = "ai_models"
 
@@ -740,7 +777,6 @@ class RegisteredApp(db.Model):
     api_key_hash = db.Column(db.String(128), nullable=False)
     api_key_prefix = db.Column(db.String(16), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    required_zone_id = db.Column(db.Integer, db.ForeignKey("network_zones.id"), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -762,9 +798,9 @@ def _serialize_registered_app(app_obj, include_key=None):
         "description": app_obj.description,
         "api_key_prefix": app_obj.api_key_prefix,
         "is_active": app_obj.is_active,
-        "required_zone_id": app_obj.required_zone_id,
         "created_at": app_obj.created_at.isoformat() if app_obj.created_at else None,
         "created_by": app_obj.created_by,
+        "network_zone_groups": [{"id": zg.id, "name": zg.name} for zg in app_obj.network_zone_groups.all()],
     }
     if include_key is not None:
         result["api_key"] = include_key
@@ -7810,24 +7846,26 @@ def get_access_tier(auth_session, machine_id: str = None) -> str:
     return TIER_KEY_BOUND if match else TIER_KEY_UNBOUND
 
 
-def resolve_client_zone(req) -> "NetworkZone | None":
-    """Resolve the client's IP to an active NetworkZone, or None if no match."""
+def resolve_client_zones(req) -> list:
+    """Resolve the client's IP to all matching active NetworkZones."""
     ip_str = req.headers.get("X-Forwarded-For", req.remote_addr or "")
     ip_str = ip_str.split(",")[0].strip()
     if not ip_str:
-        return None
+        return []
     try:
         client_ip = ipaddress.ip_address(ip_str)
     except ValueError:
-        return None
+        return []
+    matched = []
     for zone in NetworkZone.query.filter_by(is_active=True).all():
         for cidr in (zone.cidrs or []):
             try:
                 if client_ip in ipaddress.ip_network(cidr, strict=False):
-                    return zone
+                    matched.append(zone)
+                    break
             except ValueError:
                 continue
-    return None
+    return matched
 
 
 @app.route("/api/verify_key_ownership", methods=["POST"])
@@ -8239,8 +8277,8 @@ def admin_set_role_permissions(admin_user, role_id):
 
     _VALID_ADMIN_SECTIONS = {
         "overview", "users", "roles", "models", "applications", "network_zones",
-        "security", "audit_logs", "security_keys", "secure_files", "settings",
-        "emergency_actions", "system_config",
+        "network_zone_groups", "security", "audit_logs", "security_keys", "secure_files",
+        "settings", "emergency_actions", "system_config",
     }
 
     data = request.get_json(silent=True) or {}
@@ -8451,11 +8489,6 @@ def admin_update_registered_app(admin_user, app_id):
         app_obj.description = (data["description"] or "").strip() or None
     if "is_active" in data:
         app_obj.is_active = bool(data["is_active"])
-    if "required_zone_id" in data:
-        zone_id = data["required_zone_id"]
-        if zone_id is not None and not db.session.get(NetworkZone, zone_id):
-            return jsonify({"error": "invalid required_zone_id"}), 400
-        app_obj.required_zone_id = zone_id
     db.session.commit()
     return jsonify(_serialize_registered_app(app_obj))
 
@@ -8496,6 +8529,19 @@ def _serialize_zone(z):
         "requires_key": z.requires_key,
         "is_active": z.is_active,
         "created_at": z.created_at.isoformat() if z.created_at else None,
+        "network_zone_groups": [{"id": zg.id, "name": zg.name} for zg in z.network_zone_groups.all()],
+    }
+
+
+def _serialize_network_zone_group(zg):
+    return {
+        "id": zg.id,
+        "name": zg.name,
+        "description": zg.description,
+        "is_active": zg.is_active,
+        "created_at": zg.created_at.isoformat() if zg.created_at else None,
+        "zones": [{"id": z.id, "name": z.name, "is_active": z.is_active} for z in zg.zones],
+        "apps": [{"id": a.id, "name": a.name, "slug": a.slug, "is_active": a.is_active} for a in zg.apps],
     }
 
 
@@ -8583,10 +8629,161 @@ def admin_delete_network_zone(admin_user, zone_id):
     zone = db.session.get(NetworkZone, zone_id)
     if not zone:
         return jsonify({"error": "Not found"}), 404
-    RegisteredApp.query.filter_by(required_zone_id=zone_id).update({"required_zone_id": None})
     db.session.delete(zone)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ---------- Admin: zone groups ----------
+
+
+@app.route("/api/admin/network-zone-groups", methods=["GET"])
+@admin_required
+def admin_list_network_zone_groups(admin_user):
+    if request.args.get("all", "false").lower() == "true":
+        groups = NetworkZoneGroup.query.order_by(NetworkZoneGroup.name).all()
+        return jsonify({"network_zone_groups": [_serialize_network_zone_group(g) for g in groups]})
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    pagination = NetworkZoneGroup.query.order_by(NetworkZoneGroup.name).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        "network_zone_groups": [_serialize_network_zone_group(g) for g in pagination.items],
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+    })
+
+
+@app.route("/api/admin/network-zone-groups", methods=["POST"])
+@admin_required
+def admin_create_network_zone_group(admin_user):
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    if NetworkZoneGroup.query.filter_by(name=name).first():
+        return jsonify({"error": "name already exists"}), 409
+    group = NetworkZoneGroup(
+        name=name,
+        description=(data.get("description") or "").strip() or None,
+        is_active=bool(data.get("is_active", True)),
+    )
+    db.session.add(group)
+    db.session.commit()
+    return jsonify(_serialize_network_zone_group(group)), 201
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>", methods=["PATCH"])
+@admin_required
+def admin_update_network_zone_group(admin_user, group_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    if "name" in data:
+        new_name = (data["name"] or "").strip()
+        if not new_name:
+            return jsonify({"error": "name cannot be empty"}), 400
+        existing = NetworkZoneGroup.query.filter_by(name=new_name).first()
+        if existing and existing.id != group_id:
+            return jsonify({"error": "name already exists"}), 409
+        group.name = new_name
+    if "description" in data:
+        group.description = (data["description"] or "").strip() or None
+    if "is_active" in data:
+        group.is_active = bool(data["is_active"])
+    db.session.commit()
+    return jsonify(_serialize_network_zone_group(group))
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_network_zone_group(admin_user, group_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(group)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>/zones", methods=["POST"])
+@admin_required
+def admin_add_zone_to_network_zone_group(admin_user, group_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    zone_id = data.get("zone_id")
+    if not zone_id:
+        return jsonify({"error": "zone_id is required"}), 400
+    zone = db.session.get(NetworkZone, zone_id)
+    if not zone:
+        return jsonify({"error": "Zone not found"}), 404
+    try:
+        db.session.execute(network_zone_group_zones.insert().values(zone_group_id=group_id, zone_id=zone_id))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify(_serialize_network_zone_group(group))
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>/zones/<int:zone_id>", methods=["DELETE"])
+@admin_required
+def admin_remove_zone_from_network_zone_group(admin_user, group_id, zone_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    result = db.session.execute(
+        network_zone_group_zones.delete().where(
+            network_zone_group_zones.c.zone_group_id == group_id,
+            network_zone_group_zones.c.zone_id == zone_id,
+        )
+    )
+    if result.rowcount == 0:
+        return jsonify({"error": "Zone is not in this group"}), 404
+    db.session.commit()
+    return jsonify(_serialize_network_zone_group(db.session.get(NetworkZoneGroup, group_id)))
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>/apps", methods=["POST"])
+@admin_required
+def admin_add_app_to_network_zone_group(admin_user, group_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    app_id = data.get("app_id")
+    if not app_id:
+        return jsonify({"error": "app_id is required"}), 400
+    app_obj = db.session.get(RegisteredApp, app_id)
+    if not app_obj:
+        return jsonify({"error": "App not found"}), 404
+    try:
+        db.session.execute(network_zone_group_apps.insert().values(zone_group_id=group_id, app_id=app_id))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify(_serialize_network_zone_group(db.session.get(NetworkZoneGroup, group_id)))
+
+
+@app.route("/api/admin/network-zone-groups/<int:group_id>/apps/<int:app_id>", methods=["DELETE"])
+@admin_required
+def admin_remove_app_from_network_zone_group(admin_user, group_id, app_id):
+    group = db.session.get(NetworkZoneGroup, group_id)
+    if not group:
+        return jsonify({"error": "Not found"}), 404
+    result = db.session.execute(
+        network_zone_group_apps.delete().where(
+            network_zone_group_apps.c.zone_group_id == group_id,
+            network_zone_group_apps.c.app_id == app_id,
+        )
+    )
+    if result.rowcount == 0:
+        return jsonify({"error": "App is not in this group"}), 404
+    db.session.commit()
+    return jsonify(_serialize_network_zone_group(db.session.get(NetworkZoneGroup, group_id)))
 
 
 # ---------- External app verification ----------
@@ -8597,6 +8794,8 @@ def app_auth_verify():
     """
     External apps call this with their API key and a user's Bearer token.
     Returns the user's role, current tier, and allowed model slugs.
+    Zone-centric default-deny: the app must belong to a zone group reachable
+    from the client's network, otherwise access is denied.
     """
     data = request.get_json(silent=True) or {}
     api_key = (data.get("api_key") or "").strip()
@@ -8629,15 +8828,38 @@ def app_auth_verify():
     if registered.slug not in allowed_apps:
         return jsonify({"error": "Role not permitted to access this application"}), 403
 
-    if registered.required_zone_id is not None:
-        client_zone = resolve_client_zone(request)
-        if client_zone is None or client_zone.id != registered.required_zone_id:
-            return jsonify({"error": "Request originates from a disallowed network zone"}), 403
-        zone = db.session.get(NetworkZone, registered.required_zone_id)
-        if zone and zone.requires_key:
-            pre_tier = get_access_tier(auth_session, machine_id)
-            if pre_tier == TIER_NONE:
-                return jsonify({"error": "This zone requires a security key"}), 403
+    # Zone-centric enforcement: resolve all zones matching the client IP
+    client_zones = resolve_client_zones(request)
+    if not client_zones:
+        return jsonify({"error": "Your network is not recognized"}), 403
+
+    # Find all zone group IDs that contain any of the client's zones
+    client_zone_ids = [z.id for z in client_zones]
+    matching_group_ids = db.session.execute(
+        db.select(network_zone_group_zones.c.zone_group_id).where(
+            network_zone_group_zones.c.zone_id.in_(client_zone_ids)
+        )
+    ).scalars().all()
+
+    if not matching_group_ids:
+        return jsonify({"error": "App not accessible from this network zone"}), 403
+
+    # Check if this app belongs to any of the matching zone groups
+    app_in_group = db.session.execute(
+        db.select(network_zone_group_apps.c.app_id).where(
+            network_zone_group_apps.c.zone_group_id.in_(matching_group_ids),
+            network_zone_group_apps.c.app_id == registered.id,
+        ).limit(1)
+    ).first()
+
+    if not app_in_group:
+        return jsonify({"error": "App not accessible from this network zone"}), 403
+
+    # If any matching client zone requires a security key, enforce it
+    if any(z.requires_key for z in client_zones):
+        pre_tier = get_access_tier(auth_session, machine_id)
+        if pre_tier == TIER_NONE:
+            return jsonify({"error": "This zone requires a security key"}), 403
 
     tier = get_access_tier(auth_session, machine_id)
     allowed_model_slugs = _allowed_slugs(user.role, "model")
