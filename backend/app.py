@@ -33,9 +33,11 @@ from file_encryption import (
     decrypt_file,
     compute_file_hash,
     verify_file_hash,
-    get_encrypted_files_path,
     generate_storage_filename,
 )
+from minio_storage import MinioStorage
+
+minio_storage = MinioStorage()
 
 # Machine fingerprint utility for device binding
 from machine_fingerprint import (
@@ -568,7 +570,9 @@ class EncryptedFile(db.Model):
     file_hash = db.Column(db.String(64), nullable=False)  # SHA-256 hash
     iv = db.Column(db.LargeBinary, nullable=False)  # Initialization vector
     salt = db.Column(db.LargeBinary, nullable=False)  # Salt for key derivation
-    encrypted_path = db.Column(db.String(500), nullable=False)  # Path to encrypted file
+    encrypted_path = db.Column(db.String(500), nullable=True)   # Path for local-disk files (legacy)
+    storage_backend = db.Column(db.String(20), nullable=False, default="local")
+    storage_key = db.Column(db.String(255), nullable=True)       # Object key in MinIO
 
     # Timestamps
     created_at = db.Column(
@@ -9439,13 +9443,9 @@ def upload_encrypted_file():
             file_data, upload_user.id, security_key_id
         )
 
-        # Generate unique storage filename
+        # Generate unique storage key and upload to MinIO
         storage_filename = generate_storage_filename()
-        encrypted_path = os.path.join(get_encrypted_files_path(), storage_filename)
-
-        # Write encrypted file to disk
-        with open(encrypted_path, "wb") as f:
-            f.write(encrypted_data)
+        minio_storage.upload_file(storage_filename, encrypted_data)
 
         # Create database record
         encrypted_file = EncryptedFile(
@@ -9458,7 +9458,9 @@ def upload_encrypted_file():
             file_hash=file_hash,
             iv=iv,
             salt=salt,
-            encrypted_path=encrypted_path,
+            encrypted_path=None,
+            storage_backend="minio",
+            storage_key=storage_filename,
             vault_id=vault_id,
         )
 
@@ -9582,12 +9584,17 @@ def download_encrypted_file(file_id):
                 403,
             )
 
-        # Read encrypted file from disk
-        if not os.path.exists(encrypted_file.encrypted_path):
-            return jsonify({"error": "Encrypted file not found on disk"}), 404
-
-        with open(encrypted_file.encrypted_path, "rb") as f:
-            encrypted_data = f.read()
+        # Read encrypted file from MinIO or local disk (legacy fallback)
+        if encrypted_file.storage_backend == "minio" and encrypted_file.storage_key:
+            try:
+                encrypted_data = minio_storage.download_file(encrypted_file.storage_key)
+            except Exception:
+                return jsonify({"error": "Encrypted file not found in storage"}), 404
+        else:
+            if not os.path.exists(encrypted_file.encrypted_path):
+                return jsonify({"error": "Encrypted file not found on disk"}), 404
+            with open(encrypted_file.encrypted_path, "rb") as f:
+                encrypted_data = f.read()
 
         # Decrypt the file
         try:
@@ -9680,17 +9687,13 @@ def preview_encrypted_file(file_id):
         # For preview, we use the security_key_id already stored in the database
         security_key_id = encrypted_file.security_key_id
 
-        # Read encrypted file from storage backend
+        # Read encrypted file from MinIO or local disk (legacy fallback)
         if encrypted_file.storage_backend == "minio" and encrypted_file.storage_key:
             try:
-                encrypted_data = minio_storage.download_encrypted_file(
-                    encrypted_file.storage_key, encrypted_file.salt
-                )
-            except Exception as storage_err:
-                pass
+                encrypted_data = minio_storage.download_file(encrypted_file.storage_key)
+            except Exception:
                 return jsonify({"error": "Encrypted file not found in storage"}), 404
         else:
-            # Legacy fallback: read from local disk
             if not os.path.exists(encrypted_file.encrypted_path):
                 return jsonify({"error": "Encrypted file not found on disk"}), 404
             with open(encrypted_file.encrypted_path, "rb") as f:
@@ -9935,6 +9938,13 @@ def delete_encrypted_file(file_id):
         encrypted_file.is_deleted = True
         encrypted_file.updated_at = datetime.now(timezone.utc)
         db.session.commit()
+
+        # Remove from MinIO (best-effort — don't fail the response if this errors)
+        if encrypted_file.storage_backend == "minio" and encrypted_file.storage_key:
+            try:
+                minio_storage.delete_file(encrypted_file.storage_key)
+            except Exception:
+                pass
 
         # Log the deletion
         log_system_event(
