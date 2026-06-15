@@ -24,7 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Network, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Layers, Network, Pencil, Plus, Trash2, X } from "lucide-react";
 import { API_URL } from "@/app/utils/constants";
 
 interface NetworkZone {
@@ -35,6 +35,7 @@ interface NetworkZone {
   requires_key: boolean;
   is_active: boolean;
   created_at: string | null;
+  network_zone_groups: { id: number; name: string }[];
 }
 
 const emptyForm = { name: "", description: "", cidrs: [] as string[], requires_key: false, is_active: true };
@@ -224,6 +225,17 @@ export default function NetworkZonesPage() {
                         ))
                       )}
                     </div>
+                    {zone.network_zone_groups.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1 items-center">
+                        <span className="text-xs text-muted-foreground mr-1">Groups:</span>
+                        {zone.network_zone_groups.map((zg) => (
+                          <Badge key={zg.id} variant="outline" className="gap-1 text-xs">
+                            <Layers className="h-3 w-3" />
+                            {zg.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(zone)}>
@@ -337,8 +349,7 @@ export default function NetworkZonesPage() {
           <DialogHeader>
             <DialogTitle>Delete Zone</DialogTitle>
             <DialogDescription>
-              Delete <strong>{deleteTarget?.name}</strong>? Any models or apps assigned to this zone
-              will have their zone requirement cleared.
+              Delete <strong>{deleteTarget?.name}</strong>? The zone will be removed from all zone groups automatically.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
