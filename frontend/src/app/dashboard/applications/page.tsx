@@ -25,20 +25,13 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AppWindow,
   Check,
   Copy,
   Eye,
   EyeOff,
   KeyRound,
-  Network,
+  Layers,
   Pencil,
   Plus,
   RefreshCw,
@@ -53,15 +46,9 @@ interface RegisteredApp {
   description: string | null;
   api_key_prefix: string;
   is_active: boolean;
-  required_zone_id: number | null;
   created_at: string | null;
   created_by: string | null;
-}
-
-interface NetworkZone {
-  id: number;
-  name: string;
-  requires_key: boolean;
+  network_zone_groups: { id: number; name: string }[];
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -86,7 +73,6 @@ export default function ApplicationsPage() {
   const router = useRouter();
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [apps, setApps] = useState<RegisteredApp[]>([]);
-  const [zones, setZones] = useState<NetworkZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [notAdmin, setNotAdmin] = useState(false);
 
@@ -101,7 +87,6 @@ export default function ApplicationsPage() {
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editActive, setEditActive] = useState(true);
-  const [editZoneId, setEditZoneId] = useState<string>("none");
   const [saving, setSaving] = useState(false);
 
   // Delete dialog
@@ -143,14 +128,7 @@ export default function ApplicationsPage() {
     if (!authToken) return;
     (async () => {
       try {
-        const [appsData, zonesRes] = await Promise.all([
-          fetchApps(authToken),
-          axios.get<{ zones: NetworkZone[] }>(`${API_URL}/admin/network-zones?all=true`, {
-            headers: { Authorization: `Bearer ${authToken}` },
-          }),
-        ]);
-        setApps(appsData);
-        setZones(zonesRes.data.zones.filter((z) => z.id !== undefined));
+        setApps(await fetchApps(authToken));
       } catch {
         toast.error("Could not load registered applications.");
       } finally {
@@ -194,7 +172,6 @@ export default function ApplicationsPage() {
     setEditName(app.name);
     setEditDesc(app.description ?? "");
     setEditActive(app.is_active);
-    setEditZoneId(app.required_zone_id != null ? String(app.required_zone_id) : "none");
   };
 
   const saveEdit = async () => {
@@ -207,7 +184,6 @@ export default function ApplicationsPage() {
           name: editName.trim(),
           description: editDesc.trim() || null,
           is_active: editActive,
-          required_zone_id: editZoneId === "none" ? null : Number(editZoneId),
         },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
@@ -287,6 +263,7 @@ export default function ApplicationsPage() {
           <p className="text-sm text-muted-foreground max-w-3xl mt-1">
             External applications (such as chat clients) register here to receive an API key.
             They use it to verify user sessions and retrieve role-based access information.
+            Zone group access is managed from the <strong>Zone Groups</strong> page.
           </p>
         </div>
       </div>
@@ -326,15 +303,12 @@ export default function ApplicationsPage() {
                       <Badge variant={app.is_active ? "default" : "secondary"}>
                         {app.is_active ? "Active" : "Inactive"}
                       </Badge>
-                      {app.required_zone_id != null && (() => {
-                        const zone = zones.find((z) => z.id === app.required_zone_id);
-                        return zone ? (
-                          <Badge variant="outline" className="gap-1 text-xs">
-                            <Network className="h-3 w-3" />
-                            {zone.name}
-                          </Badge>
-                        ) : null;
-                      })()}
+                      {app.network_zone_groups.map((zg) => (
+                        <Badge key={zg.id} variant="outline" className="gap-1 text-xs">
+                          <Layers className="h-3 w-3" />
+                          {zg.name}
+                        </Badge>
+                      ))}
                     </div>
                     {app.description && (
                       <p className="text-sm text-muted-foreground mt-0.5">{app.description}</p>
@@ -462,25 +436,6 @@ export default function ApplicationsPage() {
                 onChange={(e) => setEditDesc(e.target.value)}
                 rows={2}
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Network Zone</Label>
-              <Select value={editZoneId} onValueChange={setEditZoneId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="No zone restriction" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No zone restriction</SelectItem>
-                  {zones.map((z) => (
-                    <SelectItem key={z.id} value={String(z.id)}>
-                      {z.name}{z.requires_key ? " (requires key)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Restrict this app to requests originating from a specific network zone.
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <input
