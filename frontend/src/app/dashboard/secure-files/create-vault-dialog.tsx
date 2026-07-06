@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuthStore } from "@/store/auth";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,8 @@ export function CreateVaultDialog({
   initialName = "",
   userId,
 }: CreateVaultDialogProps) {
+  const { user } = useAuthStore();
+  const authToken = user?.authToken ?? null;
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,8 +58,6 @@ export function CreateVaultDialog({
       return;
     }
 
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!authToken) return;
 
     setIsSubmitting(true);

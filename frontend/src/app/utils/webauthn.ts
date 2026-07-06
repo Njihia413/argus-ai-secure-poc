@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { API_URL } from "@/app/utils/constants";
+import { getAuthToken } from "@/store/auth";
 
 // Extend the Navigator interface to include the 'usb' property
 interface NavigatorWithUSB extends Navigator {
@@ -243,10 +244,10 @@ export const registerSecurityKey = async (
         console.log('Key Details:', keyDetails);
 
         // Prepare headers with auth token
-        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
+        const authToken = getAuthToken();
         const headers: Record<string, string> = {};
-        if (userInfo && userInfo.authToken) {
-            headers['Authorization'] = `Bearer ${userInfo.authToken}`;
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
         }
 
         // Step 1: Begin WebAuthn registration

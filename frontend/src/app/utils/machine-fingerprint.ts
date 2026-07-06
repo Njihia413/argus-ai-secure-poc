@@ -1,3 +1,5 @@
+import { getAuthToken } from "@/store/auth";
+
 const USB_DETECTOR_WS_URL = "ws://localhost:12345"
 const SESSION_KEY = "workstation_fingerprint"
 
@@ -59,8 +61,8 @@ export function fetchWorkstationFingerprint(): Promise<MachineFingerprint> {
     }
   }
 
-  const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-  if (!userInfo?.authToken) {
+  const authToken = getAuthToken()
+  if (!authToken) {
     return Promise.reject(new Error("Not authenticated"))
   }
 
@@ -77,7 +79,7 @@ export function fetchWorkstationFingerprint(): Promise<MachineFingerprint> {
     }, 5000)
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "auth", token: userInfo.authToken }))
+      ws.send(JSON.stringify({ type: "auth", token: authToken }))
     }
 
     ws.onmessage = (event) => {

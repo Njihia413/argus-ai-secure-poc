@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import axios from "axios"
 import { toast } from "sonner"
 import { API_URL } from "@/app/utils/constants"
+import { useAuthStore } from "@/store/auth"
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -164,6 +165,8 @@ export const columns: ColumnDef<RecentUser>[] = [
 ]
 
 export function RecentUsersTable(): React.ReactElement {
+  const { user: authUser } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [users, setUsers] = React.useState<RecentUser[]>([])
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -176,15 +179,11 @@ export function RecentUsersTable(): React.ReactElement {
   React.useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-        if (!userInfo.authToken) {
-          toast.error("Authentication required")
-          return
-        }
+        if (!authToken) return
 
         const response = await axios.get<{ users: User[] }>(`${API_URL}/users`, {
           headers: {
-            Authorization: `Bearer ${userInfo.authToken}`,
+            Authorization: `Bearer ${authToken}`,
           },
         })
 
@@ -220,7 +219,7 @@ export function RecentUsersTable(): React.ReactElement {
     }
 
     fetchUsers()
-  }, [])
+  }, [authToken])
 
   const filteredData = React.useMemo(() => {
     const term = searchTerm.toLowerCase()

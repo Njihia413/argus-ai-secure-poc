@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuthStore } from "@/store/auth";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,8 @@ export function MoveToVaultDialog({
   onOpenChange,
   onMoved,
 }: MoveToVaultDialogProps) {
+  const { user } = useAuthStore();
+  const authToken = user?.authToken ?? null;
   const [selectedVaultId, setSelectedVaultId] = useState<number | null | undefined>(
     undefined
   );
@@ -38,9 +41,6 @@ export function MoveToVaultDialog({
 
   const handleMove = async () => {
     if (!file || selectedVaultId === undefined) return;
-
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!authToken) return;
 
     setIsMoving(true);

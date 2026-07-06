@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "@/app/utils/constants";
+import { getAuthToken } from "@/store/auth";
 
 export interface YubiKey {
   serial: number;
@@ -21,8 +22,7 @@ export function useYubiKeyDetection(isOpen: boolean) {
 
   const verifyKeyWithBackend = useCallback(async (key: YubiKey) => {
     try {
-      const storedUser = sessionStorage.getItem("user");
-      const token = storedUser ? JSON.parse(storedUser).authToken : null;
+      const token = getAuthToken();
 
       const response = await fetch(`${API_URL}/security-keys/check-serial`, {
         method: "POST",
@@ -74,8 +74,7 @@ export function useYubiKeyDetection(isOpen: boolean) {
     // Initial fetch
     const fetchInitial = async () => {
       try {
-        const storedUser = sessionStorage.getItem("user");
-        const token = storedUser ? JSON.parse(storedUser).authToken : null;
+        const token = getAuthToken();
         
         const response = await fetch(`${API_URL}/security-keys/detect-yubikeys`, {
           headers: { Authorization: `Bearer ${token}` }

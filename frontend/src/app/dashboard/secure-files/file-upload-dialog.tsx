@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useAuthStore } from "@/store/auth";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,8 @@ export function FileUploadDialog({
   userId,
   vaultId,
 }: FileUploadDialogProps) {
+  const { user } = useAuthStore();
+  const authToken = user?.authToken ?? null;
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
@@ -93,8 +96,6 @@ export function FileUploadDialog({
   );
 
   const handleUpload = async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!selectedFile || !matchedKey?.id || !authToken) return;
 
     setUploadStatus("uploading");

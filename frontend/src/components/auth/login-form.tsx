@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Key, AlertTriangle } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
-import { useAuth } from "@/app/utils/useAuth"
+import { useAuthStore } from "@/store/auth"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -294,7 +294,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             if (!response.data.has_security_key) {
                 toast.success("Login successful!")
                 const userInfo = {
-                    id: response.data.user_id,
+                    id: Number(response.data.user_id),
                     username,
                     firstName: response.data.firstName,
                     lastName: response.data.lastName,
@@ -304,8 +304,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                     securityKeyAuthenticated: false,
                     hasElevatedAccess: false,
                 }
-                sessionStorage.setItem('user', JSON.stringify(userInfo))
-                window.dispatchEvent(new CustomEvent("argus-auth-change"))
+                useAuthStore.getState().setUser(userInfo)
                 initializeSecurityKeyStatus(false)
                 onOpenChange(false);
                 redirectBasedOnRole(response.data.role)
@@ -314,7 +313,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
 
             toast.success("Login successful!")
             const userInfo = {
-                id: response.data.user_id,
+                id: Number(response.data.user_id),
                 username,
                 firstName: response.data.firstName,
                 lastName: response.data.lastName,
@@ -324,8 +323,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
                 securityKeyAuthenticated: false,
                 hasElevatedAccess: false,
             }
-            sessionStorage.setItem('user', JSON.stringify(userInfo))
-            window.dispatchEvent(new CustomEvent("argus-auth-change"))
+            useAuthStore.getState().setUser(userInfo)
             initializeSecurityKeyStatus(false)
             onOpenChange(false);
             redirectBasedOnRole(response.data.role)
@@ -450,7 +448,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
         toast.success("Login successful with security key!")
 
         const userInfo = {
-            id: userData.user_id,
+            id: Number(userData.user_id),
             username,
             firstName: userData.firstName,
             lastName: userData.lastName,
@@ -460,8 +458,7 @@ export function LoginForm({ open, onOpenChange }: LoginFormProps) {
             securityKeyAuthenticated: true
         }
         const userInfoWithElevated = { ...userInfo, hasElevatedAccess: !!userData.has_elevated_access }
-        sessionStorage.setItem('user', JSON.stringify(userInfoWithElevated))
-        window.dispatchEvent(new CustomEvent("argus-auth-change"))
+        useAuthStore.getState().setUser(userInfoWithElevated)
         initializeSecurityKeyStatus(true)
         onOpenChange(false);
         redirectBasedOnRole(userData.role)

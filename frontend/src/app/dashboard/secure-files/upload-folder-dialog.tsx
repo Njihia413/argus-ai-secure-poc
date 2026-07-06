@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { useAuthStore } from "@/store/auth";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,8 @@ export function UploadFolderDialog({
   onUploadComplete,
   userId,
 }: UploadFolderDialogProps) {
+  const { user } = useAuthStore();
+  const authToken = user?.authToken ?? null;
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [vaultName, setVaultName] = useState("");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
@@ -75,9 +78,6 @@ export function UploadFolderDialog({
 
   const handleUpload = async () => {
     if (!selectedFiles.length || !matchedKey?.id || !vaultName.trim()) return;
-
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!authToken) return;
 
     setUploadState("uploading");

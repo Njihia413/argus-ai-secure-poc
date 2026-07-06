@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronRight, ChevronDown } from "lucide-react"
 import React from "react"
-import { useAuth } from "@/app/utils/useAuth"
+import { useAuthStore } from "@/store/auth"
 import { ADMIN_NAV_SECTIONS } from "@/app/utils/admin-nav"
 import {
   Sidebar,
@@ -25,7 +25,8 @@ import {
 
 export function AppSidebar({ allowedSections }: { allowedSections?: string[] }) {
   const pathname = usePathname()
-  const { hasElevatedAccess } = useAuth()
+  const { user } = useAuthStore()
+  const hasElevatedAccess = user?.hasElevatedAccess ?? false
   const { state } = useSidebar()
 
   const isActive = (url: string): boolean => {

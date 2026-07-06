@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { User, Settings, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { clearBindingData } from "@/app/utils/webauthn";
 import axios from "axios";
 import { API_URL } from "@/app/utils/constants";
 import { toast } from "sonner";
+import { useAuthStore } from "@/store/auth";
 
 // Import ShadCN components
 import {
@@ -34,7 +35,7 @@ interface UserData {
   username: string;
   firstName?: string;
   lastName?: string;
-  hasSecurityKey: boolean;
+  hasSecurityKey?: boolean;
   role: string;
 }
 
@@ -122,33 +123,16 @@ const SettingsModal = ({ isOpen, setIsOpen, userData, onRegisterSuccess, hasSecu
 
 export const Header = () => {
   const router = useRouter();
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [hasSecurityKey, setHasSecurityKey] = useState(false);
+  const { user: userData, clearUser, patchUser } = useAuthStore();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("general");
 
-  // Check user data on component mount
-  useEffect(() => {
-    const checkUserData = () => {
-      const storedUser = sessionStorage.getItem('user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUserData(parsedUser as UserData);
-        setHasSecurityKey(parsedUser.hasSecurityKey || false);
-      }
-    };
-
-    checkUserData();
-    // Listen for storage events (in case user data changes in another tab)
-    window.addEventListener('storage', checkUserData);
-    return () => window.removeEventListener('storage', checkUserData);
-  }, []);
-
   // Handle logout
   const handleLogout = async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-
-    if (!userInfo || !userInfo.authToken) {
+    if (!userData?.authToken) {
+      clearBindingData();
+      clearUser();
+      sessionStorage.clear();
       toast.error("You need to log in");
       router.push("/");
       return;
@@ -157,7 +141,7 @@ export const Header = () => {
     try {
       await axios.post(`${API_URL}/logout`, {}, {
         headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+          Authorization: `Bearer ${userData.authToken}`,
         },
       });
       toast.success('Logged out successfully');
@@ -165,21 +149,15 @@ export const Header = () => {
       toast.error('Logout failed');
     } finally {
       clearBindingData();
-      sessionStorage.removeItem('user');
+      clearUser();
+      sessionStorage.clear();
       router.push('/');
     }
   };
 
   // Handle security key registration success
   const handleKeyRegistrationSuccess = () => {
-    setHasSecurityKey(true);
-
-    // Update user data in session storage
-    if (userData) {
-      const updatedUser: UserData = { ...userData, hasSecurityKey: true };
-      sessionStorage.setItem('user', JSON.stringify(updatedUser));
-      setUserData(updatedUser);
-    }
+    patchUser({ hasSecurityKey: true });
   };
 
   // Open settings modal with specific tab
@@ -245,7 +223,7 @@ export const Header = () => {
                     setIsOpen={setShowSettingsModal}
                     userData={userData}
                     onRegisterSuccess={handleKeyRegistrationSuccess}
-                    hasSecurityKey={hasSecurityKey}
+                    hasSecurityKey={userData?.hasSecurityKey ?? false}
                     activeTab={activeSettingsTab}
                 />
               </div>

@@ -188,6 +188,8 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
     cell: ({ row, table }) => {
       const securityKey = row.original
       const router = useRouter();
+      const { user: authUser } = useAuthStore();
+      const authToken = authUser?.authToken ?? null;
       const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
       const [isDeleting, setIsDeleting] = React.useState(false);
       const [showEditModal, setShowEditModal] = React.useState(false);
@@ -226,8 +228,7 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
         e.preventDefault();
         setIsUpdatingDetails(true);
         try {
-          const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-          if (!userInfo.authToken) {
+          if (!authToken) {
             toast.error("Authentication required.");
             setIsUpdatingDetails(false);
             return;
@@ -248,7 +249,7 @@ export const securityKeysColumns: ColumnDef<SecurityKey>[] = [
           }
 
           const response = await axios.put<UpdateResponse>(`${API_URL}/security-keys/${securityKey.id}`, payload, { // Typed response
-            headers: { Authorization: `Bearer ${userInfo.authToken}` },
+            headers: { Authorization: `Bearer ${authToken}` },
           });
           toast.success(response.data.message || "Security key details updated.");
           setShowEditModal(false);
@@ -269,15 +270,14 @@ interface DeleteResponse {
       const confirmDelete = async () => {
         setIsDeleting(true);
         try {
-          const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-          if (!userInfo.authToken) {
+          if (!authToken) {
             toast.error("Authentication required to delete.");
             setIsDeleting(false);
             setShowDeleteDialog(false);
             return;
           }
           const response = await axios.delete<DeleteResponse>(`${API_URL}/security-keys/${securityKey.id}`, {
-            headers: { Authorization: `Bearer ${userInfo.authToken}` },
+            headers: { Authorization: `Bearer ${authToken}` },
           });
           toast.success(response.data.message || "Security key deleted successfully.");
           if (table.options.meta && typeof (table.options.meta as any).refreshData === 'function') {
@@ -456,3 +456,4 @@ interface DeleteResponse {
 import { API_URL } from "@/app/utils/constants";
 import axios from "axios";
 import { toast } from "sonner";
+import { useAuthStore } from "@/store/auth";
