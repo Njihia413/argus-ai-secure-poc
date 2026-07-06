@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth"
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -33,6 +34,8 @@ interface Settings {
 }
 
 export default function SettingsPage() {
+  const { user: authUser, clearUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [settings, setSettings] = useState<Settings | null>(null)
   const [originalSettings, setOriginalSettings] = useState<Settings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -49,6 +52,7 @@ export default function SettingsPage() {
   const handleAuthError = (error: any) => {
     if (error.response?.status === 401) {
       toast.error('Session expired. Please log in again.')
+      clearUser()
       sessionStorage.clear()
       localStorage.clear()
       router.push('/')
@@ -59,11 +63,11 @@ export default function SettingsPage() {
 
   // Fetch current settings
   const fetchSettings = async () => {
+    if (!authToken) return
     setIsLoading(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       const response = await axios.get<Settings>(`${API_URL}/settings`, {
-        headers: { Authorization: `Bearer ${userInfo.authToken}` }
+        headers: { Authorization: `Bearer ${authToken}` }
       })
       setSettings(response.data)
       setOriginalSettings(response.data)
@@ -79,13 +83,12 @@ export default function SettingsPage() {
 
   // Save settings
   const saveSettings = async () => {
-    if (!settings) return
+    if (!settings || !authToken) return
 
     setIsSaving(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.post(`${API_URL}/settings`, settings, {
-        headers: { Authorization: `Bearer ${userInfo.authToken}` }
+        headers: { Authorization: `Bearer ${authToken}` }
       })
       toast.success('Settings saved successfully')
       setOriginalSettings(settings)
@@ -101,11 +104,11 @@ export default function SettingsPage() {
 
   // Reset to defaults
   const resetToDefaults = async () => {
+    if (!authToken) return
     setIsResetting(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.post(`${API_URL}/settings/reset`, {}, {
-        headers: { Authorization: `Bearer ${userInfo.authToken}` }
+        headers: { Authorization: `Bearer ${authToken}` }
       })
       toast.success('Settings reset to defaults')
       await fetchSettings() // Reload settings after reset
@@ -126,8 +129,10 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated) return
+    if (!authToken) { router.push("/"); return }
     fetchSettings()
-  }, [])
+  }, [authToken, _hasHydrated, router])
 
   if (isLoading) {
     return (

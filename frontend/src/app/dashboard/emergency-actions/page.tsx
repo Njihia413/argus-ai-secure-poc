@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +28,8 @@ interface ToggleLockdownResponse {
 }
 
 export default function EmergencyActionsPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [isLocked, setIsLocked] = useState(false);
   const [lockdownMessage, setLockdownMessage] = useState('');
   const [currentMessage, setCurrentMessage] = useState('');
@@ -46,13 +49,8 @@ export default function EmergencyActionsPage() {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   const fetchStatus = useCallback(async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
-    if (!authToken) {
-      toast.error("Authentication token not found.");
-      setIsLoading(false);
-      return;
-    }
+    if (!_hasHydrated) return;
+    if (!authToken) { setIsLoading(false); return; }
     try {
       const response = await axios.get<EmergencyStatusResponse>(`${API_URL}/emergency-actions`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -66,11 +64,10 @@ export default function EmergencyActionsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authToken, _hasHydrated]);
 
   const fetchLogs = useCallback(async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
+    if (!_hasHydrated) return;
     if (!authToken) {
       setIsLogsLoading(false);
       return;
@@ -92,7 +89,7 @@ export default function EmergencyActionsPage() {
     } finally {
       setIsLogsLoading(false);
     }
-  }, [pagination]);
+  }, [pagination, authToken, _hasHydrated]);
 
   useEffect(() => {
     fetchStatus();
@@ -111,7 +108,7 @@ export default function EmergencyActionsPage() {
       const response = await axios.post<ToggleLockdownResponse>(
         `${API_URL}/emergency/toggle-lockdown`,
         { action, message: lockdownMessage },
-        { headers: { Authorization: `Bearer ${JSON.parse(sessionStorage.getItem("user") || "{}").authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
       toast.success(response.data.message);
       await fetchStatus(); // Refresh status from backend

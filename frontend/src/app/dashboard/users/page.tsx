@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth"
 import { CirclePlus, Eye, EyeOff, ChevronDown } from "lucide-react"
 import {
   ColumnFiltersState,
@@ -82,6 +83,8 @@ interface EditUserFormData {
 }
 
 export default function UsersPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [users, setUsers] = useState<User[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -136,13 +139,12 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setIsLoading(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-      if (!userInfo?.authToken) {
+      if (!authToken) {
         toast.error("You need to log in")
         router.push("/")
         return
       }
-      if (userInfo.role !== "admin") {
+      if (authUser?.role !== "admin") {
         toast.error("Admin access required")
         router.push("/")
         return
@@ -150,7 +152,7 @@ export default function UsersPage() {
 
       const response = await axios.get<{ users: User[]; pages: number; total: number }>(
         `${API_URL}/users?page=${pagination.pageIndex + 1}&per_page=${pagination.pageSize}`,
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } },
+        { headers: { Authorization: `Bearer ${authToken}` } },
       )
 
       if (response.data?.users) {
@@ -168,20 +170,20 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-    if (userInfo?.authToken && userInfo?.role === "admin") {
+    if (authToken && authUser?.role === "admin") {
       axios
         .get<{ roles: { role: string; display_name: string }[] }>(`${API_URL}/admin/roles`, {
-          headers: { Authorization: `Bearer ${userInfo.authToken}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         })
         .then((res) => setAvailableRoles(res.data.roles))
         .catch(() => {})
     }
-  }, [router])
+  }, [authToken, authUser?.role])
 
   useEffect(() => {
+    if (!_hasHydrated) return
     fetchUsers()
-  }, [pagination])
+  }, [pagination, _hasHydrated])
 
   useEffect(() => {
     if (selectedUser) {
@@ -243,12 +245,11 @@ export default function UsersPage() {
     e.preventDefault()
     setIsLoading(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-      if (!userInfo.authToken) {
+      if (!authToken) {
         throw new Error("Authentication required")
       }
       await axios.post(`${API_URL}/register`, newUserForm, {
-        headers: { Authorization: `Bearer ${userInfo.authToken}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       })
       toast.success(`User ${newUserForm.username} created successfully`)
       setIsAddUserDialogOpen(false)
@@ -272,17 +273,18 @@ export default function UsersPage() {
     if (!selectedUser) return
     setIsLoading(true)
     try {
-      const userStr = sessionStorage.getItem('user')
-      if (!userStr) throw new Error('User not authenticated')
-      const adminUserInfo = JSON.parse(userStr)
-      const authToken = adminUserInfo.authToken
-      await fetch(`${API_URL}/users/${selectedUser.id}/unlock`, {
+      if (!authToken) throw new Error('User not authenticated')
+      const res = await fetch(`${API_URL}/users/${selectedUser.id}/unlock`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
         },
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Unlock failed (${res.status})`)
+      }
       toast.success(`User account ${selectedUser.username} unlocked successfully`)
       setIsUnlockAccountDialogOpen(false)
       fetchUsers() // Refetch users
@@ -491,10 +493,9 @@ export default function UsersPage() {
               e.preventDefault()
               setIsLoading(true)
               try {
-                const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-                if (!userInfo.authToken) throw new Error("Authentication required")
+                if (!authToken) throw new Error("Authentication required")
                 await axios.put(`${API_URL}/users/${selectedUser.id}`, editUserForm, {
-                  headers: { Authorization: `Bearer ${userInfo.authToken}` },
+                  headers: { Authorization: `Bearer ${authToken}` },
                 })
                 toast.success("User details updated successfully")
                 setIsEditUserDialogOpen(false)
@@ -573,10 +574,9 @@ export default function UsersPage() {
                 <Button variant="destructive" disabled={isLoading} onClick={async () => {
                   setIsLoading(true)
                   try {
-                    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-                    if (!userInfo.authToken) throw new Error("Authentication required")
+                    if (!authToken) throw new Error("Authentication required")
                     await axios.delete(`${API_URL}/delete-user/${selectedUser.id}`, {
-                      headers: { Authorization: `Bearer ${userInfo.authToken}` },
+                      headers: { Authorization: `Bearer ${authToken}` },
                     })
                     toast.success("User deleted successfully")
                     setIsDeleteDialogOpen(false)

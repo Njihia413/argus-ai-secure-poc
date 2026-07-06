@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
 import {
   Card,
   CardContent,
@@ -72,7 +73,8 @@ function slugPreview(name: string): string {
 
 export default function RolesPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [rolesPage, setRolesPage] = useState(1);
@@ -95,19 +97,13 @@ const [notAdmin, setNotAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("user");
-    const user = stored ? JSON.parse(stored) : null;
-    if (!user?.authToken) {
-      router.push("/");
-      return;
-    }
-    if (user.role !== "admin") {
+    if (!_hasHydrated) return;
+    if (!authUser?.authToken) { router.push("/"); return; }
+    if (authUser.role !== "admin") {
       setNotAdmin(true);
       setLoading(false);
-      return;
     }
-    setAuthToken(user.authToken);
-  }, [router]);
+  }, [authUser?.authToken, authUser?.role, router, _hasHydrated]);
 
   const fetchRoles = async (token: string, p = rolesPage) => {
     const res = await axios.get<{ roles: RoleSummary[]; pages: number; total: number }>(
@@ -120,7 +116,7 @@ const [notAdmin, setNotAdmin] = useState(false);
   };
 
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || authUser?.role !== "admin") return;
     const headers = { Authorization: `Bearer ${authToken}` };
     (async () => {
       try {
@@ -142,7 +138,7 @@ const [notAdmin, setNotAdmin] = useState(false);
         toast.error(data?.error || "Could not load catalog.");
       }
     })();
-  }, [authToken, rolesPage]);
+  }, [authToken, authUser?.role, rolesPage]);
 
   useEffect(() => {
     const selectedRoleId = roles.find((r) => r.role === selectedRole)?.id;

@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +29,9 @@ interface UpdateSystemConfigurationResponse {
 }
 
 export default function SystemConfigurationPage() {
+  const router = useRouter();
+  const { user: authUser, clearUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
   const [currentMessage, setCurrentMessage] = useState('');
@@ -46,11 +51,10 @@ export default function SystemConfigurationPage() {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   const fetchConfiguration = useCallback(async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!authToken) {
-      toast.error("Authentication token not found.");
       setIsLoading(false);
+      clearUser();
+      router.push("/");
       return;
     }
     try {
@@ -66,11 +70,9 @@ export default function SystemConfigurationPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authToken]);
 
   const fetchLogs = useCallback(async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    const authToken = userInfo.authToken;
     if (!authToken) {
       setIsLogsLoading(false);
       return;
@@ -92,12 +94,13 @@ export default function SystemConfigurationPage() {
     } finally {
       setIsLogsLoading(false);
     }
-  }, [pagination]);
+  }, [pagination, authToken]);
 
   useEffect(() => {
+    if (!_hasHydrated) return;
     fetchConfiguration();
     fetchLogs();
-  }, [fetchConfiguration, fetchLogs]);
+  }, [fetchConfiguration, fetchLogs, _hasHydrated]);
 
   const handleToggleMaintenanceMode = async () => {
     if (!maintenanceMode && !maintenanceMessage) {
@@ -113,7 +116,7 @@ export default function SystemConfigurationPage() {
           maintenance_mode: !maintenanceMode,
           maintenance_message: maintenanceMessage,
         },
-        { headers: { Authorization: `Bearer ${JSON.parse(sessionStorage.getItem("user") || "{}").authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
       toast.success(response.data.message);
       await fetchConfiguration();

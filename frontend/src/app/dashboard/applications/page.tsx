@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
 import {
   Card,
   CardContent,
@@ -71,7 +72,8 @@ function CopyButton({ text }: { text: string }) {
 
 export default function ApplicationsPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [apps, setApps] = useState<RegisteredApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [notAdmin, setNotAdmin] = useState(false);
@@ -102,19 +104,13 @@ export default function ApplicationsPage() {
   const [keyVisible, setKeyVisible] = useState(false);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("user");
-    const user = stored ? JSON.parse(stored) : null;
-    if (!user?.authToken) {
-      router.push("/");
-      return;
-    }
-    if (user.role !== "admin") {
+    if (!_hasHydrated) return;
+    if (!authUser?.authToken) { router.push("/"); return; }
+    if (authUser.role !== "admin") {
       setNotAdmin(true);
       setLoading(false);
-      return;
     }
-    setAuthToken(user.authToken);
-  }, [router]);
+  }, [authUser?.authToken, authUser?.role, router, _hasHydrated]);
 
   const fetchApps = async (token: string) => {
     const res = await axios.get<{ apps: RegisteredApp[] }>(
@@ -125,7 +121,7 @@ export default function ApplicationsPage() {
   };
 
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || authUser?.role !== "admin") return;
     (async () => {
       try {
         setApps(await fetchApps(authToken));
@@ -135,7 +131,7 @@ export default function ApplicationsPage() {
         setLoading(false);
       }
     })();
-  }, [authToken]);
+  }, [authToken, authUser?.role]);
 
   const register = async () => {
     if (!newName.trim() || !authToken) return;

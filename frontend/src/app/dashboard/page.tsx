@@ -54,6 +54,7 @@ import {
 import { useChart } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import { RecentUsersTable } from "@/components/data-table/recent-users-table"; // Added import
+import { useAuthStore } from "@/store/auth";
 
 interface ChartErrorState {
   hasError: boolean;
@@ -126,11 +127,9 @@ interface RiskTrendItem {
   attemptCount?: number;
 }
 
-interface StoredUser {
-  authToken: string;
-}
-
 export default function DashboardPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [stats, setStats] = useState<Stats | null>(null);
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetric[]>([]);
@@ -141,17 +140,12 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   useEffect(() => {
+    if (!_hasHydrated) return
     console.log("Starting data fetch...")
     setIsLoading(true)
     async function fetchDashboardData() {
       try {
-        // Get auth token from sessionStorage
-        const userStr = sessionStorage.getItem('user')
-        if (!userStr) {
-          throw new Error('User not authenticated')
-        }
-        const user = JSON.parse(userStr) as StoredUser;
-        const authToken = user.authToken;
+        if (!authToken) return
         const headers = {
           'Authorization': `Bearer ${authToken}`
         }
@@ -238,7 +232,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [timeRange])
+  }, [timeRange, _hasHydrated, authToken])
 
   // Helper function for bar color based on risk score
   const getRiskColor = (score: number) => {

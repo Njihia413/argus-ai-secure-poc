@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
 import {
   Card,
   CardContent,
@@ -33,19 +34,15 @@ interface AIModel {
 
 export default function ModelsPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [models, setModels] = useState<AIModel[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("user");
-    const user = stored ? JSON.parse(stored) : null;
-    if (!user?.authToken) {
-      router.push("/");
-      return;
-    }
-    setAuthToken(user.authToken);
-  }, [router]);
+    if (!_hasHydrated) return;
+    if (!authUser) { router.push("/"); }
+  }, [authUser, router, _hasHydrated]);
 
   useEffect(() => {
     if (!authToken) return;

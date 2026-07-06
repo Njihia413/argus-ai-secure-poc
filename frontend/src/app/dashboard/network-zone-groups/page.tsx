@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
 import {
   Card,
   CardContent,
@@ -61,7 +62,8 @@ const emptyForm = { name: "", description: "", is_active: true };
 
 export default function NetworkZoneGroupsPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [groups, setGroups] = useState<NetworkZoneGroup[]>([]);
   const [allZones, setAllZones] = useState<NetworkZone[]>([]);
   const [allApps, setAllApps] = useState<RegisteredApp[]>([]);
@@ -82,11 +84,9 @@ export default function NetworkZoneGroupsPage() {
   const [addAppId, setAddAppId] = useState<Record<number, string>>({});
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("user");
-    const user = stored ? JSON.parse(stored) : null;
-    if (!user?.authToken) { router.push("/"); return; }
-    setAuthToken(user.authToken);
-  }, [router]);
+    if (!_hasHydrated) return;
+    if (!authToken) { router.push("/"); }
+  }, [authToken, router, _hasHydrated]);
 
   useEffect(() => {
     if (!authToken) return;

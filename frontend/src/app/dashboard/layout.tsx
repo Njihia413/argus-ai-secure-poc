@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import axios from "axios";
 import { API_URL } from "@/app/utils/constants";
-import { useAuth } from "@/app/utils/useAuth";
+import { useAuthStore } from "@/store/auth";
 import { toast } from "sonner";
 import { Bell, LogOut, Search, Settings } from "lucide-react" // Added Search and Settings
 import { useRouter } from "next/navigation"
@@ -28,9 +28,16 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const { user } = useAuth();
+  const { user, clearUser, _hasHydrated } = useAuthStore();
   const [userInitials, setUserInitials] = useState("SA");
   const [adminSections, setAdminSections] = useState<string[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!user?.authToken) {
+      router.push("/");
+    }
+  }, [_hasHydrated, user, router]);
 
   useEffect(() => {
     if (user?.firstName && user?.lastName) {
@@ -58,9 +65,9 @@ export default function DashboardLayout({
   }, [fetchAdminSections]);
 
   const handleLogout = async () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-
-    if (!userInfo || !userInfo.authToken) {
+    if (!user?.authToken) {
+      clearUser();
+      sessionStorage.clear();
       router.push("/");
       return;
     }
@@ -68,12 +75,13 @@ export default function DashboardLayout({
     try {
       await axios.post(`${API_URL}/logout`, {}, {
         headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+          Authorization: `Bearer ${user.authToken}`,
         },
       });
     } catch (error) {
       console.error('Logout failed', error);
     } finally {
+      clearUser();
       sessionStorage.clear()
       localStorage.clear()
       toast.success("Logged out successfully")

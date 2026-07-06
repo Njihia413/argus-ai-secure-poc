@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAuthStore } from "@/store/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +70,8 @@ interface User {
 
 export default function SecureFilesPage() {
   // ── Auth / user ──────────────────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
@@ -98,14 +100,7 @@ export default function SecureFilesPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
 
-  const getAuthToken = useCallback(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    if (userInfo && userInfo.id && !currentUser) setCurrentUser(userInfo);
-    return userInfo.authToken || null;
-  }, [currentUser]);
-
   const fetchUsers = useCallback(async () => {
-    const authToken = getAuthToken();
     if (!authToken) return;
     try {
       const res = await fetch(`${API_URL}/users`, {
@@ -116,10 +111,9 @@ export default function SecureFilesPage() {
         setUsers(data.users || []);
       }
     } catch { /* silent */ }
-  }, [getAuthToken]);
+  }, [authToken]);
 
   const fetchVaults = useCallback(async () => {
-    const authToken = getAuthToken();
     if (!authToken) return;
     try {
       let url = `${API_URL}/vaults`;
@@ -132,11 +126,14 @@ export default function SecureFilesPage() {
         setVaults(data.vaults || []);
       }
     } catch { toast.error("Failed to load vaults"); }
-  }, [getAuthToken, selectedUserId]);
+  }, [authToken, selectedUserId]);
 
   const fetchFiles = useCallback(async () => {
-    const authToken = getAuthToken();
-    if (!authToken) return;
+    if (!_hasHydrated) return;
+    if (!authToken) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       // Inside a vault
@@ -161,10 +158,9 @@ export default function SecureFilesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [getAuthToken, selectedUserId, activeVault]);
+  }, [authToken, selectedUserId, activeVault, _hasHydrated]);
 
   const fetchSecurityKeys = useCallback(async () => {
-    const authToken = getAuthToken();
     if (!authToken) return;
     try {
       let url = `${API_URL}/files/user-security-keys`;
@@ -175,7 +171,7 @@ export default function SecureFilesPage() {
         setSecurityKeys(data.security_keys || []);
       }
     } catch { /* silent */ }
-  }, [getAuthToken, selectedUserId]);
+  }, [authToken, selectedUserId]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -198,7 +194,7 @@ export default function SecureFilesPage() {
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleDownload = async (file: EncryptedFile, keyId: number) => {
-    const authToken = getAuthToken();
+
     try {
       const res = await fetch(`${API_URL}/files/${file.id}`, {
         headers: {
@@ -226,7 +222,7 @@ export default function SecureFilesPage() {
   };
 
   const handlePreview = async (file: EncryptedFile) => {
-    const authToken = getAuthToken();
+
     try {
       const res = await fetch(`${API_URL}/files/${file.id}/preview`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -245,7 +241,7 @@ export default function SecureFilesPage() {
 
   const handleDeleteFile = async () => {
     if (!fileToDelete) return;
-    const authToken = getAuthToken();
+
     try {
       const res = await fetch(`${API_URL}/files/${fileToDelete.id}`, {
         method: "DELETE",
@@ -264,7 +260,7 @@ export default function SecureFilesPage() {
 
   const handleDeleteVault = async () => {
     if (!vaultToDelete) return;
-    const authToken = getAuthToken();
+
     try {
       const res = await fetch(`${API_URL}/vaults/${vaultToDelete.id}`, {
         method: "DELETE",
@@ -283,7 +279,7 @@ export default function SecureFilesPage() {
 
   const handleRenameVault = async () => {
     if (!vaultToRename || !renameValue.trim()) return;
-    const authToken = getAuthToken();
+
     setIsRenaming(true);
     try {
       const res = await fetch(`${API_URL}/vaults/${vaultToRename.id}`, {
@@ -367,7 +363,7 @@ export default function SecureFilesPage() {
         </div>
 
         <div className="flex gap-2 w-full md:w-auto flex-wrap">
-          {currentUser?.role === "admin" && (
+          {authUser?.role === "admin" && (
             <Select
               value={selectedUserId?.toString() || "all"}
               onValueChange={(v) => {
@@ -381,7 +377,7 @@ export default function SecureFilesPage() {
               <SelectContent>
                 <SelectItem value="all">My Files</SelectItem>
                 {users
-                  .filter((u) => u.id !== currentUser?.id)
+                  .filter((u) => u.id !== authUser?.id)
                   .map((u) => (
                     <SelectItem key={u.id} value={u.id.toString()}>
                       {u.username}

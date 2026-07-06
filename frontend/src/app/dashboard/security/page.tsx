@@ -24,6 +24,7 @@ import { DataTable } from "@/components/data-table/data-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { SecurityAlert, columns } from "@/components/data-table/security-alert-columns"
+import { useAuthStore } from "@/store/auth"
 
 type SecurityStats = {
   alertStats: {
@@ -106,6 +107,8 @@ interface TableInstance {
 }
 
 export default function SecurityPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [stats, setStats] = useState<SecurityStats>(emptyStats)
   const [loading, setLoading] = useState(true)
@@ -133,20 +136,11 @@ export default function SecurityPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!_hasHydrated) return
       try {
         setLoading(true)
 
-        const userStr = sessionStorage.getItem('user')
-        if (!userStr) {
-          throw new Error('User not authenticated')
-        }
-        
-        interface UserData {
-          authToken: string;
-        }
-        
-        const user = JSON.parse(userStr) as UserData
-        const authToken = user.authToken
+        if (!authToken) return
 
         // Fetch alerts with pagination
         const queryParams = new URLSearchParams({
@@ -207,7 +201,7 @@ export default function SecurityPage() {
     }
 
     fetchData()
-  }, [pagination, severityFilterValue, typeFilterValue])
+  }, [pagination, severityFilterValue, typeFilterValue, authToken, _hasHydrated])
 
   // Function to escape CSV values
   const escapeCsvValue = (value: any): string => {

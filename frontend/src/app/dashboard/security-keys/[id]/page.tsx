@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth"
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
@@ -98,6 +99,8 @@ interface SecurityKeyDetail {
 export default function SecurityKeyDetailsPage() {
   const router = useRouter()
   const params = useParams()
+  const { user: authUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const keyId = params.id
 
   const [securityKey, setSecurityKey] = useState<SecurityKeyDetail | null>(null)
@@ -157,22 +160,22 @@ export default function SecurityKeyDetailsPage() {
   }, [filteredLogs, pagination.pageSize])
 
   useEffect(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-    if (!userInfo || !userInfo.authToken) {
+    if (!_hasHydrated) return
+    if (!authToken) {
       toast.error("You need to log in")
       router.push("/")
       return
     }
-    if (userInfo.role !== "admin") {
+    if (authUser?.role !== "admin") {
       toast.error("Admin access required")
       router.push("/dashboard")
       return
     }
     if (keyId) {
-      fetchKeyDetails(userInfo.authToken, keyId as string)
-      fetchMachineBindings(userInfo.authToken, keyId as string)
+      fetchKeyDetails(authToken, keyId as string)
+      fetchMachineBindings(authToken, keyId as string)
     }
-  }, [router, keyId])
+  }, [authToken, authUser?.role, router, keyId, _hasHydrated])
 
   const fetchKeyDetails = async (authToken: string, id: string) => {
     setIsLoading(true)
@@ -224,11 +227,10 @@ export default function SecurityKeyDetailsPage() {
   const handleToggleBindingPolicy = async (checked: boolean) => {
     setIsUpdatingPolicy(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.put(
         `${API_URL}/security-keys/${keyId}/binding-policy`,
         { require_machine_binding: checked },
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       )
       setRequireBinding(checked)
       toast.success(`Machine binding ${checked ? 'enabled' : 'disabled'}`)
@@ -259,7 +261,6 @@ export default function SecurityKeyDetailsPage() {
     if (!bindingFingerprint) return
     setIsBindingMachine(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.post(
         `${API_URL}/security-keys/${keyId}/bind-machine`,
         {
@@ -267,11 +268,11 @@ export default function SecurityKeyDetailsPage() {
           components: bindingFingerprint.components,
           machine_name: bindingLabel || bindingFingerprint.components.hostname || 'Machine',
         },
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       )
       toast.success("Machine bound successfully")
       setShowBindDialog(false)
-      fetchMachineBindings(userInfo.authToken, keyId as string)
+      fetchMachineBindings(authToken!, keyId as string)
     } catch (error: any) {
       toast.error(error.response?.data?.error || "Failed to bind machine")
     } finally {
@@ -288,11 +289,10 @@ export default function SecurityKeyDetailsPage() {
     if (newMax === maxMachines) return
     setIsUpdatingMaxMachines(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.put(
         `${API_URL}/security-keys/${keyId}/binding-policy`,
         { max_machines: newMax },
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       )
       setMaxMachines(newMax)
       toast.success(`Machine limit updated to ${newMax}`)
@@ -307,14 +307,13 @@ export default function SecurityKeyDetailsPage() {
   const handleUnbindMachine = async () => {
     if (!bindingToUnbind) return
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.delete(
         `${API_URL}/security-keys/${keyId}/machines/${bindingToUnbind.id}`,
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       )
       toast.success("Machine unbound successfully")
       setBindingToUnbind(null)
-      fetchMachineBindings(userInfo.authToken, keyId as string)
+      fetchMachineBindings(authToken!, keyId as string)
     } catch (error: any) {
       toast.error(error.response?.data?.error || "Failed to unbind machine")
       setBindingToUnbind(null)

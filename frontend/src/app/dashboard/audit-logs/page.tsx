@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { InfoIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/app/utils/constants";
+import { useAuthStore } from "@/store/auth";
 
 
 interface TableInstance {
@@ -58,6 +59,8 @@ interface TableInstance {
 }
 
 export default function AuditLogsPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [data, setData] = useState<AuditLog[]>([]);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -99,9 +102,7 @@ export default function AuditLogsPage() {
   };
 
   useEffect(() => {
-    const userStr = sessionStorage.getItem('user');
-    if (!userStr) return;
-    const { authToken } = JSON.parse(userStr) as { authToken: string };
+    if (!_hasHydrated) return;
     if (!authToken) return;
     fetch(`${API_URL}/system-audit-logs/action-types`, {
       headers: { Authorization: `Bearer ${authToken}` },
@@ -119,20 +120,14 @@ export default function AuditLogsPage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [authToken, _hasHydrated]);
 
   useEffect(() => {
     const fetchAuditLogs = async () => {
+      if (!_hasHydrated) return;
       setLoading(true);
       try {
-        const userStr = sessionStorage.getItem('user');
-        if (!userStr) throw new Error('User not authenticated.');
-
-        const { authToken } = JSON.parse(userStr) as { authToken: string };
-        if (!authToken) {
-          toast.error("Authentication token not found.");
-          return;
-        }
+        if (!authToken) return;
 
         const response = await fetch(
           `${API_URL}/system-audit-logs?page=${pagination.pageIndex + 1}&per_page=${pagination.pageSize}`,
@@ -155,7 +150,7 @@ export default function AuditLogsPage() {
     };
 
     fetchAuditLogs();
-  }, [pagination]);
+  }, [pagination, _hasHydrated]);
 
   // Function to escape CSV values
   const escapeCsvValue = (value: any): string => {

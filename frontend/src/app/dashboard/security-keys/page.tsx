@@ -5,6 +5,7 @@ import { securityKeysColumns } from "@/components/data-table/security-keys-colum
 import { useEffect, useState, useMemo } from "react"
 import { API_URL } from "@/app/utils/constants"
 import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth"
 import axios from "axios"
 import { toast } from "sonner"
 import { ChevronDown } from "lucide-react"
@@ -44,6 +45,8 @@ export interface SecurityKey {
 }
 
 export default function SecurityKeysPage() {
+  const { user: authUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [data, setData] = useState<SecurityKey[]>([])
   const [loading, setLoading] = useState(true)
   const [pageCount, setPageCount] = useState(0)
@@ -77,27 +80,25 @@ export default function SecurityKeysPage() {
   }, [data, statusFilterValue, searchFilter])
 
   useEffect(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-
-    if (!userInfo || !userInfo.authToken) {
+    if (!_hasHydrated) return
+    if (!authToken) {
       toast.error("You need to log in to view security keys.")
       router.push("/")
       return
     }
 
-    if (userInfo.role !== "admin") {
+    if (authUser?.role !== "admin") {
       toast.error("Admin access required to view all security keys.")
-      router.push("/dashboard") // Or appropriate non-admin page
+      router.push("/dashboard")
       return
     }
-    
-    fetchSecurityKeys(userInfo.authToken)
-  }, [router, pagination])
+
+    fetchSecurityKeys(authToken)
+  }, [authToken, authUser?.role, router, pagination, _hasHydrated])
 
   const refreshData = () => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-    if (userInfo.authToken) {
-      fetchSecurityKeys(userInfo.authToken);
+    if (authToken) {
+      fetchSecurityKeys(authToken);
     }
   };
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
 import {
   Card,
   CardContent,
@@ -42,7 +43,8 @@ const emptyForm = { name: "", description: "", cidrs: [] as string[], requires_k
 
 export default function NetworkZonesPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { user: authUser, _hasHydrated } = useAuthStore();
+  const authToken = authUser?.authToken ?? null;
   const [zones, setZones] = useState<NetworkZone[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,11 +57,9 @@ export default function NetworkZonesPage() {
   const [deleteTarget, setDeleteTarget] = useState<NetworkZone | null>(null);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("user");
-    const user = stored ? JSON.parse(stored) : null;
-    if (!user?.authToken) { router.push("/"); return; }
-    setAuthToken(user.authToken);
-  }, [router]);
+    if (!_hasHydrated) return;
+    if (!authUser) { router.push("/"); }
+  }, [authUser, router, _hasHydrated]);
 
   useEffect(() => {
     if (!authToken) return;

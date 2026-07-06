@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth"
 import { Key, ChevronRight, ArrowLeft, KeyRound } from 'lucide-react'
 import axios from "axios"
 import { toast } from "sonner"
@@ -91,6 +92,8 @@ interface YubiKey {
 export default function UserDetailsPage() {
   const router = useRouter()
   const params = useParams()
+  const { user: authUser, _hasHydrated } = useAuthStore()
+  const authToken = authUser?.authToken ?? null
   const [user, setUser] = useState<User | null>(null)
   const [securityKeys, setSecurityKeys] = useState<SecurityKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -143,19 +146,19 @@ export default function UserDetailsPage() {
   const [isFetchingFingerprint, setIsFetchingFingerprint] = useState(false)
 
   useEffect(() => {
-    const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-    if (!userInfo || !userInfo.authToken) {
+    if (!_hasHydrated) return
+    if (!authToken) {
       toast.error("You need to log in")
       router.push("/")
       return
     }
-    if (userInfo.role !== "admin") {
+    if (authUser?.role !== "admin") {
       toast.error("Admin access required")
       router.push("/")
       return
     }
-    fetchUserDetails(userInfo.authToken)
-  }, [router, params.id])
+    fetchUserDetails(authToken)
+  }, [authToken, authUser?.role, router, params.id, _hasHydrated])
 
   useEffect(() => {
     if (showReassignDialog) {
@@ -230,8 +233,7 @@ export default function UserDetailsPage() {
 
   const handleSelectYubiKey = async (key: YubiKey) => {
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication session expired. Please log in again.");
         return;
       }
@@ -240,7 +242,7 @@ export default function UserDetailsPage() {
         { serialNumber: key.serial },
         {
           headers: {
-            Authorization: `Bearer ${userInfo.authToken}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }
       );
@@ -287,8 +289,6 @@ export default function UserDetailsPage() {
     }
 
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-
       if (isReassignedKey) {
         setIsUpdating(true);
         setShowKeyDetailsModal(false);
@@ -314,14 +314,14 @@ export default function UserDetailsPage() {
           ...keyDetails
         },
         headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
       if (response.data) {
         if (isUpdate) {
           setShowKeyDetailsModal(false);
-          fetchSecurityKeys(userInfo.authToken);
+          fetchSecurityKeys(authToken!);
           toast.success("Security Key details updated successfully");
         } else {
           setShowKeyDetailsModal(false);
@@ -350,8 +350,7 @@ export default function UserDetailsPage() {
 
     try {
       setIsDeactivating(true)
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication required")
         return
       }
@@ -361,7 +360,7 @@ export default function UserDetailsPage() {
         { reason: deactivationReason },
         {
           headers: {
-            Authorization: `Bearer ${userInfo.authToken}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }
       )
@@ -370,8 +369,8 @@ export default function UserDetailsPage() {
         toast.success("Security key deactivated successfully")
         setShowDeactivateDialog(false)
         setDeactivationReason('')
-        await fetchSecurityKeys(userInfo.authToken)
-        await fetchUserDetails(userInfo.authToken)
+        await fetchSecurityKeys(authToken)
+        await fetchUserDetails(authToken)
       }
     } catch (error: any) {
       console.error("Error deactivating security key:", error)
@@ -398,28 +397,27 @@ export default function UserDetailsPage() {
     
     try {
       setIsResetting(true);
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication required");
         return;
       }
-      
+
       await axios.post(
         `${API_URL}/security-keys/${keyIdToReset}/reset`,
         {},
         {
           headers: {
-            Authorization: `Bearer ${userInfo.authToken}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }
       );
-      
+
       toast.success("Security key reset successfully");
       setIsKeyReassigned(true);
       setKeyIdForReassignment(keyIdToReset);
-      
-      await fetchSecurityKeys(userInfo.authToken);
-      await fetchUserDetails(userInfo.authToken);
+
+      await fetchSecurityKeys(authToken);
+      await fetchUserDetails(authToken);
       
     } catch (error: any) {
       console.error("Error resetting security key:", error);
@@ -446,15 +444,13 @@ export default function UserDetailsPage() {
           toast.success(message);
           setShowRegistrationModal(false);
 
-          const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-
           // Apply machine binding if the admin opted in during registration
           if (bindToCurrentMachine && machineFingerprint && newKeyId) {
             try {
               await axios.put(
                 `${API_URL}/security-keys/${newKeyId}/binding-policy`,
                 { require_machine_binding: true },
-                { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+                { headers: { Authorization: `Bearer ${authToken}` } }
               )
               await axios.post(
                 `${API_URL}/security-keys/${newKeyId}/bind-machine`,
@@ -463,7 +459,7 @@ export default function UserDetailsPage() {
                   components: machineFingerprint.components,
                   machine_name: machineLabel || machineFingerprint.components.hostname || 'Primary Machine',
                 },
-                { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+                { headers: { Authorization: `Bearer ${authToken}` } }
               )
               toast.success("Machine binding applied successfully")
             } catch {
@@ -471,8 +467,8 @@ export default function UserDetailsPage() {
             }
           }
 
-          await fetchUserDetails(userInfo.authToken);
-          await fetchSecurityKeys(userInfo.authToken);
+          await fetchUserDetails(authToken!);
+          await fetchSecurityKeys(authToken!);
 
           setIsKeyReassigned(false);
           setBindToCurrentMachine(false);
@@ -503,15 +499,14 @@ export default function UserDetailsPage() {
 
     try {
       setIsDeleting(true)
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication required")
         return
       }
 
       const response = await axios.delete<{ message: string }>(`${API_URL}/security-keys/${selectedKey.id}`, {
         headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       })
 
@@ -519,8 +514,8 @@ export default function UserDetailsPage() {
         toast.success(response.data.message)
         setShowDeleteConfirm(false)
         setSelectedKey(null)
-        fetchSecurityKeys(userInfo.authToken)
-        fetchUserDetails(userInfo.authToken)
+        fetchSecurityKeys(authToken)
+        fetchUserDetails(authToken)
       }
     } catch (error: any) {
       console.error("Error deleting security key:", error)
@@ -532,15 +527,14 @@ export default function UserDetailsPage() {
 
   const fetchAvailableUsers = async () => {
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication required");
         return;
       }
-      
+
       const response = await axios.get(`${API_URL}/users`, {
         headers: {
-          Authorization: `Bearer ${userInfo.authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       
@@ -574,31 +568,30 @@ export default function UserDetailsPage() {
     
     try {
       setIsReassigning(true);
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}");
-      if (!userInfo.authToken) {
+      if (!authToken) {
         toast.error("Authentication required");
         return;
       }
-      
+
       const response = await axios.post(
         `${API_URL}/security-keys/${keyIdForReassignment}/reassign`,
         { new_user_id: selectedUserId },
         {
           headers: {
-            Authorization: `Bearer ${userInfo.authToken}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }
       );
-      
+
       interface ReassignResponse {
         message: string;
       }
-      
+
       const responseData = response.data as ReassignResponse;
       toast.success(responseData.message || "Security key reassigned successfully");
-      
-      await fetchSecurityKeys(userInfo.authToken);
-      await fetchUserDetails(userInfo.authToken);
+
+      await fetchSecurityKeys(authToken);
+      await fetchUserDetails(authToken);
       
     } catch (error: any) {
       console.error("Error reassigning key:", error);
@@ -626,11 +619,10 @@ export default function UserDetailsPage() {
     }
     setIsResettingPassword(true)
     try {
-      const userInfo = JSON.parse(sessionStorage.getItem("user") || "{}")
       await axios.patch(
         `${API_URL}/users/${params.id}/password`,
         { new_password: newPassword },
-        { headers: { Authorization: `Bearer ${userInfo.authToken}` } }
+        { headers: { Authorization: `Bearer ${authToken}` } }
       )
       toast.success("Password reset successfully")
       setShowResetPasswordDialog(false)
