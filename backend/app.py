@@ -163,7 +163,14 @@ if not _secret_key:
     warnings.warn("SECRET_KEY env var not set — sessions will not survive restarts. Set SECRET_KEY in production.", stacklevel=2)
     _secret_key = os.urandom(32)
 app.config["SECRET_KEY"] = _secret_key
-app.config["SESSION_TYPE"] = "redis"  # Or 'filesystem', 'sqlalchemy', etc.
+# Filesystem-backed sessions. Suitable for a single-instance deployment
+# (the production start command runs a single worker). For multi-instance
+# scaling, switch to a shared backend. The directory is explicit so sessions
+# aren't written to an unexpected default location.
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_FILE_DIR"] = os.environ.get(
+    "SESSION_FILE_DIR", os.path.join(os.path.dirname(__file__), ".flask_session")
+)
 Session(app)
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
