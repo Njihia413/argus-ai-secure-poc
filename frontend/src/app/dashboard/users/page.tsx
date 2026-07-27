@@ -140,7 +140,6 @@ export default function UsersPage() {
     setIsLoading(true)
     try {
       if (!authToken) {
-        toast.error("You need to log in")
         router.push("/")
         return
       }

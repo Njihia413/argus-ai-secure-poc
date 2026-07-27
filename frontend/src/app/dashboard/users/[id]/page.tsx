@@ -148,7 +148,6 @@ export default function UserDetailsPage() {
   useEffect(() => {
     if (!_hasHydrated) return
     if (!authToken) {
-      toast.error("You need to log in")
       router.push("/")
       return
     }

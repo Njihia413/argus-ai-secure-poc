@@ -82,7 +82,6 @@ export default function SecurityKeysPage() {
   useEffect(() => {
     if (!_hasHydrated) return
     if (!authToken) {
-      toast.error("You need to log in to view security keys.")
       router.push("/")
       return
     }
