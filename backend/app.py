@@ -78,7 +78,7 @@ CORS(
         r"/api/*": {
             "origins": _allowed_origins,
             "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-Security-Key-ID", "X-Machine-Id"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Security-Key-ID", "X-Machine-Id", "Cache-Control", "Pragma"],
         }
     },
 )
@@ -1320,6 +1320,18 @@ def get_risk_score_trend():
         pass
 
         return jsonify({"error": "Failed to fetch risk score trend"}), 500
+
+
+# Root route so the base URL returns something instead of a 404
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "Athens AI Auth Server",
+            "health": "/api/health",
+        }
+    )
 
 
 # Simple route to test if the server is running
