@@ -1,0 +1,10 @@
+# Hardware-only dependencies for USB / smartcard / YubiKey detection.
+# These are needed on client machines that physically read security keys,
+# NOT on headless server deployments (e.g. Render). They require system
+# libraries (swig, libpcsclite-dev, libusb) to build.
+#
+# Install locally with:
+#   pip install -r requirements.txt -r requirements-hardware.txt
+hidapi==0.14.0.post4
+pyscard==2.0.7
+yubikey-manager==5.7.2
