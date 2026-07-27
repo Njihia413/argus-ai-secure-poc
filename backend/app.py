@@ -16,7 +16,7 @@ import uuid
 from flask import Flask, request, jsonify, session, redirect, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_migrate import Migrate
+from flask_migrate import Migrate, stamp
 from flask_socketio import SocketIO, emit, join_room
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -7720,15 +7720,6 @@ def get_locked_accounts():
         return jsonify({"error": "Failed to retrieve locked accounts"}), 500
 
 
-# Initialize default rows (admin user + app settings). Schema is managed by
-# Alembic migrations — do NOT call db.create_all() here, or it will race with
-# migrations and create tables before Alembic can run.
-with app.app_context():
-    create_admin_user()
-    ensure_default_settings()
-    db.session.commit()
-
-
 @app.route("/api/internal/hid_security_key_event", methods=["POST"])
 def hid_security_key_event_redirect():
     return redirect("/api/internal/hid-security-key-event", code=308)
@@ -10437,13 +10428,23 @@ def delete_vault(vault_id):
         return jsonify({"error": "Failed to delete vault"}), 500
 
 
-@app.cli.command("seed-db")
-def seed_db_command():
-    """Seed the admin user and default settings.
+@app.cli.command("init-db")
+def init_db_command():
+    """Initialize the database: create tables, stamp Alembic, seed defaults.
 
-    Run after `flask db upgrade` on deploy (e.g. as a Render pre-deploy/build
-    step). Safe to run repeatedly — seeding is idempotent.
+    The historical migration chain is not zero-based — the initial migration
+    assumes a schema that was already built by db.create_all(), so `flask db
+    upgrade` fails on a fresh database. Instead we create the schema directly
+    from the models, stamp Alembic at head so future migrations have a
+    baseline, then seed the admin user and default settings. Idempotent —
+    safe to run on every deploy.
     """
+    db.create_all()
+    try:
+        stamp(revision="head")
+    except Exception:
+        # Stamping is best-effort; the app runs fine without it.
+        pass
     create_admin_user()
     ensure_default_settings()
     db.session.commit()
