@@ -10437,6 +10437,18 @@ def delete_vault(vault_id):
         return jsonify({"error": "Failed to delete vault"}), 500
 
 
+@app.cli.command("seed-db")
+def seed_db_command():
+    """Seed the admin user and default settings.
+
+    Run after `flask db upgrade` on deploy (e.g. as a Render pre-deploy/build
+    step). Safe to run repeatedly — seeding is idempotent.
+    """
+    create_admin_user()
+    ensure_default_settings()
+    db.session.commit()
+
+
 if __name__ == "__main__":
     # Note: db.create_all() and create_admin_user() are usually not called here
     # if using Flask-Migrate and a proper seeding mechanism.
