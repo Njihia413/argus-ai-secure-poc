@@ -20,3 +20,4 @@ eventlet==0.33.3
 Flask-Limiter==3.9.0
 minio>=7.2.0
 gunicorn==23.0.0
+psycopg2-binary==2.9.9
