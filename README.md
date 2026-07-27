@@ -2,6 +2,16 @@
 
 Argus AI Secure is a comprehensive, full-stack security management platform built on Next.js and Python Flask. It combines zero-trust encrypted file storage, machine-bound hardware authentication (FIDO2/WebAuthn), tiered AI model access, network zone policy enforcement, and fine-grained role-based access control into a single cohesive system.
 
+## Live Deployment
+
+| Service | URL |
+|---|---|
+| Frontend (Vercel) | https://argus-ai-secure-poc.vercel.app |
+| Backend API (Render) | https://argus-ai-secure-poc.onrender.com |
+| Backend health check | https://argus-ai-secure-poc.onrender.com/api/health |
+
+> **Note:** The backend runs on Render's free tier, which spins down after ~15 minutes of inactivity. The first request after an idle period may take 30–50 seconds while the instance wakes up. Real-time hardware features (USB detector, machine fingerprinting) require the local detector and are not available on the hosted demo.
+
 ## Core Features
 
 - **Advanced User Authentication:** Secure login flows with password-based and passwordless (WebAuthn) two-factor authentication using FIDO2 security keys. Sessions are managed via short-lived tokens with configurable expiry.
@@ -222,7 +232,7 @@ Tier assignments can be changed at runtime from the **Models** admin page (`/das
 
 ## Usage
 
-- **Admin Login:** Visit `http://localhost:3000` and sign in with `admin` / `admin123`.
+- **Admin Login:** Visit `http://localhost:3000` (or the [live frontend](https://argus-ai-secure-poc.vercel.app)) and sign in with `admin` / `admin123`.
 - **User Management:** `/dashboard/users` — create, view, and manage user accounts.
 - **Security Key Management:** Navigate to a user's detail page to register, deactivate, reset, or reassign security keys.
 - **Machine Binding:** On a security key's detail page, configure the binding policy and view or add bound machines.
