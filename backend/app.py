@@ -2229,6 +2229,9 @@ def delete_security_key(key_id):
         # First, handle the associated audit logs
         SecurityKeyAudit.query.filter_by(security_key_id=key_id).delete()
 
+        # Delete machine bindings tied to this key
+        MachineBinding.query.filter_by(security_key_id=key_id).delete()
+
         # Handle associated EncryptedFiles - Crypto-shredding
         # Find all files encrypted with this key
         encrypted_files = EncryptedFile.query.filter_by(security_key_id=key_id).all()
