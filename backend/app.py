@@ -3567,10 +3567,6 @@ def login():
     user.last_login_time = datetime.now(timezone.utc)
     user.last_login_ip = request.remote_addr
 
-    # Clean up any existing authentication sessions for this user
-    AuthenticationSession.query.filter_by(user_id=user.id).delete()
-    db.session.commit()
-
     # Generate binding data for token binding
     binding_hash, binding_nonce = generate_binding_data(request)
 
