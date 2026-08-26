@@ -83,16 +83,17 @@ export default function RolesPage() {
   const [models, setModels] = useState<AIModel[]>([]);
   const [registeredApps, setRegisteredApps] = useState<RegisteredApp[]>([]);
   const [perms, setPerms] = useState<RolePermissions | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(true); 
+  const [permsLoading, setPermsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-const [notAdmin, setNotAdmin] = useState(false);
+  const [notAdmin, setNotAdmin] = useState(false);
 
-  // Create role dialog
+ 
   const [createRoleOpen, setCreateRoleOpen] = useState(false);
   const [newRoleDisplayName, setNewRoleDisplayName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Delete role dialog
+
   const [deleteConfirmRole, setDeleteConfirmRole] = useState<RoleSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -101,7 +102,7 @@ const [notAdmin, setNotAdmin] = useState(false);
     if (!authUser?.authToken) { router.push("/"); return; }
     if (authUser.role !== "admin") {
       setNotAdmin(true);
-      setLoading(false);
+      setCatalogLoading(false);
     }
   }, [authUser?.authToken, authUser?.role, router, _hasHydrated]);
 
@@ -136,6 +137,8 @@ const [notAdmin, setNotAdmin] = useState(false);
       } catch (err) {
         const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
         toast.error(data?.error || "Could not load catalog.");
+      } finally {
+        setCatalogLoading(false);
       }
     })();
   }, [authToken, authUser?.role, rolesPage]);
@@ -143,20 +146,22 @@ const [notAdmin, setNotAdmin] = useState(false);
   useEffect(() => {
     const selectedRoleId = roles.find((r) => r.role === selectedRole)?.id;
     if (!authToken || !selectedRole || !selectedRoleId) return;
-    setLoading(true);
-    axios
-      .get<RolePermissions>(`${API_URL}/admin/roles/${selectedRoleId}/permissions`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      .then((res) => {
+    setPermsLoading(true);
+    setPerms(null);
+    (async () => {
+      try {
+        const res = await axios.get<RolePermissions>(
+          `${API_URL}/admin/roles/${selectedRoleId}/permissions`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
         setPerms(res.data);
-        setLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
         toast.error(data?.error || "Could not load role permissions.");
-        setLoading(false);
-      });
+      } finally {
+        setPermsLoading(false);
+      }
+    })();
   }, [authToken, selectedRole, roles]);
 
   const activeModels = useMemo(() => models.filter((m) => m.is_active), [models]);
@@ -244,6 +249,194 @@ const [notAdmin, setNotAdmin] = useState(false);
     }
   };
 
+  function renderEditorPanel() {
+    if (catalogLoading) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            Loading…
+          </CardContent>
+        </Card>
+      );
+    }
+    if (roles.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            No roles yet. Create one using the <strong>+ New</strong> button to get started.
+          </CardContent>
+        </Card>
+      );
+    }
+    if (permsLoading) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            Loading permissions…
+          </CardContent>
+        </Card>
+      );
+    }
+    if (!perms) {
+      return null;
+    }
+    return (
+      <>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {roles.find((r) => r.role === selectedRole)?.display_name}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Tick the items members of this role are permitted to use.
+            </p>
+          </div>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+
+        {selectedRole !== "admin" && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">AI Models</CardTitle>
+                  <CardDescription className="mt-1">
+                    Which Groq models members of this role can chat with. The badge shows the
+                    minimum login tier the user also needs.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="ml-4">
+                  {perms.models.filter((slug) => activeModels.some((m) => m.slug === slug)).length} / {activeModels.length} allowed
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                {activeModels.map((m) => (
+                  <label key={m.slug} className="flex items-center gap-3 py-3 cursor-pointer">
+                    <Checkbox
+                      checked={perms.models.includes(m.slug)}
+                      onCheckedChange={() => toggle("models", m.slug)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{m.display_name}</div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">{m.slug}</div>
+                    </div>
+                    <TierPill tier={m.min_tier} />
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedRole !== "admin" && registeredApps.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Registered Applications</CardTitle>
+                  <CardDescription className="mt-1">
+                    Which external applications members of this role are permitted to access
+                    via the app-auth API.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="ml-4">
+                  {perms.registered_apps.filter((slug) => registeredApps.some((a) => a.slug === slug)).length} / {registeredApps.length} allowed
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                {registeredApps.map((a) => (
+                  <label key={a.slug} className="flex items-center gap-3 py-3 cursor-pointer">
+                    <Checkbox
+                      checked={perms.registered_apps.includes(a.slug)}
+                      onCheckedChange={() => toggle("registered_apps", a.slug)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium">{a.name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">{a.slug}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedRole === "admin" && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Admin panel access</CardTitle>
+                  <CardDescription className="mt-1">
+                    Which admin areas administrators may enter.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="ml-4">
+                  {perms.admin_sections.length} / {ADMIN_NAV_SECTIONS.length} allowed
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                {ADMIN_NAV_SECTIONS.map((s) => (
+                  <label key={s.slug} className="flex items-center gap-3 py-3 cursor-pointer">
+                    <Checkbox
+                      checked={perms.admin_sections.includes(s.slug)}
+                      onCheckedChange={() => toggle("admin_sections", s.slug)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{s.label}</span>
+                        {s.elevated && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/50 border-0">
+                            Key required
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">{s.slug}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!roles.find((r) => r.role === selectedRole)?.is_system && (
+          <Card className="border-destructive/40">
+            <CardHeader>
+              <CardTitle className="text-base text-destructive">Delete role</CardTitle>
+              <CardDescription>
+                Permanently remove <strong>{roles.find((r) => r.role === selectedRole)?.display_name}</strong> and all its permissions. This cannot be undone. Users currently assigned this role must be reassigned before deletion.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const r = roles.find((x) => x.role === selectedRole);
+                  if (r) setDeleteConfirmRole(r);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Delete {roles.find((r) => r.role === selectedRole)?.display_name}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </>
+    );
+  }
+
   if (notAdmin) {
     return (
       <div className="p-6 font-montserrat max-w-xl">
@@ -295,6 +488,7 @@ const [notAdmin, setNotAdmin] = useState(false);
             const active = selectedRole === r.role;
             return (
               <button
+                type="button"
                 key={r.role}
                 onClick={() => setSelectedRole(r.role)}
                 className={`w-full text-left p-3 rounded-xl border transition-colors ${
@@ -325,180 +519,7 @@ const [notAdmin, setNotAdmin] = useState(false);
 
         {/* Editor */}
         <div className="space-y-6">
-          {loading || !perms ? (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                Loading permissions…
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {roles.find((r) => r.role === selectedRole)?.display_name}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Tick the items members of this role are permitted to use.
-                  </p>
-                </div>
-                <Button onClick={save} disabled={saving}>
-                  {saving ? "Saving…" : "Save changes"}
-                </Button>
-              </div>
-
-              {selectedRole !== "admin" && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base">AI Models</CardTitle>
-                        <CardDescription className="mt-1">
-                          Which Groq models members of this role can chat with. The badge shows the
-                          minimum login tier the user also needs.
-                        </CardDescription>
-                      </div>
-                      <Badge variant="outline" className="ml-4">
-                        {perms.models.filter((slug) => activeModels.some((m) => m.slug === slug)).length} / {activeModels.length} allowed
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                      {activeModels.map((m) => (
-                        <label
-                          key={m.slug}
-                          className="flex items-center gap-3 py-3 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={perms.models.includes(m.slug)}
-                            onCheckedChange={() => toggle("models", m.slug)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">{m.display_name}</div>
-                            <div className="text-xs text-muted-foreground font-mono truncate">
-                              {m.slug}
-                            </div>
-                          </div>
-                          <TierPill tier={m.min_tier} />
-                        </label>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {selectedRole !== "admin" && registeredApps.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base">Registered Applications</CardTitle>
-                        <CardDescription className="mt-1">
-                          Which external applications members of this role are permitted to access
-                          via the app-auth API.
-                        </CardDescription>
-                      </div>
-                      <Badge variant="outline" className="ml-4">
-                        {perms.registered_apps.filter((slug) => registeredApps.some((a) => a.slug === slug)).length} / {registeredApps.length} allowed
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                      {registeredApps.map((a) => (
-                        <label
-                          key={a.slug}
-                          className="flex items-center gap-3 py-3 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={perms.registered_apps.includes(a.slug)}
-                            onCheckedChange={() => toggle("registered_apps", a.slug)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <span className="text-sm font-medium">{a.name}</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground font-mono truncate">
-                              {a.slug}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {selectedRole === "admin" && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base">Admin panel access</CardTitle>
-                        <CardDescription className="mt-1">
-                          Which admin areas administrators may enter.
-                        </CardDescription>
-                      </div>
-                      <Badge variant="outline" className="ml-4">
-                        {perms.admin_sections.length} / {ADMIN_NAV_SECTIONS.length} allowed
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                      {ADMIN_NAV_SECTIONS.map((s) => (
-                        <label
-                          key={s.slug}
-                          className="flex items-center gap-3 py-3 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={perms.admin_sections.includes(s.slug)}
-                            onCheckedChange={() => toggle("admin_sections", s.slug)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">{s.label}</span>
-                              {s.elevated && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/50 border-0">
-                                  Key required
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground font-mono">{s.slug}</div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {!roles.find((r) => r.role === selectedRole)?.is_system && (
-                <Card className="border-destructive/40">
-                  <CardHeader>
-                    <CardTitle className="text-base text-destructive">Delete role</CardTitle>
-                    <CardDescription>
-                      Permanently remove <strong>{roles.find((r) => r.role === selectedRole)?.display_name}</strong> and all its permissions. This cannot be undone. Users currently assigned this role must be reassigned before deletion.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button
-                      variant="destructive"
-                      onClick={() => {
-                        const r = roles.find((x) => x.role === selectedRole);
-                        if (r) setDeleteConfirmRole(r);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1.5" />
-                      Delete {roles.find((r) => r.role === selectedRole)?.display_name}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-            </>
-          )}
+          {renderEditorPanel()}
         </div>
       </div>
 
