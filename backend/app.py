@@ -8892,6 +8892,7 @@ def app_auth_verify():
         details=f"App '{registered.slug}' authenticated for user '{user.username}' (ID: {user.id}). Tier: {tier}.",
     )
     return jsonify({
+        "allowed": True,
         "app_slug": registered.slug,
         "user_id": user.id,
         "username": user.username,
